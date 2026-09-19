@@ -229,6 +229,9 @@ jobs:
       - name: web SBOM (cyclonedx)
         working-directory: apps/web
         run: |
+          # cyclonedx-npm builds the SBOM from the installed dependency tree
+          # (npm-ls), so the lockfile must be materialized first.
+          npm ci --no-audit --no-fund
           npx --yes @cyclonedx/cyclonedx-npm --output-file ../../dist/sbom-web.cdx.json --output-format JSON
 
       - name: upload artifacts
