@@ -144,6 +144,8 @@ func (h *Handlers) Routes(mux *http.ServeMux) {
 		RequireCSRF(h.csrf, RequireAuth(http.HandlerFunc(h.handleLogout))))
 	mux.Handle("GET /api/v1/auth/session",
 		RequireAuth(http.HandlerFunc(h.handleSession)))
+
+	h.registerMFARoutes(mux)
 }
 
 // --- CSRF priming ---------------------------------------------------------------
@@ -257,6 +259,9 @@ type loginRequest struct {
 	Password string `json:"password"`
 	// TOTPCode carries the second factor when the account has one enrolled.
 	TOTPCode string `json:"totp_code"`
+	// RecoveryCode is the single-use alternative to the second factor, for a
+	// user who has lost the authenticator. Exactly one of these is needed.
+	RecoveryCode string `json:"recovery_code"`
 }
 
 // handleLogin authenticates a browser and issues a session cookie.
@@ -334,7 +339,7 @@ func (h *Handlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Second factor. No session is created until BOTH factors pass, so a correct
 	// password alone never yields a usable session.
 	if candidate.HasConfirmedTOTP {
-		if apiErr := h.verifySecondFactor(r, candidate, req.TOTPCode, now); apiErr != nil {
+		if apiErr := h.verifySecondFactor(r, candidate, req.TOTPCode, req.RecoveryCode, now); apiErr != nil {
 			h.recordFailedLogin(r, candidate, email)
 			httpserver.WriteError(w, r, apiErr)
 			return
@@ -394,16 +399,26 @@ func (h *Handlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// verifySecondFactor validates the TOTP code against the user's confirmed
-// enrollment.
+// verifySecondFactor validates the second factor against the user's confirmed
+// enrollment: either a TOTP code or a single-use recovery code.
 //
-// A missing code is reported as "second factor required" rather than as invalid
-// credentials, so the UI can prompt for it: the password has already been proven
-// correct, and withholding that fact gains an attacker nothing because they
-// supplied it.
-func (h *Handlers) verifySecondFactor(r *http.Request, candidate identity.LoginCandidate, code string, now time.Time) *apierr.Error {
-	if strings.TrimSpace(code) == "" {
+// A missing factor is reported as "second factor required" rather than as
+// invalid credentials, so the UI can prompt for it: the password has already
+// been proven correct, and withholding that fact gains an attacker nothing
+// because they supplied it.
+//
+// A supplied recovery code is checked FIRST and alone. Trying both would let a
+// mistyped recovery code fall through to the TOTP path and consume a valid time
+// step on the way to failing, which would then reject the user's next, correct
+// attempt as a replay.
+func (h *Handlers) verifySecondFactor(r *http.Request, candidate identity.LoginCandidate, totpCode, recoveryCode string, now time.Time) *apierr.Error {
+	totpCode = strings.TrimSpace(totpCode)
+	recoveryCode = strings.TrimSpace(recoveryCode)
+	if totpCode == "" && recoveryCode == "" {
 		return totpRequired()
+	}
+	if recoveryCode != "" {
+		return h.verifyRecoveryCode(r, candidate, recoveryCode)
 	}
 
 	enrollment, err := identity.GetActiveTOTP(r.Context(), h.opts.DB, candidate.ID)
@@ -426,14 +441,10 @@ func (h *Handlers) verifySecondFactor(r *http.Request, candidate identity.LoginC
 		return apierr.Internal(err)
 	}
 
-	step, err := totp.Validate(secret, code, now)
+	step, err := totp.Validate(secret, totpCode, now)
 	if err != nil {
 		if errors.Is(err, totp.ErrCodeInvalid) {
-			return &apierr.Error{
-				Code:    CodeTOTPInvalid,
-				Message: "The two-factor code is incorrect.",
-				Status:  http.StatusUnauthorized,
-			}
+			return totpCodeInvalid()
 		}
 		return apierr.Internal(err)
 	}
@@ -451,6 +462,33 @@ func (h *Handlers) verifySecondFactor(r *http.Request, candidate identity.LoginC
 			Message: "That two-factor code has already been used.",
 			Status:  http.StatusUnauthorized,
 		}
+	}
+	return nil
+}
+
+// verifyRecoveryCode redeems a single-use recovery code.
+//
+// A wrong code is reported with the same 401 code as a wrong TOTP code, so the
+// response does not tell an attacker which credential class they got closer to.
+func (h *Handlers) verifyRecoveryCode(r *http.Request, candidate identity.LoginCandidate, code string) *apierr.Error {
+	accepted, err := identity.ConsumeRecoveryCode(r.Context(), h.opts.DB, candidate.ID, code)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	if !accepted {
+		return totpCodeInvalid()
+	}
+	// The remaining count goes to the log, never to the response: an
+	// unauthenticated caller must not be able to count another user's codes.
+	remaining, err := identity.CountUnusedRecoveryCodes(r.Context(), h.opts.DB, candidate.ID)
+	if err != nil {
+		h.opts.Logger.ErrorContext(r.Context(), "counting recovery codes failed",
+			"error", err, "user_id", candidate.ID,
+			"request_id", httpserver.RequestIDFromRequest(r))
+	} else {
+		h.opts.Logger.WarnContext(r.Context(), "login used a recovery code",
+			"user_id", candidate.ID, "remaining", remaining,
+			"request_id", httpserver.RequestIDFromRequest(r))
 	}
 	return nil
 }
