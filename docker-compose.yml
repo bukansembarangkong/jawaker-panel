@@ -1,0 +1,29 @@
+# Development-only stack for JAWAKER contributors.
+# These credentials are local fixtures for a loopback-bound throwaway database.
+# They are NOT production secrets and must never be reused outside this file.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: jawaker-dev-db
+    environment:
+      POSTGRES_USER: jawaker
+      POSTGRES_PASSWORD: jawaker_dev_password
+      POSTGRES_DB: jawaker
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+    ports:
+      # Loopback only: the dev database must not be reachable from the network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - jawaker-dev-db-data:/var/lib/postgresql/data
+      - ./scripts/dev-db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jawaker -d jawaker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  jawaker-dev-db-data:

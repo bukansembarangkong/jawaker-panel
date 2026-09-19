@@ -1,0 +1,74 @@
+# ==========================================================
+# JAWAKER - local AI/product planning documents
+# Intentionally NOT pushed to GitHub.
+# Do not replace this list with *.md; README/public docs may
+# need to be tracked later.
+# ==========================================================
+agent-md/AGENTS.md
+agent-md/PRD.md
+agent-md/ARCHITECTURE.md
+agent-md/IMPLEMENTATION_PLAN.md
+agent-md/DESIGN_SYSTEM.md
+agent-md/SECURITY.md
+agent-md/DATABASE.md
+agent-md/API.md
+agent-md/MODULES.md
+agent-md/TESTING.md
+agent-md/DEPLOYMENT.md
+agent-md/BACKUP_RECOVERY.md
+agent-md/OBSERVABILITY.md
+agent-md/DECISIONS.md
+agent-md/ROADMAP.md
+agent-md/CONTRIBUTING.md
+agent-md/LOCAL_DOCS_POLICY.md
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt.local
+secrets/
+.local-secrets/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Go
+bin/
+*.test
+*.out
+coverage.out
+
+# Runtime / local state
+*.log
+logs/
+tmp/
+.temp/
+.cache/
+data/local/
+
+# Build/package artifacts
+artifacts/
+release/
+*.tar.gz
+*.zip
+
+# Test artifacts
+playwright-report/
+test-results/
