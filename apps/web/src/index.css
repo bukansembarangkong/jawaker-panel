@@ -1,0 +1,163 @@
+@import 'tailwindcss';
+
+/*
+ * JAWAKER semantic design tokens (DESIGN_SYSTEM.md s7).
+ * Feature code must reference tokens only — never raw colors — so themes
+ * stay maintainable and accessible contrast is enforced centrally.
+ *
+ * Visual direction: neutral charcoal/slate surfaces, restrained warm
+ * gold/amber brand accent, status colors reserved for status meaning.
+ */
+
+:root {
+  /* Light theme */
+  --bg-canvas: oklch(97.5% 0.005 85);
+  --bg-surface: oklch(100% 0 0);
+  --bg-elevated: oklch(100% 0 0);
+  --bg-subtle: oklch(95.5% 0.006 85);
+
+  --text-primary: oklch(24% 0.02 60);
+  --text-secondary: oklch(45% 0.015 60);
+  --text-muted: oklch(58% 0.012 60);
+
+  --border-default: oklch(88% 0.008 85);
+  --border-strong: oklch(75% 0.012 85);
+
+  --action-primary: oklch(62% 0.115 75);
+  --action-primary-hover: oklch(55% 0.12 75);
+  --action-destructive: oklch(55% 0.19 25);
+
+  --status-success: oklch(55% 0.14 150);
+  --status-warning: oklch(70% 0.15 85);
+  --status-danger: oklch(55% 0.19 25);
+  --status-info: oklch(58% 0.11 240);
+
+  --focus-ring: oklch(62% 0.115 75);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(17% 0.012 265);
+  --bg-surface: oklch(21% 0.014 265);
+  --bg-elevated: oklch(25% 0.015 265);
+  --bg-subtle: oklch(19% 0.013 265);
+
+  --text-primary: oklch(95% 0.005 85);
+  --text-secondary: oklch(78% 0.01 85);
+  --text-muted: oklch(62% 0.012 85);
+
+  --border-default: oklch(32% 0.015 265);
+  --border-strong: oklch(45% 0.015 265);
+
+  --action-primary: oklch(75% 0.13 80);
+  --action-primary-hover: oklch(82% 0.13 80);
+  --action-destructive: oklch(65% 0.2 25);
+
+  --status-success: oklch(72% 0.16 150);
+  --status-warning: oklch(80% 0.15 85);
+  --status-danger: oklch(70% 0.19 25);
+  --status-info: oklch(75% 0.1 240);
+
+  --focus-ring: oklch(75% 0.13 80);
+
+  color-scheme: dark;
+}
+
+/* System theme: follow OS preference unless explicitly overridden. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg-canvas: oklch(17% 0.012 265);
+    --bg-surface: oklch(21% 0.014 265);
+    --bg-elevated: oklch(25% 0.015 265);
+    --bg-subtle: oklch(19% 0.013 265);
+
+    --text-primary: oklch(95% 0.005 85);
+    --text-secondary: oklch(78% 0.01 85);
+    --text-muted: oklch(62% 0.012 85);
+
+    --border-default: oklch(32% 0.015 265);
+    --border-strong: oklch(45% 0.015 265);
+
+    --action-primary: oklch(75% 0.13 80);
+    --action-primary-hover: oklch(82% 0.13 80);
+    --action-destructive: oklch(65% 0.2 25);
+
+    --status-success: oklch(72% 0.16 150);
+    --status-warning: oklch(80% 0.15 85);
+    --status-danger: oklch(70% 0.19 25);
+    --status-info: oklch(75% 0.1 240);
+
+    --focus-ring: oklch(75% 0.13 80);
+
+    color-scheme: dark;
+  }
+}
+
+/* Map tokens onto Tailwind v4 theme variables so utilities like
+ * bg-[--bg-surface] and text-[--text-primary] resolve consistently. */
+@theme inline {
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-subtle: var(--bg-subtle);
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-accent: var(--action-primary);
+  --color-accent-hover: var(--action-primary-hover);
+  --color-danger: var(--action-destructive);
+  --color-ok: var(--status-success);
+  --color-warn: var(--status-warning);
+  --color-crit: var(--status-danger);
+  --color-info: var(--status-info);
+
+  --font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Menlo,
+    Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Visible focus everywhere (DESIGN_SYSTEM.md s20). */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Respect reduced motion (DESIGN_SYSTEM.md s20). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Tabular numerals for metrics (DESIGN_SYSTEM.md s8). */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
