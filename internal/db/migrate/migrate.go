@@ -199,7 +199,7 @@ func (m *Migrator) Up(ctx context.Context, pool *pgxpool.Pool) ([]string, error)
 		}
 
 		m.log.Info("applying migration", "version", mig.Version, "name", mig.Name)
-		if err := applyOne(ctx, pool, mig); err != nil {
+		if err := applyOne(ctx, conn, mig); err != nil {
 			return newlyApplied, err
 		}
 		newlyApplied = append(newlyApplied, mig.Name)
@@ -236,8 +236,14 @@ func loadApplied(ctx context.Context, conn *pgxpool.Conn) (map[int64]appliedRow,
 
 // applyOne executes a single migration and its bookkeeping insert in one
 // transaction: either both land or neither does.
-func applyOne(ctx context.Context, pool *pgxpool.Pool, mig Migration) error {
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+//
+// The transaction runs on the SAME connection that holds the advisory lock.
+// Acquiring a second connection from the pool here can deadlock under pool
+// exhaustion: N concurrent migrators each holding one locked connection and
+// each waiting for a second one starve the pool permanently. This was caught
+// by TestConcurrentMigratorsSerializeViaAdvisoryLock (regression coverage).
+func applyOne(ctx context.Context, conn *pgxpool.Conn, mig Migration) error {
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("migrate: begin tx for %s: %w", mig.Name, err)
 	}
