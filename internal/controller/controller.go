@@ -17,6 +17,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
+	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
@@ -51,10 +52,20 @@ type Handler struct {
 	Secrets *secret.Store
 	// AuthRoutesMounted reports whether /api/v1/auth/* is registered.
 	AuthRoutesMounted bool
+	// Events is the SSE broker publishers use to push live updates to connected
+	// clients. Nil when the stream routes are not mounted.
+	Events *eventstream.Broker
+	// EventStreamMounted reports whether /api/v1/events/* is registered.
+	EventStreamMounted bool
 	// CookieConfig is the session/CSRF cookie attributes in effect, so callers
 	// (and tests) can assert what clients will actually receive.
 	CookieConfig auth.CookieConfig
 }
+
+// EventStreamPath is the route prefix for SSE subscriptions. It is exported so
+// the middleware configuration and any tests refer to one constant rather than
+// three copies of the string.
+const EventStreamPath = "/api/v1/events/"
 
 // Build assembles the HTTP surface.
 //
@@ -135,7 +146,6 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: auth handlers: %w", err)
 		}
 
-		register = handlers.Routes
 		// The session middleware wraps the WHOLE mux once, so every route sees a
 		// resolved principal when a cookie is present. It never rejects, so
 		// public routes stay reachable and carry their own explicit guards.
@@ -144,6 +154,29 @@ func Build(opts Options) (*Handler, error) {
 		}
 		out.Secrets = secrets
 		out.AuthRoutesMounted = true
+
+		// Live updates share the same authorization evaluator as the REST API,
+		// so a topic cannot be readable over SSE while its data is forbidden
+		// over HTTP. The params are the request's own, meaning an impersonated
+		// or step-up-limited session is judged exactly as it would be elsewhere.
+		broker := eventstream.New(eventstream.Options{})
+		streamHandler, err := eventstream.NewHandler(eventstream.HandlerOptions{
+			Broker: broker,
+			Authorize: func(r *http.Request, topic string) bool {
+				return authorizeTopic(r, topic, now)
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("controller: event stream handler: %w", err)
+		}
+
+		authRoutes := handlers.Routes
+		register = func(mux *http.ServeMux) {
+			authRoutes(mux)
+			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
+		}
+		out.Events = broker
+		out.EventStreamMounted = true
 		logger.Info("authentication routes enabled",
 			"secret_key_versions", len(cfg.SecretKeys),
 			"secure_cookies", cfg.CookieSecure,
@@ -151,10 +184,11 @@ func Build(opts Options) (*Handler, error) {
 	}
 
 	handler, err := httpserver.New(httpserver.Options{
-		Logger:         logger,
-		MaxBodyBytes:   cfg.MaxBodyBytes,
-		RequestTimeout: time.Duration(cfg.RequestTimeoutSeconds) * time.Second,
-		RegisterRoutes: register,
+		Logger:             logger,
+		MaxBodyBytes:       cfg.MaxBodyBytes,
+		RequestTimeout:     time.Duration(cfg.RequestTimeoutSeconds) * time.Second,
+		RegisterRoutes:     register,
+		StreamPathPrefixes: []string{EventStreamPath},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("controller: http server: %w", err)
