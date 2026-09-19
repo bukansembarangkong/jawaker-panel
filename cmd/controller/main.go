@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
+	"github.com/bukansembarangkong/jawaker-panel/internal/controller"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db/migrate"
-	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/logging"
 	"github.com/bukansembarangkong/jawaker-panel/internal/version"
 	"github.com/bukansembarangkong/jawaker-panel/migrations"
@@ -92,11 +92,11 @@ func run() error {
 		return nil
 	}
 
-	handler, err := httpserver.New(httpserver.Options{
-		Logger:         logger,
-		MaxBodyBytes:   cfg.MaxBodyBytes,
-		RequestTimeout: time.Duration(cfg.RequestTimeoutSeconds) * time.Second,
-	})
+	assembled, err := controller.Build(controller.Options{Config: cfg, Logger: logger, DB: pool})
+	if err != nil {
+		return err
+	}
+	handler := assembled.HTTP
 	if err != nil {
 		return err
 	}

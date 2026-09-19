@@ -10,20 +10,32 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 )
 
 // Stable machine-readable error codes. Clients may branch on these; they must
 // not change meaning once released.
 const (
-	CodeInvalidRequest      = "invalid_request"
-	CodeUnauthorized        = "unauthorized"
-	CodeForbidden           = "forbidden"
+	CodeInvalidRequest = "invalid_request"
+	CodeUnauthorized   = "unauthorized"
+	CodeForbidden      = "forbidden"
+	// CodeStepUpRequired distinguishes "you may do this, but must
+	// re-authenticate first" from a plain refusal. Without a distinct code the
+	// UI would have to parse the message to decide whether to prompt for a
+	// password or show an error.
+	CodeStepUpRequired      = "step_up_required"
 	CodeNotFound            = "not_found"
 	CodeConflict            = "conflict"
 	CodePayloadTooLarge     = "payload_too_large"
 	CodeInternal            = "internal_error"
 	CodeServiceUnavailable  = "service_unavailable"
 	CodeDatabaseUnavailable = "database_unavailable"
+	// CodeAccountLocked marks an authentication attempt refused because the
+	// account is inside its brute-force lockout window (SECURITY.md §3).
+	CodeAccountLocked = "account_locked"
+	// CodeTooManyRequests marks a request refused by volume control rather than
+	// by policy (SECURITY.md §11).
+	CodeTooManyRequests = "too_many_requests"
 )
 
 // Error is an API error with a stable code and HTTP status mapping.
@@ -118,6 +130,30 @@ func Forbidden(message string) *Error {
 	return &Error{Code: CodeForbidden, Message: message, Status: http.StatusForbidden}
 }
 
+// StepUpRequired builds a 403 that tells the client a re-authentication would
+// succeed, distinguishing it from a refusal that no amount of elevation fixes.
+func StepUpRequired() *Error {
+	return &Error{
+		Code:    CodeStepUpRequired,
+		Message: "Re-authentication is required for this action.",
+		Status:  http.StatusForbidden,
+		Details: map[string]any{"step_up": true},
+	}
+}
+
+// AccountLocked builds a 423 error for an account inside its lockout window.
+// A distinct status and code let the UI explain the wait rather than implying
+// the credentials were wrong.
+func AccountLocked(retryAfter time.Duration) *Error {
+	return &Error{
+		Code:      CodeAccountLocked,
+		Message:   "Too many failed attempts. The account is temporarily locked.",
+		Status:    http.StatusLocked,
+		Retryable: true,
+		Details:   map[string]any{"retry_after_seconds": int(retryAfter.Seconds())},
+	}
+}
+
 // NotFound builds a 404 error.
 func NotFound(message string) *Error {
 	if message == "" {
@@ -153,6 +189,26 @@ func Internal(cause error) *Error {
 // ServiceUnavailable builds a retryable 503 error.
 func ServiceUnavailable(message string) *Error {
 	return &Error{Code: CodeServiceUnavailable, Message: message, Status: http.StatusServiceUnavailable, Retryable: true}
+}
+
+// TooManyRequests builds a 429 for a request refused by volume control. The
+// retry delay is exposed as data so a client can back off deterministically
+// instead of guessing.
+func TooManyRequests(message string, retryAfter time.Duration) *Error {
+	if message == "" {
+		message = "Too many requests. Please try again later."
+	}
+	secs := int(retryAfter.Seconds() + 0.999) // round up
+	if secs < 1 {
+		secs = 1
+	}
+	return &Error{
+		Code:      CodeTooManyRequests,
+		Message:   message,
+		Status:    http.StatusTooManyRequests,
+		Retryable: true,
+		Details:   map[string]any{"retry_after_seconds": secs},
+	}
 }
 
 // DatabaseUnavailable builds a retryable 503 for DB-backed routes when the

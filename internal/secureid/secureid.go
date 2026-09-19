@@ -90,6 +90,21 @@ func HashToken(raw []byte) []byte {
 	return sum[:]
 }
 
+// CSRFToken returns an opaque anti-forgery nonce for the double-submit cookie
+// pattern.
+//
+// It is deliberately NOT shaped like a credential: no prefix, and no digest is
+// stored, because the value is compared against the echoed header rather than
+// looked up in a database. Giving it an api-token prefix would make it look
+// like a bearer secret in logs and secret scanners for no benefit.
+func CSRFToken() (string, error) {
+	raw, err := randomBytes(sessionTokenBytes)
+	if err != nil {
+		return "", err
+	}
+	return encodeToken(raw), nil
+}
+
 // HashSessionToken returns the stored digest for a PRESENTED session token,
 // which is the form a cookie carries. It is the exact inverse of the encoding
 // SessionToken produced, so a lookup can never drift from the storage format.
