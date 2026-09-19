@@ -76,7 +76,7 @@ func run() error {
 		logger.Info("database connected", "dsn", cfg.RedactedDSN())
 
 		if cfg.RunMigrations || *migrateOnly {
-			if err := applyMigrations(ctx, pool, logger); err != nil {
+			if err = applyMigrations(ctx, pool, logger); err != nil {
 				return err
 			}
 		}

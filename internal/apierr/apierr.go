@@ -15,14 +15,14 @@ import (
 // Stable machine-readable error codes. Clients may branch on these; they must
 // not change meaning once released.
 const (
-	CodeInvalidRequest     = "invalid_request"
-	CodeUnauthorized       = "unauthorized"
-	CodeForbidden          = "forbidden"
-	CodeNotFound           = "not_found"
-	CodeConflict           = "conflict"
-	CodePayloadTooLarge    = "payload_too_large"
-	CodeInternal           = "internal_error"
-	CodeServiceUnavailable = "service_unavailable"
+	CodeInvalidRequest      = "invalid_request"
+	CodeUnauthorized        = "unauthorized"
+	CodeForbidden           = "forbidden"
+	CodeNotFound            = "not_found"
+	CodeConflict            = "conflict"
+	CodePayloadTooLarge     = "payload_too_large"
+	CodeInternal            = "internal_error"
+	CodeServiceUnavailable  = "service_unavailable"
 	CodeDatabaseUnavailable = "database_unavailable"
 )
 

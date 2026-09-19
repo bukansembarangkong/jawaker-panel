@@ -273,7 +273,7 @@ func withTimeout(next http.Handler, timeout time.Duration) http.Handler {
 			if ctx.Err() == context.DeadlineExceeded {
 				WriteError(w, r.WithContext(ctx), apierr.ServiceUnavailable("The request timed out."))
 			}
-			// Do not wait for the handler: its context is cancelled, so it
+			// Do not wait for the handler: its context is canceled, so it
 			// should stop promptly; its buffered output is discarded.
 		}
 	})

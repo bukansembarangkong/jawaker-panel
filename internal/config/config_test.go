@@ -62,6 +62,7 @@ func TestLoadInvalidPort(t *testing.T) {
 }
 
 func TestLoadRejectsBadDSNScheme(t *testing.T) {
+	// #nosec G101 -- synthetic fixture; no real credential is involved.
 	setEnv(t, map[string]string{"JAWAKER_DATABASE_URL": "mysql://user:pass@localhost/db"})
 	_, err := Load()
 	if err == nil {
@@ -73,6 +74,7 @@ func TestLoadRejectsBadDSNScheme(t *testing.T) {
 }
 
 func TestLoadAcceptsPostgresDSN(t *testing.T) {
+	// #nosec G101 -- synthetic fixture; no real credential is involved.
 	setEnv(t, map[string]string{
 		"JAWAKER_DATABASE_URL": "postgres://u:p@127.0.0.1:5432/jawaker?sslmode=disable",
 	})
@@ -123,6 +125,7 @@ func TestRunMigrationsFalse(t *testing.T) {
 }
 
 func TestRedactedDSNHidesPassword(t *testing.T) {
+	// #nosec G101 -- synthetic fixture proving redaction; not a real credential.
 	cfg := &Config{DatabaseURL: "postgres://admin:supersecret@db:5432/jawaker?sslmode=require"}
 	redacted := cfg.RedactedDSN()
 	if strings.Contains(redacted, "supersecret") {
@@ -144,6 +147,7 @@ func TestRedactedDSNEmpty(t *testing.T) {
 }
 
 func TestStringOmitsSecrets(t *testing.T) {
+	// #nosec G101 -- synthetic fixture proving redaction; not a real credential.
 	cfg := &Config{
 		ListenAddr:  "127.0.0.1:8443",
 		DatabaseURL: "postgres://admin:supersecret@db:5432/jawaker",

@@ -57,12 +57,12 @@ func TestParseComputesChecksums(t *testing.T) {
 
 func TestParseRejectsBadNames(t *testing.T) {
 	cases := map[string]string{
-		"no version prefix":       "create_things.sql",
-		"short version":           "01_create_things.sql",
-		"uppercase":               "0001_CreateThings.sql",
-		"hyphen":                  "0001_create-things.sql",
-		"trailing garbage":        "0001_create_things.sql.bak",
-		"version not separated":   "0001createthings.sql",
+		"no version prefix":     "create_things.sql",
+		"short version":         "01_create_things.sql",
+		"uppercase":             "0001_CreateThings.sql",
+		"hyphen":                "0001_create-things.sql",
+		"trailing garbage":      "0001_create_things.sql.bak",
+		"version not separated": "0001createthings.sql",
 	}
 	for label, name := range cases {
 		t.Run(label, func(t *testing.T) {

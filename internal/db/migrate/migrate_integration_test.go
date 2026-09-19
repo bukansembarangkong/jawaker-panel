@@ -155,8 +155,8 @@ func TestUpFailsAtomicallyOnBadSQL(t *testing.T) {
 	ctx := context.Background()
 
 	fsys := fstest.MapFS{
-		"0001_good.sql": {Data: []byte(`CREATE TABLE mig_atomic_ok (a int);`)},
-		"0002_bad.sql":  {Data: []byte(`CREATE TABLE mig_atomic_ok (a int); THIS IS NOT SQL;`)},
+		"0001_good.sql":  {Data: []byte(`CREATE TABLE mig_atomic_ok (a int);`)},
+		"0002_bad.sql":   {Data: []byte(`CREATE TABLE mig_atomic_ok (a int); THIS IS NOT SQL;`)},
 		"0003_never.sql": {Data: []byte(`CREATE TABLE mig_atomic_never (a int);`)},
 	}
 	m, err := New(fsys, testLogger())

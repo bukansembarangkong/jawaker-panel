@@ -46,7 +46,7 @@ func TestNewRequiresOptions(t *testing.T) {
 func TestHealthz(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -66,7 +66,7 @@ func TestHealthz(t *testing.T) {
 func TestVersionEndpoint(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/version", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/version", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -85,7 +85,7 @@ func TestVersionEndpoint(t *testing.T) {
 func TestRequestIDGeneratedWhenAbsent(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 
 	id := rec.Header().Get(HeaderRequestID)
 	if !strings.HasPrefix(id, "req_") {
@@ -95,7 +95,7 @@ func TestRequestIDGeneratedWhenAbsent(t *testing.T) {
 
 func TestRequestIDEchoedWhenSafe(t *testing.T) {
 	h, _ := newTestHandler(t)
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 	req.Header.Set(HeaderRequestID, "req_client-123_abc")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -108,12 +108,12 @@ func TestRequestIDEchoedWhenSafe(t *testing.T) {
 func TestRequestIDRejectedWhenUnsafe(t *testing.T) {
 	h, _ := newTestHandler(t)
 	for _, bad := range []string{
-		"req_<script>alert(1)</script>",          // charset violation
+		"req_<script>alert(1)</script>",               // charset violation
 		"req_" + strings.Repeat("a", maxRequestIDLen), // too long
-		"req_ünïcödé",                            // non-ASCII
-		"req id",                                 // space
+		"req_ünïcödé",                                 // non-ASCII
+		"req id",                                      // space
 	} {
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 		req.Header.Set(HeaderRequestID, bad)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -131,12 +131,12 @@ func TestRequestIDRejectedWhenUnsafe(t *testing.T) {
 func TestSecurityHeadersPresent(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 
 	want := map[string]string{
-		"X-Content-Type-Options":    "nosniff",
-		"X-Frame-Options":           "DENY",
-		"Referrer-Policy":           "no-referrer",
+		"X-Content-Type-Options":     "nosniff",
+		"X-Frame-Options":            "DENY",
+		"Referrer-Policy":            "no-referrer",
 		"Cross-Origin-Opener-Policy": "same-origin",
 	}
 	for header, expected := range want {
@@ -161,7 +161,7 @@ func TestBodyLimitEnforced(t *testing.T) {
 	h := withRequestID(withBodyLimit(mux, 16))
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 64)))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 64)))
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
@@ -193,7 +193,7 @@ func TestTimeoutReturnsCanonicalEnvelope(t *testing.T) {
 	h := withRequestID(withTimeout(slow, 20*time.Millisecond))
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/slow", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
@@ -225,7 +225,7 @@ func TestPanicRecoveryReturnsInternalEnvelope(t *testing.T) {
 	wrapped := withRequestID(withRecovery(crashy, slog.New(slog.NewJSONHandler(logBuf, nil))))
 
 	rec := httptest.NewRecorder()
-	wrapped.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/crash", nil))
+	wrapped.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/crash", nil))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
@@ -244,7 +244,7 @@ func TestPanicRecoveryReturnsInternalEnvelope(t *testing.T) {
 
 func TestLoggingEmitsCorrelatedRecord(t *testing.T) {
 	h, logBuf := newTestHandler(t)
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 	req.Header.Set(HeaderRequestID, "req_logcheck")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -267,14 +267,14 @@ func TestLoggingEmitsCorrelatedRecord(t *testing.T) {
 func TestNotFoundUsesStdlibMuxBehavior(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/does-not-exist", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/does-not-exist", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
 
 func TestWriteErrorStampsRequestID(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil)
 	req = req.WithContext(context.WithValue(req.Context(), requestIDKey{}, "req_stamp"))
 	rec := httptest.NewRecorder()
 	WriteError(rec, req, apierr.Forbidden("denied"))

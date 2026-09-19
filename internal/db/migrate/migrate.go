@@ -163,20 +163,20 @@ func (m *Migrator) Up(ctx context.Context, pool *pgxpool.Pool) ([]string, error)
 
 	// Session-level advisory lock: a second migrator (e.g. another controller
 	// replica during a rolling upgrade) blocks here instead of double-applying.
-	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, advisoryLockKey); err != nil {
+	if _, err = conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, advisoryLockKey); err != nil {
 		return nil, fmt.Errorf("migrate: acquire advisory lock: %w", err)
 	}
 	defer func() {
 		// Best-effort unlock; the lock also dies with the session. Use a
-		// detached context so unlock still runs if ctx was cancelled.
+		// detached context so unlock still runs if ctx was canceled.
 		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if _, err := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, advisoryLockKey); err != nil {
-			m.log.Warn("migration advisory unlock failed; lock releases with session", "error", err)
+		if _, unlockErr := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, advisoryLockKey); unlockErr != nil {
+			m.log.Warn("migration advisory unlock failed; lock releases with session", "error", unlockErr)
 		}
 	}()
 
-	if _, err := conn.Exec(ctx, createSchema); err != nil {
+	if _, err = conn.Exec(ctx, createSchema); err != nil {
 		return nil, fmt.Errorf("migrate: ensure schema_migrations: %w", err)
 	}
 
