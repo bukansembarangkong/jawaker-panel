@@ -94,10 +94,21 @@ func TestRecoveryCodeIsTranscribable(t *testing.T) {
 		}
 		seen[code] = struct{}{}
 
-		// Hash must be over the DISPLAYED code so lookup works after the user
-		// re-types it.
-		if string(HashToken([]byte(code))) != string(hash) {
-			t.Fatal("stored hash does not match the displayed code")
+		// Hash must be over the CANONICAL code, so lookup works after the user
+		// re-types it in any reasonable form. Hashing the display form would make
+		// the digest depend on separators the user is free to omit.
+		if string(HashToken([]byte(CanonicalRecoveryCode(code)))) != string(hash) {
+			t.Fatal("stored hash is not the digest of the canonical code")
+		}
+		for _, variant := range []string{
+			strings.ToUpper(code),
+			strings.ReplaceAll(code, "-", ""),
+			strings.ReplaceAll(code, "-", " "),
+			"  " + code + "  ",
+		} {
+			if string(HashToken([]byte(CanonicalRecoveryCode(variant)))) != string(hash) {
+				t.Fatalf("variant %q does not canonicalize to the stored digest", variant)
+			}
 		}
 	}
 }

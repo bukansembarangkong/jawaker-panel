@@ -63,13 +63,29 @@ func APIToken(prefix string) (token string, tokenHash []byte, err error) {
 // RecoveryCode returns one human-transcribable recovery code plus its digest.
 // Codes use an unambiguous alphabet (no 0/O, 1/l/I) so a user reading one
 // aloud over the phone is not corrupted.
+//
+// The digest is computed over the CANONICAL form (see CanonicalRecoveryCode),
+// not over the grouped display form. Hashing the display form does not work:
+// the separators are presentation, and a lookup would have to reproduce them
+// exactly, so any user who typed the code without its hyphens — or in capitals —
+// would be told their own code is wrong.
 func RecoveryCode() (code string, codeHash []byte, err error) {
 	raw, err := randomBytes(recoveryCodeBytes)
 	if err != nil {
 		return "", nil, err
 	}
 	code = encodeRecovery(raw)
-	return code, HashToken([]byte(code)), nil
+	return code, HashToken([]byte(CanonicalRecoveryCode(code))), nil
+}
+
+// CanonicalRecoveryCode folds a code as a user might type it onto the single
+// form the digest was taken over. Lookup and generation MUST agree on this
+// definition, so it lives in one place.
+func CanonicalRecoveryCode(code string) string {
+	c := strings.ToLower(strings.TrimSpace(code))
+	c = strings.ReplaceAll(c, " ", "")
+	c = strings.ReplaceAll(c, "-", "")
+	return c
 }
 
 // RequestID returns a correlation identifier with the req_ prefix, matching

@@ -89,7 +89,21 @@ type harness struct {
 // newHarness applies the real migrations and builds the real handler.
 func newHarness(t *testing.T, tweak func(*config.Config)) *harness {
 	t.Helper()
+	return newHarnessAt(t, tweak, nil)
+}
+
+// newHarnessAt is newHarness with an injected clock.
+//
+// A test that exercises TOTP needs one: a code is accepted at most once per time
+// step, so a suite that asserted "confirm, then log in with the same code" using
+// the wall clock would either fail as a replay or have to sleep 30 seconds.
+func newHarnessAt(t *testing.T, tweak func(*config.Config), clock func() time.Time) *harness {
+	t.Helper()
 	ctx := context.Background()
+
+	if clock == nil {
+		clock = func() time.Time { return time.Now().UTC() }
+	}
 
 	base := dbtest.FixtureURL()
 	if base == "" {
@@ -132,7 +146,7 @@ func newHarness(t *testing.T, tweak func(*config.Config)) *harness {
 		Config:         cfg,
 		Logger:         discardLogger(),
 		DB:             pool,
-		Now:            func() time.Time { return time.Now().UTC() },
+		Now:            clock,
 		PasswordParams: fastParams(),
 	})
 	if err != nil {

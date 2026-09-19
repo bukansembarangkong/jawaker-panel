@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/apierr"
@@ -333,7 +332,3 @@ func recordAudit(ctx context.Context, logger *slog.Logger, db audit.Execer, reqI
 			"error", err, "action", e.Action, "request_id", reqID)
 	}
 }
-
-// NormalizeEmailForLogin trims an email for lookup. Casing is preserved because
-// the column is citext.
-func NormalizeEmailForLogin(email string) string { return strings.TrimSpace(email) }
