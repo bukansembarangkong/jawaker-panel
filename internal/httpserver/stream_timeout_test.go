@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -126,9 +127,11 @@ func TestNoStreamPrefixesKeepsTimeoutForAll(t *testing.T) {
 // A prefix matches literally, so a route cannot opt out of the timeout by
 // shaping a path that merely contains a streaming route's name.
 func TestStreamPrefixMatchesLiterally(t *testing.T) {
-	reached := false
+	// The handler runs on a server goroutine while the assertion runs on the test
+	// goroutine, so the flag is an atomic rather than a plain bool.
+	var reached atomic.Bool
 	slow := func(w http.ResponseWriter, _ *http.Request) {
-		reached = true
+		reached.Store(true)
 		time.Sleep(80 * time.Millisecond)
 		_, _ = io.WriteString(w, "late")
 	}
@@ -149,7 +152,7 @@ func TestStreamPrefixMatchesLiterally(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake-events/x", nil))
-	if !reached {
+	if !reached.Load() {
 		t.Fatal("handler was not invoked")
 	}
 	if rec.Code != http.StatusServiceUnavailable {
