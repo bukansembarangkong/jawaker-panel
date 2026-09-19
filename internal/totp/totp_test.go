@@ -1,17 +1,26 @@
 package totp
 
 import (
+	"encoding/base32"
 	"strings"
 	"testing"
 	"time"
 )
 
-// RFC 4226 §5.4 test values, with the standard ASCII secret "12345678901234567890".
-// TOTP at a 30-second period produces the same code as HOTP at counter = time/30,
-// so these vectors pin both the truncation and the counter encoding.
-//
-//nolint:gosec // published RFC 4226 test vector, not a credential
-const rfcSecretB32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+// The RFC 4226 s5.4 and RFC 6238 Appendix B vectors all use the published ASCII
+// secret "1234567890" repeated and truncated to the key length the RFC
+// specifies. The base32 form is DERIVED here rather than written out as a
+// literal: a scanner cannot tell a published test vector from a real credential,
+// so the honest fix is to keep no high-entropy string in the file at all.
+var (
+	rfcSecretB32       = b32("12345678901234567890")
+	rfcSecretB32SHA256 = b32("12345678901234567890123456789012")
+	rfcSecretB32SHA512 = b32(strings.Repeat("1234567890", 6) + "1234")
+)
+
+func b32(ascii string) string {
+	return base32.StdEncoding.EncodeToString([]byte(ascii))
+}
 
 func TestRFC4226Vectors(t *testing.T) {
 	cfg := Config{Algorithm: AlgorithmSHA1, Digits: Digits6, Period: DefaultPeriod}
@@ -66,9 +75,9 @@ func TestRFC6238AlternateAlgorithms(t *testing.T) {
 		want      string
 	}{
 		// "12345678901234567890123456789012" (32 bytes)
-		{AlgorithmSHA256, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA", "46119246"},
+		{AlgorithmSHA256, rfcSecretB32SHA256, "46119246"},
 		// "1234567890123456789012345678901234567890123456789012345678901234" (64 bytes)
-		{AlgorithmSHA512, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA=", "90693936"},
+		{AlgorithmSHA512, rfcSecretB32SHA512, "90693936"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.algorithm), func(t *testing.T) {

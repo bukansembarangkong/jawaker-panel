@@ -33,6 +33,14 @@ regexes = [
   '''jawaker_local_fixture''',
 ]
 
+# The RFC 4226 s5.4 / RFC 6238 Appendix B TOTP vectors are published
+# specification constants, not credentials. gitleaks scores them as a
+# generic-api-key finding; because the values are already in published history
+# and history must never be rewritten, they are acknowledged by exact
+# fingerprint in .gitleaksignore rather than by an allowlist here. An allowlist
+# was tried first and rejected: gitleaks ORs path and regex conditions, so a
+# regex entry would have suppressed the same literal anywhere in the repository.
+
 # Synthetic DSNs inside the test that proves DSN redaction.
 [[allowlists]]
 description = "Synthetic DSNs in tests that prove redaction behaviour"
