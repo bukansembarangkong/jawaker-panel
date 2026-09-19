@@ -168,6 +168,11 @@ func decode(encoded string) (Params, []byte, []byte, error) {
 	return p, salt, key, nil
 }
 
+// Validate reports whether a parameter set is usable for hashing. It is
+// exported so a caller constructing the auth handlers can fail at startup
+// rather than discovering an unusable parameter set on the first login.
+func (p Params) Validate() error { return p.validate() }
+
 // validate checks a parameter set destined for hashing. Unlike
 // validateBounds it also requires the salt/key sizes, which are only
 // meaningful when producing a new hash.

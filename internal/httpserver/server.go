@@ -37,6 +37,13 @@ type Options struct {
 	MaxBodyBytes int64
 	// RequestTimeout bounds handler execution; required, > 0.
 	RequestTimeout time.Duration
+	// RegisterRoutes lets callers mount feature routes on the SAME mux, so they
+	// share the middleware chain below. It is optional.
+	//
+	// The indirection exists because feature packages import this one (for
+	// WriteError and the request-ID helpers), so this package cannot import
+	// them back.
+	RegisterRoutes func(mux *http.ServeMux)
 }
 
 // New returns the fully wired controller handler (routes + middleware).
@@ -54,6 +61,9 @@ func New(opts Options) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz())
 	mux.HandleFunc("GET /api/v1/version", handleVersion())
+	if opts.RegisterRoutes != nil {
+		opts.RegisterRoutes(mux)
+	}
 
 	var handler http.Handler = mux
 	// Order matters: withRequestID runs OUTSIDE withLogging so every log

@@ -8,10 +8,13 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -23,6 +26,14 @@ const (
 	defaultLogFormat    = "json"
 	defaultMaxBodyBytes = 1 << 20 // 1 MiB request body limit (API.md §18)
 	defaultMaxHeaderKB  = 64
+
+	// Login attempts are limited per client address per minute. 10 is generous
+	// for a human who mistyped and useless for guessing: combined with the
+	// per-account lockout it caps online guessing to a few hundred attempts a
+	// day against one account.
+	defaultLoginAttemptsPerMinute = 10
+	// Bootstrap is a one-time operation, so the limit can be tight.
+	defaultBootstrapAttemptsPerMinute = 5
 )
 
 // Config is the validated controller configuration.
@@ -44,6 +55,22 @@ type Config struct {
 	MaxHeaderBytes int
 	// RequestTimeoutSeconds bounds handler execution time.
 	RequestTimeoutSeconds int
+
+	// SecretKeys maps key version -> base64 AES-256 key for the secret
+	// subsystem. One env var per version lets a rotation run with the old and
+	// the new key both present. Empty disables secret-backed features (TOTP).
+	SecretKeys map[int]string
+	// CookieSecure marks session cookies Secure. Defaults to true.
+	CookieSecure bool
+	// CookieAllowInsecure is the deliberate opt-out for local HTTP development.
+	CookieAllowInsecure bool
+	// TrustedOrigins are extra origins accepted for state-changing requests, for
+	// a split front end. Empty means same-origin only.
+	TrustedOrigins []string
+	// LoginAttemptsPerMinute bounds login attempts per client address.
+	LoginAttemptsPerMinute int
+	// BootstrapAttemptsPerMinute bounds bootstrap attempts per client address.
+	BootstrapAttemptsPerMinute int
 }
 
 // Load reads configuration from the process environment and validates it.
@@ -119,10 +146,125 @@ func Load() (*Config, error) {
 		}
 	}
 
+	cfg.SecretKeys = loadSecretKeys(&errs)
+
+	// Secure cookies are the default. The insecure opt-out must be explicit so a
+	// typo cannot silently downgrade session cookies to plain HTTP — a malformed
+	// value is a startup error, consistent with every other known variable.
+	if v := os.Getenv("JAWAKER_COOKIE_ALLOW_INSECURE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("JAWAKER_COOKIE_ALLOW_INSECURE %q is not a boolean: %w", v, err))
+		} else {
+			cfg.CookieAllowInsecure = b
+		}
+	}
+	cfg.CookieSecure = !cfg.CookieAllowInsecure
+	if cfg.CookieAllowInsecure && cfg.ListenAddr != "" && !isLoopbackHost(cfg.ListenAddr) {
+		errs = append(errs, fmt.Errorf(
+			"JAWAKER_COOKIE_ALLOW_INSECURE is set but JAWAKER_LISTEN_ADDR %q is not loopback; "+
+				"session cookies must not travel over plain HTTP on a reachable interface", cfg.ListenAddr))
+	}
+
+	if v := os.Getenv("JAWAKER_TRUSTED_ORIGINS"); v != "" {
+		for _, origin := range strings.Split(v, ",") {
+			if origin = strings.TrimSpace(origin); origin != "" {
+				cfg.TrustedOrigins = append(cfg.TrustedOrigins, origin)
+			}
+		}
+	}
+
+	cfg.LoginAttemptsPerMinute = defaultLoginAttemptsPerMinute
+	if v := os.Getenv("JAWAKER_LOGIN_ATTEMPTS_PER_MINUTE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			errs = append(errs, fmt.Errorf("JAWAKER_LOGIN_ATTEMPTS_PER_MINUTE %q must be a positive integer", v))
+		} else {
+			cfg.LoginAttemptsPerMinute = n
+		}
+	}
+
+	cfg.BootstrapAttemptsPerMinute = defaultBootstrapAttemptsPerMinute
+	if v := os.Getenv("JAWAKER_BOOTSTRAP_ATTEMPTS_PER_MINUTE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			errs = append(errs, fmt.Errorf("JAWAKER_BOOTSTRAP_ATTEMPTS_PER_MINUTE %q must be a positive integer", v))
+		} else {
+			cfg.BootstrapAttemptsPerMinute = n
+		}
+	}
+
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("invalid configuration: %w", joinErrors(errs))
 	}
 	return cfg, nil
+}
+
+// Secret key environment variables, one per version:
+//
+//	JAWAKER_SECRET_KEY_V1, JAWAKER_SECRET_KEY_V2, ...
+//
+// Reading the version from the variable name lets a rotation run with the old
+// key still present for reads while new writes use the higher version.
+var secretKeyEnvPattern = regexp.MustCompile(`^JAWAKER_SECRET_KEY_V([0-9]+)$`)
+
+// loadSecretKeys collects the configured master keys and validates each one by
+// decoding it, so a malformed key is a startup error rather than a login
+// failure later.
+func loadSecretKeys(errs *[]error) map[int]string {
+	keys := make(map[int]string)
+	for _, entry := range os.Environ() {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		match := secretKeyEnvPattern.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		version, err := strconv.Atoi(match[1])
+		if err != nil || version <= 0 {
+			*errs = append(*errs, fmt.Errorf("%s has an invalid key version", name))
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+		if err != nil {
+			// Also accept unpadded base64, which is what a generated key often
+			// looks like when copied out of a config file.
+			decoded, err = base64.RawStdEncoding.DecodeString(strings.TrimSpace(value))
+		}
+		if err != nil {
+			*errs = append(*errs, fmt.Errorf("%s is not valid base64", name))
+			continue
+		}
+		if len(decoded) != 32 {
+			*errs = append(*errs, fmt.Errorf(
+				"%s must decode to 32 bytes for AES-256, got %d", name, len(decoded)))
+			continue
+		}
+		keys[version] = strings.TrimSpace(value)
+	}
+	return keys
+}
+
+// HasSecretKeys reports whether the secret subsystem can be enabled.
+func (c *Config) HasSecretKeys() bool { return len(c.SecretKeys) > 0 }
+
+// isLoopbackHost reports whether a listen address is bound to a loopback
+// interface, which is the only place an insecure cookie override is tolerable.
+func isLoopbackHost(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 // RedactedDSN returns the database URL with any password replaced, suitable
@@ -156,8 +298,9 @@ func (c *Config) RedactedDSN() string {
 // String renders a safe summary of the configuration for startup logs.
 // It never includes credentials.
 func (c *Config) String() string {
-	return fmt.Sprintf("listen=%s database=%q migrations=%t log=%s/%s",
-		c.ListenAddr, c.RedactedDSN(), c.RunMigrations, c.LogFormat, c.LogLevel)
+	return fmt.Sprintf("listen=%s database=%q migrations=%t log=%s/%s secure_cookies=%t secret_keys=%d",
+		c.ListenAddr, c.RedactedDSN(), c.RunMigrations, c.LogFormat, c.LogLevel,
+		c.CookieSecure, len(c.SecretKeys))
 }
 
 func envOr(key, fallback string) string {

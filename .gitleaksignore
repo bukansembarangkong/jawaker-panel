@@ -1,0 +1,20 @@
+# Gitleaks ignore list — JAWAKER secret-scanning gate.
+#
+# Each entry is an EXACT finding fingerprint (commit:file:ruleID:line). This is
+# the narrowest possible acknowledgment: it suppresses precisely one line in one
+# historical commit and nothing else. Any future occurrence of the same literal,
+# at a different path, line, or in a new commit, is still reported and fails the
+# build.
+#
+# Do NOT add anything here without a written justification above the entry.
+
+# RFC 4226 s5.4 / RFC 6238 Appendix B published TOTP test vectors. The secret is
+# the base32 encoding of the ASCII string "12345678901234567890" printed in the
+# RFC itself — a specification constant used by every TOTP implementation's test
+# suite, not a credential. It entered history in commit 0ee3662 (feat/phase1
+# secret store + TOTP) and history is immutable per CONTRIBUTING.md, so the
+# finding cannot be removed by rewriting; it is acknowledged here instead.
+# An allowlist in .gitleaks.toml was tried first and rejected because gitleaks
+# ORs path and regex conditions, which would have suppressed the same literal
+# anywhere in the repository.
+0ee3662422a8ac2db80d9f64f35927a49de56f9d:internal/totp/totp_test.go:generic-api-key:14
