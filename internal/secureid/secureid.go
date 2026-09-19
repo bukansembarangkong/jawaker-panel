@@ -11,7 +11,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // Token lengths. 32 bytes = 256 bits of entropy, which stays safely beyond
@@ -86,6 +88,23 @@ func RequestID() (string, error) {
 func HashToken(raw []byte) []byte {
 	sum := sha256.Sum256(raw)
 	return sum[:]
+}
+
+// HashSessionToken returns the stored digest for a PRESENTED session token,
+// which is the form a cookie carries. It is the exact inverse of the encoding
+// SessionToken produced, so a lookup can never drift from the storage format.
+//
+// The digest is computed over the decoded entropy, not over the encoded text:
+// hashing the string would produce a different value than the one stored.
+func HashSessionToken(token string) ([]byte, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(token))
+	if err != nil {
+		return nil, fmt.Errorf("secureid: decode session token: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, errors.New("secureid: session token is empty")
+	}
+	return HashToken(raw), nil
 }
 
 // unambiguousAlphabet excludes visually confusable characters.

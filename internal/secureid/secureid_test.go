@@ -1,6 +1,7 @@
 package secureid
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -132,3 +133,38 @@ func TestRequestIDMatchesAcceptedCharset(t *testing.T) {
 }
 
 const sha256Len = 32
+
+// A presented token must hash to the SAME digest that was stored at issue
+// time. Getting this wrong is invisible until every login fails, so it is
+// pinned here: the digest is taken over the decoded entropy, not the encoded
+// string.
+func TestHashSessionTokenRoundTrips(t *testing.T) {
+	token, storedHash, err := SessionToken()
+	if err != nil {
+		t.Fatalf("SessionToken: %v", err)
+	}
+
+	lookupHash, err := HashSessionToken(token)
+	if err != nil {
+		t.Fatalf("HashSessionToken: %v", err)
+	}
+	if !bytes.Equal(lookupHash, storedHash) {
+		t.Error("lookup digest differs from the stored digest; every login would fail")
+	}
+
+	// Surrounding whitespace is tolerated (cookie headers sometimes carry it)
+	// and must not change the digest.
+	trimmed, err := HashSessionToken("  " + token + "\n")
+	if err != nil {
+		t.Fatalf("HashSessionToken with whitespace: %v", err)
+	}
+	if !bytes.Equal(trimmed, storedHash) {
+		t.Error("whitespace changed the digest")
+	}
+
+	for _, bad := range []string{"", "   ", "!!!not base64!!!"} {
+		if _, err := HashSessionToken(bad); err == nil {
+			t.Errorf("HashSessionToken(%q) accepted garbage", bad)
+		}
+	}
+}
