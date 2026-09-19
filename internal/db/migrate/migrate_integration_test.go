@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,6 +40,30 @@ func freshPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	if _, err := pool.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
+		t.Fatalf("reset schema: %v", err)
+	}
+	return pool
+}
+
+// freshPoolWithMaxConns is freshPool with an explicit pool ceiling, used to
+// reproduce pool-exhaustion conditions deterministically.
+func freshPoolWithMaxConns(t *testing.T, maxConns int32) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+
+	cfg, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	cfg.MaxConns = maxConns
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -186,8 +211,18 @@ func TestUpFailsAtomicallyOnBadSQL(t *testing.T) {
 }
 
 func TestConcurrentMigratorsSerializeViaAdvisoryLock(t *testing.T) {
-	pool := freshPool(t)
-	ctx := context.Background()
+	// Deliberately tiny pool (2 connections) with FOUR concurrent migrators.
+	// This is the regression scenario: an implementation that holds one
+	// connection for the advisory lock and asks the pool for a second one for
+	// the migration transaction deadlocks here permanently. The production
+	// equivalent is several controller replicas starting at once during a
+	// rolling upgrade while the pool is small.
+	pool := freshPoolWithMaxConns(t, 2)
+
+	// Bounded deadline so a regression FAILS in seconds instead of hanging
+	// until the global go test timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
 
 	// Each migration inserts its own marker; if two migrators ran the same
 	// file concurrently without the lock, the unique insert below would race
@@ -203,25 +238,43 @@ func TestConcurrentMigratorsSerializeViaAdvisoryLock(t *testing.T) {
 	}
 
 	const workers = 4
-	var wg sync.WaitGroup
-	errs := make([]error, workers)
+	results := make(chan error, workers)
 	appliedCounts := make([]int, workers)
+	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			applied, err := m.Up(ctx, pool)
-			errs[i] = err
 			appliedCounts[i] = len(applied)
+			results <- err
 		}(i)
 	}
-	wg.Wait()
 
-	for i, err := range errs {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("concurrent migrators did not finish within the deadline: " +
+			"likely a pool-exhaustion deadlock (each migrator must run its " +
+			"transaction on the connection that holds the advisory lock)")
+	}
+	close(results)
+
+	for err := range results {
 		if err != nil {
-			t.Errorf("worker %d: Up failed: %v", i, err)
+			t.Errorf("Up failed: %v", err)
 		}
 	}
+	for i, c := range appliedCounts {
+		t.Logf("worker %d applied %d migrations", i, c)
+	}
+
 	total := 0
 	for _, c := range appliedCounts {
 		total += c
@@ -234,7 +287,7 @@ func TestConcurrentMigratorsSerializeViaAdvisoryLock(t *testing.T) {
 func TestUpHonorsContextCancellation(t *testing.T) {
 	pool := freshPool(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already cancelled
+	cancel() // already canceled
 
 	m, err := New(testdataFS(t, "testdata/valid"), testLogger())
 	if err != nil {
