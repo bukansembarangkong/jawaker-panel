@@ -1,0 +1,43 @@
+# golangci-lint configuration — JAWAKER.
+# Security-sensitive codebase: gosec is mandatory, not optional.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - gosec          # security problem detection (hard requirement)
+    - misspell       # comment/message hygiene
+    - unconvert      # remove unnecessary conversions
+    - unparam        # surface dead parameters
+    - nakedret       # avoid naked returns in longer functions
+    - prealloc       # obvious slice preallocation wins
+    - bodyclose      # HTTP response body leaks
+    - noctx          # network calls missing context
+  settings:
+    staticcheck:
+      checks:
+        - all
+    govet:
+      enable:
+        - shadow
+    misspell:
+      locale: US
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Test files may use longer functions and table literals freely.
+      - path: _test\.go
+        linters:
+          - unparam
+          - prealloc
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

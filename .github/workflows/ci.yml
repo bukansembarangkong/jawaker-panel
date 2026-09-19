@@ -1,0 +1,208 @@
+# JAWAKER CI — Phase 0 baseline pipeline.
+#
+# Gates (IMPLEMENTATION_PLAN.md Phase 0, SECURITY.md s14, TESTING.md s2):
+#   go       — format, vet, lint, unit tests, integration tests against a real
+#              PostgreSQL service container, govulncheck
+#   web      — lint, typecheck, tests, build, dependency audit
+#   security — gitleaks full-history secret scan
+#   artifacts — reproducible controller build + checksums + SBOMs
+#
+# Integration tests are NOT mocks (TESTING.md s4): the migrate suite runs
+# against postgres:17 in this pipeline on every push.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION_FILE: go.mod
+
+jobs:
+  go:
+    name: go (vet, lint, unit, integration, vuln)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: jawaker
+          POSTGRES_PASSWORD: ci_local_fixture_password
+          POSTGRES_DB: jawaker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jawaker -d jawaker_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      JAWAKER_TEST_DATABASE_URL: postgres://jawaker:ci_local_fixture_password@127.0.0.1:5432/jawaker_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+      - name: unit tests
+        run: go test -race -shuffle=on -coverprofile=coverage-unit.out ./...
+
+      - name: integration tests (real PostgreSQL)
+        run: go test -race -tags integration -count=1 ./...
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage-unit.out
+          retention-days: 14
+
+  web:
+    name: web (lint, typecheck, test, build, audit)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: install
+        run: npm ci
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test -- --run
+
+      - name: build
+        run: npm run build
+
+      - name: dependency audit
+        # High+ only: moderate advisories in transitive dev tooling must not
+        # block the pipeline, but are reviewed via the weekly Dependabot run.
+        run: npm audit --audit-level=high
+
+      - name: upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 14
+
+  security:
+    name: secret scanning (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: secrets in old commits must fail too
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  artifacts:
+    name: build artifacts, checksums, SBOM
+    runs-on: ubuntu-24.04
+    needs: [go, web, security]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: read version
+        id: meta
+        run: |
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: build controller (reproducible flags)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w \
+              -X github.com/bukansembarangkong/jawaker-panel/internal/version.Version=${VERSION} \
+              -X github.com/bukansembarangkong/jawaker-panel/internal/version.Commit=${COMMIT} \
+              -X github.com/bukansembarangkong/jawaker-panel/internal/version.BuildTime=${BUILD_TIME}" \
+            -o dist/jawaker-controller ./cmd/controller
+          ./dist/jawaker-controller -h 2>&1 | head -n 3 || true
+
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum jawaker-controller > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: go SBOM (cyclonedx)
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+          cyclonedx-gomod mod -json -output dist/sbom-go.cdx.json
+
+      - name: web SBOM (cyclonedx)
+        working-directory: apps/web
+        run: |
+          npx --yes @cyclonedx/cyclonedx-npm --output-file ../../dist/sbom-web.cdx.json --output-format JSON
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jawaker-dist-${{ steps.meta.outputs.commit }}
+          path: dist/
+          retention-days: 30
