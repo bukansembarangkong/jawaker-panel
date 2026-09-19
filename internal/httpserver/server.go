@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/apierr"
@@ -44,6 +45,13 @@ type Options struct {
 	// WriteError and the request-ID helpers), so this package cannot import
 	// them back.
 	RegisterRoutes func(mux *http.ServeMux)
+	// StreamPathPrefixes lists request path prefixes that bypass the
+	// response-buffering timeout middleware. Streaming routes (SSE) must opt
+	// out: withTimeout buffers the whole response before flushing, which for a
+	// long-lived stream means the client receives nothing until it disconnects.
+	// A route listed here is still covered by the server's write timeouts and
+	// by its own heartbeat; it is not exempt from cancellation.
+	StreamPathPrefixes []string
 }
 
 // New returns the fully wired controller handler (routes + middleware).
@@ -72,7 +80,7 @@ func New(opts Options) (http.Handler, error) {
 	handler = withRequestID(handler)
 	handler = withSecurityHeaders(handler)
 	handler = withBodyLimit(handler, opts.MaxBodyBytes)
-	handler = withTimeout(handler, opts.RequestTimeout)
+	handler = withStreamAwareTimeout(handler, opts.RequestTimeout, opts.StreamPathPrefixes)
 	// Recovery outermost: a panicking handler must never kill the process,
 	// and the client still receives the canonical error envelope.
 	handler = withRecovery(handler, opts.Logger)
@@ -227,6 +235,16 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Flush exposes the wrapped writer's flush capability. Without it a streaming
+// handler sees a ResponseWriter that cannot flush and cannot serve a live stream.
+// The timeout middleware's buffered writer deliberately does NOT implement
+// Flusher, so buffering is preserved for non-streaming routes.
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // withSecurityHeaders applies baseline hardening headers to every response.
 func withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +272,29 @@ func withBodyLimit(next http.Handler, maxBytes int64) http.Handler {
 	})
 }
 
+// withStreamAwareTimeout applies the buffering timeout to every route EXCEPT
+// the given streaming prefixes, which are handed straight through.
+//
+// The check happens per request rather than at construction time, because one
+// mux serves both kinds of route and the prefix cannot be known until the path
+// is available. Prefixes are matched literally, not as patterns, so a route
+// cannot accidentally opt out of the timeout by shaping its path.
+func withStreamAwareTimeout(next http.Handler, timeout time.Duration, streamPrefixes []string) http.Handler {
+	if len(streamPrefixes) == 0 {
+		return withTimeout(next, timeout)
+	}
+	bounded := withTimeout(next, timeout)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, prefix := range streamPrefixes {
+			if prefix != "" && strings.HasPrefix(r.URL.Path, prefix) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		bounded.ServeHTTP(w, r)
+	})
+}
+
 // withTimeout bounds handler execution (AGENTS.md §6: every operation needs
 // timeout/cancellation).
 //
@@ -262,8 +303,9 @@ func withBodyLimit(next http.Handler, maxBytes int64) http.Handler {
 // fires first, the canonical 503 envelope is written instead and the buffered
 // output is discarded. This keeps a single writer on the live response and
 // avoids data races with a slow handler (same model as http.TimeoutHandler).
-// Phase 0 responses are small JSON payloads; streaming routes (SSE, logs)
-// will opt out of this middleware when they arrive in Phase 1.
+//
+// Streaming routes bypass this via StreamPathPrefixes, because buffering an
+// endless response would deliver nothing until the client gave up.
 func withTimeout(next http.Handler, timeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)

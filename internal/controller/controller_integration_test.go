@@ -28,6 +28,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db/migrate"
 	"github.com/bukansembarangkong/jawaker-panel/internal/dbtest"
+	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
 	"github.com/bukansembarangkong/jawaker-panel/migrations"
@@ -82,6 +83,7 @@ type harness struct {
 	client  *http.Client
 	handler http.Handler
 	pool    *pgxpool.Pool
+	events  *eventstream.Broker
 }
 
 // newHarness applies the real migrations and builds the real handler.
@@ -139,6 +141,9 @@ func newHarness(t *testing.T, tweak func(*config.Config)) *harness {
 	if !assembled.AuthRoutesMounted {
 		t.Fatal("auth routes not mounted despite database and secret key")
 	}
+	if !assembled.EventStreamMounted || assembled.Events == nil {
+		t.Fatal("event stream not mounted alongside the auth routes")
+	}
 
 	server := httptest.NewTLSServer(assembled.HTTP)
 	t.Cleanup(server.Close)
@@ -160,6 +165,7 @@ func newHarness(t *testing.T, tweak func(*config.Config)) *harness {
 		client:  client,
 		handler: assembled.HTTP,
 		pool:    pool,
+		events:  assembled.Events,
 	}
 }
 
@@ -838,5 +844,6 @@ func (h *harness) freshClient() *harness {
 		client:  client,
 		handler: h.handler,
 		pool:    h.pool,
+		events:  h.events,
 	}
 }
