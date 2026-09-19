@@ -1,0 +1,44 @@
+# Gitleaks configuration — JAWAKER secret-scanning gate.
+#
+# Extends the default rule set and adds narrowly scoped allowlists for the
+# synthetic credentials that MUST exist in the repository: loopback-only dev
+# and CI database fixtures. These are throwaway values bound to 127.0.0.1
+# containers, documented as fixtures (TESTING.md s16), and never reused
+# anywhere real.
+#
+# Anything else that looks like a credential still fails the build.
+
+[extend]
+useDefault = true
+
+# Vendored/generated trees are never scanned.
+[[allowlists]]
+description = "Vendored and generated trees"
+paths = [
+  '''(^|/)node_modules/''',
+  '''apps/web/dist/''',
+  '''apps/web/package-lock\.json''',
+  '''go\.sum''',
+]
+
+# Exact throwaway passwords used by docker-compose.yml (dev),
+# scripts/dev-db-init (dev test DB) and .github/workflows/ci.yml (CI service
+# container). Scoped to those literal values so the rule cannot be stretched
+# to hide a genuine secret.
+[[allowlists]]
+description = "Loopback-only dev/CI PostgreSQL fixture passwords (synthetic, never reused)"
+regexes = [
+  '''jawaker_dev_password''',
+  '''ci_local_fixture_password''',
+  '''jawaker_local_fixture''',
+]
+
+# Synthetic DSNs inside the test that proves DSN redaction.
+[[allowlists]]
+description = "Synthetic DSNs in tests that prove redaction behaviour"
+paths = [
+  '''internal/config/config_test\.go''',
+]
+regexes = [
+  '''postgres(ql)?://[^@\s]+:[^@\s]+@''',
+]
