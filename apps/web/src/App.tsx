@@ -4,6 +4,7 @@ import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AuthGate } from './pages/AuthGate';
 import { DashboardPage } from './pages/DashboardPage';
 import { SecurityPage } from './pages/SecurityPage';
+import { ServersPage } from './pages/ServersPage';
 import { useSession } from './session/useSession';
 import { useTheme } from './theme/useTheme';
 
@@ -24,10 +25,12 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'security';
+type Route = 'dashboard' | 'servers' | 'security';
 
 function routeFromHash(): Route {
-  return window.location.hash === '#/security' ? 'security' : 'dashboard';
+  if (window.location.hash === '#/security') return 'security';
+  if (window.location.hash === '#/servers') return 'servers';
+  return 'dashboard';
 }
 
 export default function App() {
@@ -125,6 +128,19 @@ export default function App() {
             </li>
             <li>
               <a
+                href="#/servers"
+                aria-current={route === 'servers' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'servers'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Servers
+              </a>
+            </li>
+            <li>
+              <a
                 href="#/security"
                 aria-current={route === 'security' ? 'page' : undefined}
                 className={`block rounded-md px-3 py-1.5 text-sm ${
@@ -142,6 +158,8 @@ export default function App() {
         <main className="min-w-0 flex-1">
           {route === 'security' ? (
             <SecurityPage />
+          ) : route === 'servers' ? (
+            <ServersPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
