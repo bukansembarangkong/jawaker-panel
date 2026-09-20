@@ -311,6 +311,19 @@ func (a *Agent) handleOperation(w http.ResponseWriter, r *http.Request) {
 	opCtx, cancel := a.operationContext(r.Context(), req, desc)
 	defer cancel()
 
+	// An expired deadline is refused here rather than delegated to the executor.
+	// operationContext maps it to an already-canceled context, but an executor
+	// that reads /proc without consulting ctx would still run the work — nobody
+	// is waiting for the answer, and the controller would see success for a
+	// request it had already given up on.
+	if err := opCtx.Err(); err != nil {
+		a.logger.Warn("refusing an operation whose deadline has already passed",
+			"operation", req.Operation, "request_id", req.RequestID)
+		a.writeRefusal(w, req.Operation, req.RequestID, nodewire.CodeDeadlineExceeded,
+			"the deadline for this operation had already passed", false, http.StatusGatewayTimeout)
+		return
+	}
+
 	result, opErr := a.dispatch(opCtx, req)
 	a.writeResponse(w, req, result, opErr)
 }

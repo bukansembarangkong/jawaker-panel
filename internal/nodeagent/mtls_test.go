@@ -661,17 +661,26 @@ func TestMTLSRefusesProtocolMismatch(t *testing.T) {
 }
 
 // An EXPIRED deadline must fail fast rather than perform the work anyway.
+//
+// The operation is node.capabilities deliberately. Its executor takes no context
+// at all, so cancellation cannot be what refuses it: the handler's own
+// expired-deadline gate is the only thing that can. node.heartbeat would be a
+// weaker probe — it returns notAvailable off Linux, so an assertion on it passed
+// vacuously on Windows while genuinely failing on the Linux CI runner.
 func TestMTLSRefusesExpiredDeadline(t *testing.T) {
 	f := newAgentFixture(t)
 	client := f.controllerClient(t)
 
 	resp, _ := f.call(t, client, nodewire.Request{
-		Operation: nodewire.OpNodeHeartbeat,
+		Operation: nodewire.OpNodeCapabilities,
 		RequestID: "req-expired",
 		Deadline:  time.Now().Add(-time.Minute),
 	})
 	if resp.OK {
 		t.Fatal("an operation with an already-expired deadline was performed")
+	}
+	if resp.Error == nil || resp.Error.Code != nodewire.CodeDeadlineExceeded {
+		t.Errorf("error = %+v, want code %q", resp.Error, nodewire.CodeDeadlineExceeded)
 	}
 }
 
