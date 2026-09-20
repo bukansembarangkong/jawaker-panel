@@ -3,7 +3,10 @@ package nodewire
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -91,6 +94,49 @@ var Operations = map[Operation]Descriptor{
 		// the combination outright.
 		Retry:    RetryPolicy{Idempotent: false, MaxAttempts: 0},
 		Rollback: "none: a restart is its own recovery. If the unit fails to come back, the failure is reported and the previous state is not restorable from here.",
+		Mutating: true,
+	},
+
+	OpWebConfigValidate: {
+		Operation: OpWebConfigValidate,
+		// site.read, not site.manage: this operation cannot change what any live
+		// site serves, so it belongs with the permissions that let someone LOOK
+		// at a site. Requiring a management permission to see whether a config
+		// is valid would push the check to the moment of apply, which is exactly
+		// where a validation failure is most expensive.
+		Permission: "site.read",
+		InputSchema: "{config: string, filename: string} — the candidate config text and " +
+			"the file name to stage it under; target is the site id",
+		Validation: "config must be non-empty, below the size ceiling, and contain no NUL " +
+			"byte; filename must be a bare file name (one path segment, no separators, no " +
+			"leading dot) so it cannot address a directory; the staged path is resolved " +
+			"through the agent's path confinement and refused unless it lands strictly " +
+			"inside the staging root",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			// The READ scope is the live tree, so the validator can check whether
+			// the host actually includes JAWAKER's directory. The WRITE scope is
+			// the staging root alone. These are deliberately different roots: an
+			// operation whose read and write scope were the same tree could be
+			// one edit away from writing what it was only supposed to inspect.
+			FilesystemRead:  []string{"/etc/nginx/jawaker", "/etc/nginx/nginx.conf"},
+			FilesystemWrite: []string{"/etc/nginx/jawaker/staging"},
+			Network:         "none",
+		},
+		// Longer than a service inspect: a cold nginx -t parses the whole
+		// configuration, including included files.
+		Timeout:     30 * time.Second,
+		AuditAction: "web.config.validate",
+		// Idempotent in the sense that matters: re-validating the same text
+		// produces the same verdict and the same staged file. Safe to retry.
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		// Mutating is TRUE and not an oversight. It writes a candidate file to
+		// disk, which is a state change, and marking it false to make the
+		// descriptor simpler would be the kind of lie this registry exists to
+		// prevent. The rollback below is what makes it safe to call freely.
+		Rollback: "the staged candidate file is removed on completion, success or failure. " +
+			"The LIVE configuration is never written by this operation, so there is nothing " +
+			"to restore: an invalid candidate is discarded and the running site is untouched.",
 		Mutating: true,
 	},
 }
@@ -371,4 +417,121 @@ type RestartResult struct {
 	// happened rather than assume it.
 	Before ServiceState `json:"before"`
 	After  ServiceState `json:"after"`
+}
+
+// --- web.config.validate ------------------------------------------------------
+
+// MaxWebConfigBytes bounds the candidate configuration text.
+//
+// Exported because it is part of the protocol contract, not an implementation
+// detail: the controller must respect it before spending a round trip on a
+// candidate that cannot be sent, and the agent enforces it on receipt. Two
+// copies of the number would be two things that can drift.
+//
+// The envelope cap is 64 KiB (maxInputBytes), but a config is TEXT and JSON
+// escaping inflates text: every newline becomes two characters, and a config
+// dense with quotes or backslashes can nearly double in size on the way into the
+// envelope. Setting the ceiling at the envelope cap would mean a configuration
+// that passes this check and then fails to encode — a refusal that arrives as a
+// transport error rather than as a validation verdict the operator can act on.
+//
+// Sixteen KiB is roughly four times a real nginx site block, so this is not a
+// practical limit; it exists so the failure mode is a clear "too large" rather
+// than an inexplicable protocol error.
+const MaxWebConfigBytes = 16 * 1024
+
+// WebConfigValidateInput is the payload for web.config.validate.
+//
+// The configuration travels as TEXT, never as a command. There is no field here
+// that could carry something to execute: what the node runs is nginx with -t and
+// a path the agent derived itself, and the caller has no way to influence either.
+// That is the difference between this and a generic execution primitive, and it is
+// why a field called Config is safe where a field called Command would not be.
+type WebConfigValidateInput struct {
+	// Config is the candidate configuration text.
+	Config string `json:"config"`
+	// Filename is the bare file name to stage the candidate under. It is NOT a
+	// path: a caller that could choose the destination directory could write
+	// outside the staging root, which is why the name is constrained to a single
+	// segment and the directory is chosen by the agent.
+	Filename string `json:"filename"`
+}
+
+// Validate checks the payload. The filename rules are load-bearing rather than
+// cosmetic: this value becomes part of a filesystem path, and every way of making
+// it address something other than one new file in the staging directory is refused
+// here, in addition to the confinement check the agent applies when it resolves
+// the resulting path.
+func (in WebConfigValidateInput) Validate() error {
+	var errs []error
+
+	if in.Config == "" {
+		errs = append(errs, errors.New("config is required"))
+	}
+	if len(in.Config) > MaxWebConfigBytes {
+		errs = append(errs, fmt.Errorf("config is %d bytes, limit is %d", len(in.Config), MaxWebConfigBytes))
+	}
+	// A NUL byte in the text would truncate the file as seen by the syscall
+	// layer, so what is staged would not be what was validated.
+	if strings.ContainsRune(in.Config, 0) {
+		errs = append(errs, errors.New("config contains a NUL byte"))
+	}
+
+	switch {
+	case in.Filename == "":
+		errs = append(errs, errors.New("filename is required"))
+	case strings.ContainsRune(in.Filename, 0):
+		errs = append(errs, errors.New("filename contains a NUL byte"))
+	case in.Filename != filepath.Base(in.Filename):
+		// Covers every separator and the traversal shapes "." and "..": if the
+		// value is not its own base name, it was naming something other than a
+		// single file in a single directory.
+		errs = append(errs, fmt.Errorf("filename %q is not a bare file name", in.Filename))
+	case strings.HasPrefix(in.Filename, "."):
+		// A dot-prefixed name is a hidden file, which on a config tree means a
+		// file an operator is not going to find. It also covers "." and ".."
+		// explicitly, which the base-name check above would already have caught.
+		errs = append(errs, fmt.Errorf("filename %q must not begin with a dot", in.Filename))
+	case !validWebConfigFilename.MatchString(in.Filename):
+		errs = append(errs, fmt.Errorf("filename %q contains a character outside [a-zA-Z0-9._-]", in.Filename))
+	}
+
+	return errors.Join(errs...)
+}
+
+// validWebConfigFilename is an allowlist for the staged file name.
+//
+// An allowlist rather than a blocklist because the value ends up in a path passed
+// to a privileged program and written to a directory the operator reads. A
+// blocklist invites the next bypass to be discovered by someone else.
+var validWebConfigFilename = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+// WebConfigValidateResult is the reply to web.config.validate.
+//
+// Valid is the verdict, and Output is the evidence for it. The distinction
+// matters: an operator deciding whether to apply a configuration needs to know
+// WHAT nginx said, not merely that it said no. PRD.md §41 requires a useful error
+// to carry the validation output, and a bare boolean cannot satisfy that.
+type WebConfigValidateResult struct {
+	// Valid reports whether the web server accepted the candidate.
+	Valid bool `json:"valid"`
+	// Output is the web server's own report, bounded. It is truncated rather
+	// than dropped when long, and Truncated says so.
+	Output string `json:"output"`
+	// Truncated reports that Output was cut short to fit the wire. Stating it is
+	// what keeps a truncated verdict from looking like a complete one.
+	Truncated bool `json:"truncated,omitempty"`
+	// Tool is the program that produced the verdict, e.g. "nginx". Recorded so a
+	// host with an unexpected web server is visible in the reply rather than
+	// inferred from the output's shape.
+	Tool string `json:"tool"`
+	// ToolVersion is the detected version of that tool.
+	ToolVersion string `json:"tool_version,omitempty"`
+	// Staged is the path the candidate was written to and then removed. Exposed
+	// so the controller's audit trail and a human reader can see exactly which
+	// file was involved; the value is agent-derived and never caller-chosen.
+	Staged string `json:"staged"`
+	// ObservedAt is when the check ran, on the NODE's clock. Kept distinct from
+	// receipt time for the same reason a heartbeat does it.
+	ObservedAt time.Time `json:"observed_at"`
 }

@@ -66,6 +66,16 @@ const (
 	OpServiceInspect Operation = "service.inspect"
 	// OpServiceRestart restarts one service unit.
 	OpServiceRestart Operation = "service.restart"
+	// OpWebConfigValidate stages a candidate web-server configuration and asks
+	// the real web server whether it is valid.
+	//
+	// It is the first operation whose input names a PATH, which is why it is
+	// also the first to exercise the agent's path confinement. Validation
+	// necessarily writes — nginx -t must be pointed at a file — so the write is
+	// confined to a staging root the descriptor declares, and the LIVE
+	// configuration is never touched. That distinction is the whole safety
+	// story of this operation: it cannot break a running site.
+	OpWebConfigValidate Operation = "web.config.validate" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not

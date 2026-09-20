@@ -407,6 +407,37 @@ func (d *Dispatcher) RestartService(ctx context.Context, serverID, requestID, un
 	return out, nil
 }
 
+// ValidateWebConfig asks a node whether a candidate web-server configuration is
+// valid, without touching the configuration the node is serving.
+//
+// siteID is the envelope target, which is what the agent's audit trail and the
+// descriptor's per-site lock key are built from. The size check is done here as
+// well as by the node: a candidate that cannot fit the envelope would be refused
+// on the far side after a round trip, so refusing it here gives the caller a
+// cheap, immediate answer instead of a transport error that looks like a failure
+// of the node.
+func (d *Dispatcher) ValidateWebConfig(ctx context.Context, serverID, requestID, siteID string, in nodewire.WebConfigValidateInput) (nodewire.WebConfigValidateResult, error) {
+	var out nodewire.WebConfigValidateResult
+	if len(in.Config) > nodewire.MaxWebConfigBytes {
+		return out, fmt.Errorf("nodes: candidate config is %d bytes, limit is %d",
+			len(in.Config), nodewire.MaxWebConfigBytes)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpWebConfigValidate,
+		RequestID: requestID,
+		Target:    siteID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode web config validation: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.

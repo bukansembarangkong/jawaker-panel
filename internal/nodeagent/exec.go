@@ -194,17 +194,25 @@ func finishCommand(spec CommandSpec, stdout, stderr *limitedBuffer, waitErr erro
 	return CommandResult{}, fmt.Errorf("nodeagent: wait for %s: %w", spec.Path, waitErr)
 }
 
+// BoundForMessageLimit is the maximum length of a child's stderr once it is placed
+// into an error message.
+//
+// It is exported as a constant because a caller that RECEIVES such a message needs
+// to be able to tell whether it was cut short. internal/nodeagent's web-config
+// executor does exactly that: it reports a truncation flag rather than presenting a
+// bounded message as a complete one.
+const BoundForMessageLimit = 512
+
 // boundForMessage truncates a child's stderr before it is put into an error.
 //
 // The message travels into the controller's logs and possibly into a UI. A child
 // can write megabytes to stderr, and an unbounded error string is a way to fill
 // somebody else's disk with your own text.
 func boundForMessage(s string) string {
-	const maxMessage = 512
-	if len(s) <= maxMessage {
+	if len(s) <= BoundForMessageLimit {
 		return trimSpace(s)
 	}
-	return trimSpace(s[:maxMessage]) + "… (truncated)"
+	return trimSpace(s[:BoundForMessageLimit]) + "… (truncated)"
 }
 
 // limitedBuffer collects output up to a limit.
