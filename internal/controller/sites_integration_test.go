@@ -428,3 +428,84 @@ func TestSiteLogsEndpoint(t *testing.T) {
 		t.Errorf("GET logs to an unreachable node = %d, want a 5xx", logsResp.StatusCode)
 	}
 }
+
+// TestSiteApplyEnqueuesJobAndReturnsAccepted proves handleApplyConfig enqueues
+// a site.apply job, returns 202 Accepted with job and revision references, and
+// ensures the job is claimable by the site worker.
+func TestSiteApplyEnqueuesJobAndReturnsAccepted(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+	ctx := context.Background()
+
+	var serverID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO servers (name, address, status) VALUES ('apply-host', '127.0.0.1:9443', 'active') RETURNING id`,
+	).Scan(&serverID); err != nil {
+		t.Fatalf("insert server: %v", err)
+	}
+	var projectID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO projects (slug, name, state) VALUES ('apply-proj', 'Apply Proj', 'active') RETURNING id`,
+	).Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	var siteID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO sites (project_id, server_id, slug, name, mode, state)
+		 VALUES ($1, $2, 'apply-site', 'Apply Site', 'static', 'active') RETURNING id`,
+		projectID, serverID).Scan(&siteID); err != nil {
+		t.Fatalf("insert site: %v", err)
+	}
+
+	applyBody, _ := json.Marshal(map[string]any{
+		"config":   "server { listen 80; server_name apply.example.com; }",
+		"filename": "apply.conf",
+	})
+	resp := h.post(t, "/api/v1/projects/"+projectID+"/sites/"+siteID+"/apply", string(applyBody))
+
+	// In this integration harness the node is unreachable. Pre-flight validate
+	// fails with an unreachable node error. Because handleApplyConfig only
+	// blocks on valErr == nil && !valResult.Valid (a verified invalid verdict),
+	// an unreachable node is handled by the worker during the async job.
+	// Therefore the endpoint returns 202 Accepted.
+	if resp.StatusCode != http.StatusAccepted {
+		var errBody map[string]any
+		decodeBody(t, resp, &errBody)
+		t.Fatalf("POST apply = %d, want 202; body = %v", resp.StatusCode, errBody)
+	}
+
+	var reply struct {
+		RevisionID string `json:"revision_id"`
+		Job        struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"job"`
+		RequestID string `json:"request_id"`
+	}
+	decodeBody(t, resp, &reply)
+	if reply.RevisionID == "" {
+		t.Error("expected non-empty revision_id in 202 response")
+	}
+	if reply.Job.ID == "" {
+		t.Error("expected non-empty job.id in 202 response")
+	}
+	if reply.Job.State != "queued" {
+		t.Errorf("job.state = %q, want queued", reply.Job.State)
+	}
+
+	// Verify the job row in the database: state is queued, type is site.apply.
+	var jobType, jobState string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT type, state FROM jobs WHERE id = $1`, reply.Job.ID,
+	).Scan(&jobType, &jobState); err != nil {
+		t.Fatalf("query job: %v", err)
+	}
+	if jobType != JobTypeSiteApply {
+		t.Errorf("job type = %q, want %q", jobType, JobTypeSiteApply)
+	}
+	// The job state may be queued or running/failed if the background worker
+	// picked it up immediately.
+	if jobState != "queued" && jobState != "running" && jobState != "failed" && jobState != "dead_letter" {
+		t.Errorf("unexpected job state: %q", jobState)
+	}
+}

@@ -129,6 +129,20 @@ func run() error {
 		}
 	}
 
+	// The site background worker executes enqueued site.apply jobs. It shares
+	// the process context: on shutdown Run returns after the in-flight handler
+	// finishes, and an unfinished job's lease expires so another instance can
+	// reclaim it. Errors are logged rather than fatal — a worker whose claim
+	// loop hit a transient database error must not take down the API.
+	if assembled.SiteWorker != nil {
+		worker := assembled.SiteWorker
+		go func() {
+			if err := worker.Run(ctx); err != nil {
+				logger.Error("site worker stopped with an error", "error", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

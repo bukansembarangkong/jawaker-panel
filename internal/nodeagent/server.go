@@ -154,6 +154,16 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 	if supportedOS() {
 		served[nodewire.OpSiteLogsTail] = true
 	}
+	// web.config.apply WRITES the live configuration. The gate is the
+	// intersection of everything the executor will refuse on its own: a
+	// detected web server with a sites-enabled directory, systemd (the
+	// reload must be supervised, or a failed config cannot be rolled back
+	// into a running service), and a supported OS. Advertising apply from a
+	// node that cannot reload would offer a button whose first use breaks
+	// hosting.
+	if e.webServer.CanApply() && e.hasSystemd && supportedOS() {
+		served[nodewire.OpWebConfigApply] = true
+	}
 	return served
 }
 
@@ -454,6 +464,25 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			}
 		}
 		result, err := a.exec.SiteLogs(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpWebConfigApply:
+		in, err := nodewire.DecodeInput[nodewire.WebConfigApplyInput](req)
+		if err != nil {
+			return nil, err
+		}
+		// Validate early: the executor also validates, but the dispatch switch
+		// is where a reviewer sees what an operation does before it runs.
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{
+				Code:    nodewire.CodeInvalidInput,
+				Message: err.Error(),
+			}
+		}
+		result, err := a.exec.ApplyWebConfig(ctx, in)
 		if err != nil {
 			return nil, err
 		}

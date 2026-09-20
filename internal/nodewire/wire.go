@@ -82,6 +82,16 @@ const (
 	// host that serves the site. It is read-only and touches no subprocess: the
 	// agent opens a confined path and reads its final bytes.
 	OpSiteLogsTail Operation = "site.logs.tail" //nolint:gosec // G101: an operation wire name, not a credential
+	// OpWebConfigApply writes a validated candidate to the LIVE site config path
+	// and reloads the web server. It is the most dangerous operation in the
+	// registry: unlike web.config.validate, it touches what a running site serves.
+	//
+	// The safety story is the six-step order inside the executor: back up the
+	// current known-good file, write the candidate, run nginx -t against the FULL
+	// configuration, and only then reload. Any failure restores the backup and
+	// reloads again, so an invalid candidate can never replace the active
+	// known-good configuration (Phase 3 gate, IMPLEMENTATION_PLAN.md L87).
+	OpWebConfigApply Operation = "web.config.apply" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
