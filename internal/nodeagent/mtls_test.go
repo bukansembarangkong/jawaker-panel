@@ -112,7 +112,7 @@ func newAgentFixture(t *testing.T, execOverride ...*Executors) *agentFixture {
 
 	// A state directory, written through the production save path so the agent
 	// loads exactly what a real enrollment would have produced.
-	dir := t.TempDir()
+	dir := restrictedStateDir(t)
 	if err := SaveIdentity(dir, leaf, authority.controllerCA.CertPEM()); err != nil {
 		t.Fatalf("SaveIdentity: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestEnrolledStateHasRestrictivePermissions(t *testing.T) {
 	authority := newTestAuthority(t)
 	serverID := "33333333-3333-3333-3333-333333333333"
 	leaf := authority.issueNode(t, serverID)
-	dir := t.TempDir()
+	dir := restrictedStateDir(t)
 
 	if err := SaveIdentity(dir, leaf, authority.controllerCA.CertPEM()); err != nil {
 		t.Fatalf("SaveIdentity: %v", err)

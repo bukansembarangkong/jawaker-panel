@@ -406,6 +406,23 @@ VERSION_ID=24.04`: {"ubuntu", "24.04"},
 	}
 }
 
+// restrictedStateDir returns a temporary directory at mode 0700.
+//
+// t.TempDir() is os.Mkdir(dir, 0o777), which the process umask reduces — to 0755
+// on a typical Linux runner. EnsureStateDir REFUSES a directory that group or
+// others can reach, and it refuses to repair one silently, because the key inside
+// may already have been exposed. So a test that hands a bare t.TempDir() to the
+// agent's save path fails on Linux and passes on Windows, where the POSIX mode
+// check is skipped — which is exactly the split-brain this helper removes.
+func restrictedStateDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, dirMode); err != nil {
+		t.Fatalf("restrict the state directory: %v", err)
+	}
+	return dir
+}
+
 // --- state directory safety --------------------------------------------------
 
 // A state directory readable by group or others is a HARD failure: the key inside
@@ -414,7 +431,10 @@ func TestEnsureStateDirRefusesPermissiveDirectory(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("mode bits are not meaningful on windows")
 	}
-	dir := t.TempDir()
+	// The directory must ALREADY be restrictive: t.TempDir() is 0755 on a
+	// typical Linux runner, and EnsureStateDir is meant to refuse that, not
+	// adopt it.
+	dir := restrictedStateDir(t)
 	if err := EnsureStateDir(dir); err != nil {
 		t.Fatalf("EnsureStateDir on a fresh 0700 directory: %v", err)
 	}
@@ -434,7 +454,7 @@ func TestEnrollOptionsValidateLocally(t *testing.T) {
 	base := EnrollOptions{
 		ControllerURL:                 "https://controller.example:8443",
 		Token:                         "jwenroll_x",
-		StateDir:                      t.TempDir(),
+		StateDir:                      restrictedStateDir(t),
 		NodeAddress:                   "10.0.0.5:9443",
 		ExpectedControllerFingerprint: strings.Repeat("ab", 32),
 	}
@@ -473,7 +493,7 @@ func TestEnrollRequiresFingerprintPin(t *testing.T) {
 	base := EnrollOptions{
 		ControllerURL: "https://controller.example:8443",
 		Token:         testEnrollToken,
-		StateDir:      t.TempDir(),
+		StateDir:      restrictedStateDir(t),
 		NodeAddress:   "10.0.0.5:9443",
 	}
 	if err := base.validate(); err == nil {
@@ -499,7 +519,7 @@ func TestEnrollRequiresFingerprintPin(t *testing.T) {
 // would fail at the next start with a message that names the symptom rather than
 // the substitution that caused it.
 func TestEnrollRefusesMismatchedFingerprint(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := restrictedStateDir(t)
 
 	// The response carries a root whose fingerprint differs from the pin. The
 	// check runs before anything is persisted, so serving the request is enough

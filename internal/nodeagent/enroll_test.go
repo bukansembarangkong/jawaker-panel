@@ -129,7 +129,7 @@ func newEnrollStub(t *testing.T) *enrollStub {
 // path: with the right pin, the identity is written and pairs with the key the
 // agent generated.
 func TestEnrollSucceedsAgainstAPinnedController(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := restrictedStateDir(t)
 	stub := newEnrollStub(t)
 
 	state, err := Enroll(t.Context(), EnrollOptions{
@@ -182,7 +182,7 @@ func TestEnrollRefusesToEvenContactAnUnpinnedController(t *testing.T) {
 	_, err := Enroll(t.Context(), EnrollOptions{
 		ControllerURL: stub.url,
 		Token:         testEnrollToken,
-		StateDir:      t.TempDir(),
+		StateDir:      restrictedStateDir(t),
 		NodeAddress:   "127.0.0.1:9443",
 		HTTPClient:    &client,
 		// No fingerprint.
