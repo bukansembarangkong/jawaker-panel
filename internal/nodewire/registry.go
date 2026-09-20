@@ -139,6 +139,37 @@ var Operations = map[Operation]Descriptor{
 			"to restore: an invalid candidate is discarded and the running site is untouched.",
 		Mutating: true,
 	},
+
+	OpSiteLogsTail: {
+		Operation: OpSiteLogsTail,
+		// site.logs.read, not logs.read: D-006 defines this as the
+		// project-scoped permission for reading a site's own logs. The
+		// server-scoped logs.read is a different authorization boundary and
+		// must not be conflated with this one.
+		Permission: "site.logs.read",
+		InputSchema: "{project_slug: string, site_slug: string, log_type: \"access\"|\"error\", " +
+			"lines: int} — caller names the site and log type; the agent derives the " +
+			"filesystem path itself using the fixed convention " +
+			"/var/log/nginx/<project_slug>--<site_slug>-<log_type>.log",
+		Validation: "project_slug and site_slug must match the slug alphabet; log_type must " +
+			"be \"access\" or \"error\"; lines must be 0 or between 1 and " +
+			"MaxSiteLogsTailLines; the derived path is resolved through the agent's " +
+			"path confinement and refused unless it lands strictly inside /var/log/nginx",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/var/log/nginx"},
+			Network:        "none",
+		},
+		// 15 seconds: a large log file read with a bounded buffer is fast on
+		// local disk. This is deliberately shorter than a restart and the same
+		// order as a service inspect.
+		Timeout:     15 * time.Second,
+		AuditAction: "site.logs.read",
+		// Idempotent: reading the same file tail twice yields the same result
+		// (modulo concurrent writes). Safe to retry on a transient failure.
+		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating: false,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for
@@ -533,5 +564,95 @@ type WebConfigValidateResult struct {
 	Staged string `json:"staged"`
 	// ObservedAt is when the check ran, on the NODE's clock. Kept distinct from
 	// receipt time for the same reason a heartbeat does it.
+	ObservedAt time.Time `json:"observed_at"`
+}
+
+// --- site.logs.tail -----------------------------------------------------------
+
+// MaxSiteLogsTailLines bounds how many log lines a single request may ask for.
+// A client asking for more gets clamped or refused; unbounded lines is a DoS
+// primitive against the node agent and control plane.
+const MaxSiteLogsTailLines = 500
+
+// DefaultSiteLogsTailLines is the line count when none is specified.
+const DefaultSiteLogsTailLines = 100
+
+// MaxSiteLogsTailBytes bounds what the agent will read and return over the wire.
+// It is smaller than maxInputBytes (64 KiB) to leave plenty of envelope headroom.
+const MaxSiteLogsTailBytes = 48 * 1024
+
+// LogTypeAccess and LogTypeError are the allowed log types.
+const (
+	LogTypeAccess = "access"
+	LogTypeError  = "error"
+)
+
+// SiteLogsTailInput is the payload for site.logs.tail.
+//
+// The caller identifies the site by its project slug and site slug, and specifies
+// which log to read. The node agent constructs the path itself using the canonical
+// layout `/var/log/nginx/<project_slug>--<site_slug>-<log_type>.log`. The caller
+// has no way to choose a directory or an arbitrary file name, closing the path
+// traversal attack surface before confinement even runs.
+type SiteLogsTailInput struct {
+	// ProjectSlug is the site's parent project slug.
+	ProjectSlug string `json:"project_slug"`
+	// SiteSlug is the site's slug within that project.
+	SiteSlug string `json:"site_slug"`
+	// LogType is either "access" or "error".
+	LogType string `json:"log_type"`
+	// Lines is how many trailing lines to return. 0 means DefaultSiteLogsTailLines.
+	// Clamped to MaxSiteLogsTailLines.
+	Lines int `json:"lines,omitempty"`
+}
+
+// Validate checks the payload before it reaches the executor.
+func (in SiteLogsTailInput) Validate() error {
+	var errs []error
+	if in.ProjectSlug == "" {
+		errs = append(errs, errors.New("project_slug is required"))
+	} else if !validSlugPattern.MatchString(in.ProjectSlug) {
+		errs = append(errs, fmt.Errorf("project_slug %q is not a valid slug", in.ProjectSlug))
+	}
+
+	if in.SiteSlug == "" {
+		errs = append(errs, errors.New("site_slug is required"))
+	} else if !validSlugPattern.MatchString(in.SiteSlug) {
+		errs = append(errs, fmt.Errorf("site_slug %q is not a valid slug", in.SiteSlug))
+	}
+
+	switch in.LogType {
+	case LogTypeAccess, LogTypeError:
+	case "":
+		errs = append(errs, errors.New("log_type is required"))
+	default:
+		errs = append(errs, fmt.Errorf("log_type %q must be \"access\" or \"error\"", in.LogType))
+	}
+
+	if in.Lines < 0 {
+		errs = append(errs, errors.New("lines cannot be negative"))
+	} else if in.Lines > MaxSiteLogsTailLines {
+		errs = append(errs, fmt.Errorf("lines (%d) exceeds the maximum of %d", in.Lines, MaxSiteLogsTailLines))
+	}
+
+	return errors.Join(errs...)
+}
+
+// validSlugPattern matches a safe slug: lowercase alphanumerics with optional internal hyphens.
+var validSlugPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// SiteLogsTailResult is the reply to site.logs.tail.
+//
+// D-005: Site logs are read from the node on demand and never stored in PostgreSQL.
+// Lines are returned as an array of strings in chronological order.
+type SiteLogsTailResult struct {
+	// Lines holds the tail log entries.
+	Lines []string `json:"lines"`
+	// Truncated reports whether lines were dropped because the total size
+	// exceeded MaxSiteLogsTailBytes or the requested line count was hit.
+	Truncated bool `json:"truncated,omitempty"`
+	// LogType echoes the requested log type.
+	LogType string `json:"log_type"`
+	// ObservedAt is when the file was read, on the NODE's clock.
 	ObservedAt time.Time `json:"observed_at"`
 }

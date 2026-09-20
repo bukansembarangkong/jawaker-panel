@@ -234,3 +234,37 @@ conflict be recorded rather than silently resolved, which is what this entry is.
 
 **What would change it.** Nothing. Picking the other spelling now would be a
 breaking change to every existing client.
+
+---
+
+## D-010 — Nginx site log paths use the same double-slug convention as config files
+
+**Decision.** Site access and error logs are named
+`/var/log/nginx/<project_slug>--<site_slug>-<log_type>.log`
+(e.g. `/var/log/nginx/acme--www-access.log`). The agent derives this path from
+the slugs the controller supplies; the caller never chooses a directory or file
+name.
+
+**What forced it.** D-001 established `<project-slug>--<site-slug>` as the
+filename stem for the generated nginx config. Using the same stem for the log
+file means both can be traced to a project+site pair by inspection alone, and
+the agent-generated path guarantees the slug-alphabet invariant: the only
+characters that can appear are `[a-z0-9-]` and `--`, so path separators and
+shell metacharacters are impossible regardless of confinement.
+
+The alternative — a caller-supplied path — would require the controller to trust
+user input that reaches a filesystem operation on a privileged daemon, which
+SECURITY.md §7 and AGENTS.md §3 both forbid.
+
+**Consequences.** The nginx config generator must produce `access_log` and
+`error_log` directives that match this path, or the log read will return an empty
+result for an existing site. The convention is declared in the `site.logs.tail`
+descriptor's `InputSchema` field in `registry.go`, which is the reviewed location
+for the contract. Site provisioning must create the file or verify that nginx will
+create it on first request.
+
+**What would change it.** A deployment where the nginx log directory is not
+`/var/log/nginx`, or where the logging driver is not file-based. The path would
+then be a per-node configuration item rather than a constant, requiring a node
+capabilities field to carry the actual root.
+

@@ -56,6 +56,9 @@ type Executors struct {
 	// at startup for the same reason the systemd path is: the capability report
 	// and the refusal of web.config.validate must not disagree.
 	webServer WebServer
+	// logDir is the nginx log root site.logs.tail is confined to. Defaults to
+	// nginxLogRoot; overridable in tests via ExecutorOptions.LogDir.
+	logDir string
 }
 
 // ExecutorOptions configures detection.
@@ -72,6 +75,8 @@ type ExecutorOptions struct {
 	// StagingDir overrides where candidates are staged, for tests. It must
 	// already exist; detection reports the web server as unavailable otherwise.
 	StagingDir string
+	// LogDir overrides the nginx log root for site.logs.tail, for tests.
+	LogDir string
 }
 
 // NewExecutors detects what this node can do.
@@ -80,10 +85,15 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 	if now == nil {
 		now = time.Now
 	}
+	logDir := opts.LogDir
+	if logDir == "" {
+		logDir = "/var/log/nginx"
+	}
 	e := &Executors{
 		agentVersion:  opts.AgentVersion,
 		now:           now,
 		workloadCount: opts.WorkloadCount,
+		logDir:        logDir,
 	}
 	// Web-server detection happens here, BEFORE the systemd branch, because a
 	// host may well have nginx and no systemd. Detecting it after the early

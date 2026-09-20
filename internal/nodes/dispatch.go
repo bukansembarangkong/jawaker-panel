@@ -410,13 +410,12 @@ func (d *Dispatcher) RestartService(ctx context.Context, serverID, requestID, un
 // ValidateWebConfig asks a node whether a candidate web-server configuration is
 // valid, without touching the configuration the node is serving.
 //
-// siteID is the envelope target, which is what the agent's audit trail and the
-// descriptor's per-site lock key are built from. The size check is done here as
+// The candidate configuration travels as text. The size check is done here as
 // well as by the node: a candidate that cannot fit the envelope would be refused
 // on the far side after a round trip, so refusing it here gives the caller a
 // cheap, immediate answer instead of a transport error that looks like a failure
 // of the node.
-func (d *Dispatcher) ValidateWebConfig(ctx context.Context, serverID, requestID, siteID string, in nodewire.WebConfigValidateInput) (nodewire.WebConfigValidateResult, error) {
+func (d *Dispatcher) ValidateWebConfig(ctx context.Context, serverID, requestID, _ string, in nodewire.WebConfigValidateInput) (nodewire.WebConfigValidateResult, error) {
 	var out nodewire.WebConfigValidateResult
 	if len(in.Config) > nodewire.MaxWebConfigBytes {
 		return out, fmt.Errorf("nodes: candidate config is %d bytes, limit is %d",
@@ -426,14 +425,42 @@ func (d *Dispatcher) ValidateWebConfig(ctx context.Context, serverID, requestID,
 		ServerID:  serverID,
 		Operation: nodewire.OpWebConfigValidate,
 		RequestID: requestID,
-		Target:    siteID,
-		Input:     in,
+		// Target is intentionally empty: web.config.validate has no
+		// Scope.Services, so EncodeRequest rejects any non-empty target.
+		// The site identity reaches the agent via the payload (in.Filename
+		// encodes the site's slug) and via RequestID in the audit trail.
+		Input: in,
 	})
 	if err != nil {
 		return out, err
 	}
 	if err := decodeStrict(raw, &out); err != nil {
 		return out, fmt.Errorf("nodes: decode web config validation: %w", err)
+	}
+	return out, nil
+}
+
+// ReadSiteLogs reads a bounded tail of one site's access or error log from the
+// node hosting it, on demand.
+//
+// Per D-005 no log content is stored in PostgreSQL; this is a read-through to
+// the host.
+func (d *Dispatcher) ReadSiteLogs(ctx context.Context, serverID, requestID string, in nodewire.SiteLogsTailInput) (nodewire.SiteLogsTailResult, error) {
+	var out nodewire.SiteLogsTailResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid log tail request: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSiteLogsTail,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode site logs tail: %w", err)
 	}
 	return out, nil
 }

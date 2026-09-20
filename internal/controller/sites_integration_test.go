@@ -362,3 +362,69 @@ func TestSiteApplyEnqueuesJobAndCreatesRevision(t *testing.T) {
 		t.Errorf("job count = %d, want 1", jobCount)
 	}
 }
+
+// TestSiteLogsEndpoint verifies authentication requirement, cross-project
+// isolation (404, never disclosing whether the ID exists elsewhere), and the
+// nil-dispatcher service-unavailable guard for the site logs endpoint.
+func TestSiteLogsEndpoint(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+	ctx := context.Background()
+
+	// Insert server
+	var serverID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO servers (name, address, status) VALUES ('log-host', '127.0.0.1:9443', 'active') RETURNING id`,
+	).Scan(&serverID); err != nil {
+		t.Fatalf("insert server: %v", err)
+	}
+	// Insert project A
+	var projectA string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO projects (slug, name, state) VALUES ('proj-a-logs', 'Proj A Logs', 'active') RETURNING id`,
+	).Scan(&projectA); err != nil {
+		t.Fatalf("insert project A: %v", err)
+	}
+	// Insert project B (for cross-project check)
+	var projectB string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO projects (slug, name, state) VALUES ('proj-b-logs', 'Proj B Logs', 'active') RETURNING id`,
+	).Scan(&projectB); err != nil {
+		t.Fatalf("insert project B: %v", err)
+	}
+
+	// Create site in Project A
+	var siteID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO sites (project_id, server_id, slug, name, mode, state)
+		 VALUES ($1, $2, 'mysite', 'My Site', 'static', 'active') RETURNING id`,
+		projectA, serverID).Scan(&siteID); err != nil {
+		t.Fatalf("insert site: %v", err)
+	}
+
+	// 1. Cross-project access to logs returns 404 (not 403, not 500): the
+	// GetInProject guard runs before anything touches the node, so an id from
+	// another project never discloses that it exists.
+	crossResp := h.do("GET", "/api/v1/projects/"+projectB+"/sites/"+siteID+"/logs", "", nil)
+	if crossResp.StatusCode != http.StatusNotFound {
+		t.Errorf("cross-project logs = %d, want 404", crossResp.StatusCode)
+	}
+
+	// 2. A bad log type is refused with 400 before the node is ever dialed.
+	badTypeResp := h.do("GET", "/api/v1/projects/"+projectA+"/sites/"+siteID+"/logs?type=invalid", "", nil)
+	if badTypeResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("GET logs?type=invalid = %d, want 400", badTypeResp.StatusCode)
+	}
+
+	// 3. A valid request to a site whose node is not running surfaces a server
+	// error, never 200: logs are read through from the host (D-005) and are
+	// never fabricated. The 500 matches how handleValidateConfig classifies an
+	// unreachable node (it is not an Unsupported() verdict, so it is Internal).
+	logsResp := h.do("GET", "/api/v1/projects/"+projectA+"/sites/"+siteID+"/logs", "", nil)
+	if logsResp.StatusCode == http.StatusOK {
+		t.Errorf("GET logs to an unreachable node = 200; logs must never be fabricated")
+	}
+	if logsResp.StatusCode < 500 {
+		t.Errorf("GET logs to an unreachable node = %d, want a 5xx", logsResp.StatusCode)
+	}
+}
