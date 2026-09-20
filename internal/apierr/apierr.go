@@ -36,6 +36,9 @@ const (
 	// CodeTooManyRequests marks a request refused by volume control rather than
 	// by policy (SECURITY.md §11).
 	CodeTooManyRequests = "too_many_requests"
+	// CodeConfigValidationFailed marks a configuration candidate that failed
+	// validation before it could be applied (API.md §8, PRD.md §38.2, D-009).
+	CodeConfigValidationFailed = "config_validation_failed"
 )
 
 // Error is an API error with a stable code and HTTP status mapping.
@@ -165,6 +168,19 @@ func NotFound(message string) *Error {
 // Conflict builds a 409 error.
 func Conflict(message string, details map[string]any) *Error {
 	return &Error{Code: CodeConflict, Message: message, Status: http.StatusConflict, Details: details}
+}
+
+// ConfigValidationFailed builds a 422 error for a configuration candidate that
+// the web server or other validator rejected before it could be applied. The
+// distinction from 400 is intentional: the request was syntactically valid; the
+// candidate itself failed (API.md §8, D-009).
+func ConfigValidationFailed(message string, details map[string]any) *Error {
+	return &Error{
+		Code:    CodeConfigValidationFailed,
+		Message: message,
+		Status:  http.StatusUnprocessableEntity,
+		Details: details,
+	}
 }
 
 // PayloadTooLarge builds a 413 error.

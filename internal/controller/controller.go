@@ -21,10 +21,12 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
+	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
+	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -72,6 +74,14 @@ type Handler struct {
 	// certificate authority could not be prepared, so a caller can distinguish
 	// "not configured" from "mounted but empty".
 	NodeRoutesMounted bool
+	// SiteRoutesMounted reports whether /api/v1/projects/{project_id}/sites/*
+	// is registered. Requires both database and secret keys.
+	SiteRoutesMounted bool
+	// Sites is the hosted sites inventory store.
+	Sites *sites.Store
+	// SiteWorker is the background jobs worker executing configuration applies
+	// and deployments, nil when background processing is disabled.
+	SiteWorker *jobs.Worker
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -282,6 +292,24 @@ func Build(opts Options) (*Handler, error) {
 			out.Dispatcher = dispatcher
 		}
 
+		// Site management: the sites store over the same pool. These routes mount
+		// whenever the database and secret keys are present — site CRUD does not
+		// depend on the certificate authority. validate/apply answer 503 when the
+		// dispatcher is nil (node subsystem unavailable), which the handler guards.
+		out.Sites = sites.NewStore(opts.DB, now)
+		siteHandlers, siteErr := NewSiteHandlers(SiteHandlerOptions{
+			Sites:      out.Sites,
+			Pool:       opts.DB,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger,
+			Audit:      opts.DB,
+			Now:        now,
+		})
+		if siteErr != nil {
+			return nil, fmt.Errorf("controller: site handlers: %w", siteErr)
+		}
+		siteRoutes := siteHandlers.Routes
+
 		authRoutes := handlers.Routes
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
@@ -289,6 +317,7 @@ func Build(opts Options) (*Handler, error) {
 			if nodeRoutes != nil {
 				nodeRoutes(mux)
 			}
+			siteRoutes(mux)
 		}
 		out.Events = broker
 		out.EventStreamMounted = true
