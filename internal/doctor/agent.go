@@ -59,9 +59,51 @@ func Agent(ctx context.Context, version string, opts AgentOptions) Report {
 		Diagnose("pinned-controller", checkPinnedController(stateDir)),
 		Diagnose("controller-connectivity", checkControllerConnectivity(stateDir, timeout, opts.SkipConnectivity)),
 		Diagnose("operation-support", checkOperationSupport),
+		Diagnose("host-identity", checkHostIdentity),
 		Diagnose("runtime-files", checkRuntimeFiles),
 		Diagnose("disk", checkDisk),
 	)
+}
+
+// checkHostIdentity reports the distribution, kernel, and architecture this agent
+// detected.
+//
+// It answers the first question of any support conversation — which host is this?
+// — from the same detection the capability report uses, so the two cannot
+// disagree. It is also what makes docs/distro-matrix.md checkable: a matrix row
+// asserts that the agent names the distribution it is running on, and without a
+// check that emits it there would be nothing to assert against.
+//
+// An undetected family is a WARNING, not a failure. detectOS degrades every
+// failure to an empty field by design — a host that cannot report its version
+// should still enroll and be managed — and reporting that as a fault would
+// contradict the behavior it is describing.
+func checkHostIdentity(context.Context) Check {
+	caps, err := nodeagent.NewExecutors(nodeagent.ExecutorOptions{}).Capabilities()
+	if err != nil {
+		return fail("host-identity", fmt.Sprintf("the host identity could not be detected: %v", err), nil)
+	}
+	evidence := map[string]any{
+		"os_family":    caps.OSFamily,
+		"os_version":   caps.OSVersion,
+		"kernel":       caps.Kernel,
+		"architecture": caps.Architecture,
+	}
+	if caps.OSFamily == "" {
+		// runtime-files names the usual cause (a missing /etc/os-release), so
+		// this check does not repeat it; it reports the consequence.
+		return warn("host-identity",
+			"this host did not identify its distribution, so the panel cannot tell you which "+
+				"distribution it is running", evidence)
+	}
+	detail := caps.OSFamily
+	if caps.OSVersion != "" {
+		detail += " " + caps.OSVersion
+	}
+	if caps.Kernel != "" {
+		detail += fmt.Sprintf(" (kernel %s)", caps.Kernel)
+	}
+	return ok("host-identity", detail, evidence)
 }
 
 // checkAgentStateDir verifies the state directory exists with safe permissions.

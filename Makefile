@@ -16,7 +16,7 @@ CONTROLLER := $(BIN_DIR)/jawaker-controller
 NODE_AGENT := $(BIN_DIR)/jawaker-node-agent
 
 .PHONY: help build build-controller build-node-agent test test-integration lint fmt vet vuln tidy \
-	doctor doctor-node \
+	doctor doctor-node distro-matrix \
 	web-install web-dev web-test web-lint web-typecheck web-build \
 	db-up db-down migrate-up check clean
 
@@ -39,6 +39,9 @@ doctor: ## Report the controller installation's condition
 
 doctor-node: ## Report this node agent's condition
 	go run ./cmd/node-agent doctor
+
+distro-matrix: ## Validate the node agent against the certified distro images (requires Docker)
+	./scripts/distro-matrix.sh
 
 test: ## Run Go unit tests
 	go test ./...

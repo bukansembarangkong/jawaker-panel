@@ -175,10 +175,28 @@ jobs:
             --verbose \
             --exit-code 1
 
+  distro:
+    name: distro matrix (node agent)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      # Runs the SAME script a developer runs locally, so a certified result
+      # cannot diverge from what is reproducible. Each row pins its image by
+      # digest (docs/distro-matrix.md): that is what makes the evidence apply to
+      # a specific image rather than to whatever a tag points at today.
+      - name: validate distro matrix
+        run: ./scripts/distro-matrix.sh --arch amd64
+
   artifacts:
     name: build artifacts, checksums, SBOM
     runs-on: ubuntu-24.04
-    needs: [go, web, security]
+    needs: [go, web, security, distro]
     steps:
       - uses: actions/checkout@v4
 
