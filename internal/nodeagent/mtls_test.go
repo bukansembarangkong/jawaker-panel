@@ -805,7 +805,11 @@ func TestEnrolledStateHasRestrictivePermissions(t *testing.T) {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 
+	// The DIRECTORY is asserted too. A 0600 key inside a world-listable
+	// directory is not protected: the mode of the file is undermined by the
+	// mode of its parent, which is why EnsureStateDir refuses a permissive one.
 	for name, want := range map[string]os.FileMode{
+		dir:                              dirMode,
 		filepath.Join(dir, identityFile): 0o600,
 		filepath.Join(dir, configFile):   0o600,
 	} {
