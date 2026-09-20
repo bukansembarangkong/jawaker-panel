@@ -41,6 +41,19 @@ func main() {
 }
 
 func run() error {
+	// A subcommand gate rather than a flag: `doctor` produces a report and exits,
+	// so it must not share the listener flags the server needs. It is checked
+	// before Parse so `jawaker-controller doctor` does not try to bind anything.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "doctor":
+			return runDoctor(os.Args[2:])
+		case "version", "-version", "--version":
+			fmt.Println(version.String())
+			return nil
+		}
+	}
+
 	migrateOnly := flag.Bool("migrate-only", false, "apply pending database migrations and exit")
 	nodeListenAddr := flag.String("node-listen", "",
 		"host:port for the node-facing mutual-TLS listener (empty disables it; nodes will not be able to report)")

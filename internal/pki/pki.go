@@ -802,6 +802,20 @@ func fingerprint(der []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// FingerprintOf returns the mesh-canonical fingerprint of a certificate.
+//
+// It is exported for callers that hold only a certificate — a pinned root read
+// back from disk, for instance — and need the SAME digest the mesh compares
+// against. Reimplementing sha256-hex at such a call site is how two definitions of
+// "the fingerprint" drift apart, and this codebase has already paid for that class
+// of bug twice.
+func FingerprintOf(cert *x509.Certificate) string {
+	if cert == nil {
+		return ""
+	}
+	return fingerprint(cert.Raw)
+}
+
 // identityOf extracts the single URI SAN identity from a certificate.
 //
 // A certificate with zero URIs has no identity in this mesh. One with several
