@@ -3,6 +3,7 @@ package nodes
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
+	"github.com/bukansembarangkong/jawaker-panel/internal/nodewire"
+	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/rbac"
 )
 
@@ -28,6 +31,13 @@ import (
 //	GET    /api/v1/servers/enrollment-tokens     server.enroll  GLOBAL
 //	POST   /api/v1/servers/enrollment-tokens     server.enroll  GLOBAL, step-up
 //	DELETE /api/v1/servers/enrollment-tokens/{id} server.enroll GLOBAL, step-up
+//	POST   /api/v1/node/enroll                    (none)        rate-limited, token
+//
+// The enroll route has NO permission wrapper and no session requirement. It is
+// reached by a node that has no certificate and no user identity yet; the human
+// decision to admit a machine was made and audited when the token was minted
+// above. Wrapping it in RequirePermission would make enrollment impossible, not
+// more secure.
 //
 // The fleet LIST is global because it spans servers: a per-server grant cannot
 // describe "some subset of the fleet" under this model, and pretending otherwise
@@ -60,6 +70,9 @@ type HandlerOptions struct {
 	// Now supplies the clock for permission evaluation and token state. Nil
 	// means time.Now.
 	Now func() time.Time
+	// EnrollRate configures the enrollment rate limiter. Zero uses
+	// DefaultEnrollRate.
+	EnrollRate ratelimit.Options
 }
 
 // Handlers holds the node HTTP surface.
@@ -69,6 +82,8 @@ type Handlers struct {
 	audit  audit.Execer
 	logger *slog.Logger
 	now    func() time.Time
+	// enrollLimiter guards the one unauthenticated write on the controller.
+	enrollLimiter *ratelimit.Limiter
 }
 
 // NewHandlers builds the node handlers.
@@ -86,7 +101,25 @@ func NewHandlers(opts HandlerOptions) (*Handlers, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Handlers{store: opts.Store, auth: opts.Authority, audit: opts.Audit, logger: opts.Logger, now: now}, nil
+	rate := opts.EnrollRate
+	if rate.Limit <= 0 {
+		rate = ratelimit.Options{
+			Limit:    DefaultEnrollRate.Limit,
+			Interval: DefaultEnrollRate.Interval,
+		}
+	}
+	limiter, err := ratelimit.New(rate)
+	if err != nil {
+		return nil, fmt.Errorf("nodes: enrollment rate limiter: %w", err)
+	}
+	return &Handlers{
+		store:         opts.Store,
+		auth:          opts.Authority,
+		audit:         opts.Audit,
+		logger:        opts.Logger,
+		now:           now,
+		enrollLimiter: limiter,
+	}, nil
 }
 
 // Routes registers the node routes.
@@ -110,6 +143,11 @@ func (h *Handlers) Routes(mux *http.ServeMux) {
 	mux.Handle("DELETE /api/v1/servers/enrollment-tokens/{id}",
 		authsession.RequirePermission(h.now, "server.enroll", rbac.GlobalScope(), true,
 			http.HandlerFunc(h.handleRevokeToken)))
+	// Node-facing enrollment. No session, no CSRF, no permission wrapper: the
+	// caller is a node that has no identity yet, rate limited per address and
+	// authenticated by the bearer token itself.
+	mux.Handle("POST "+nodewire.EnrollmentPath,
+		http.HandlerFunc(h.handleEnroll))
 	mux.Handle("GET /api/v1/servers/{id}",
 		http.HandlerFunc(h.handleGetServer))
 	mux.Handle("DELETE /api/v1/servers/{id}",

@@ -2,11 +2,15 @@ package nodes
 
 import (
 	"context"
+	"crypto"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
+	"github.com/bukansembarangkong/jawaker-panel/internal/nodewire"
 	"github.com/bukansembarangkong/jawaker-panel/internal/pki"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secureid"
 	"github.com/jackc/pgx/v5"
@@ -282,18 +286,41 @@ func (s *Store) GetServer(ctx context.Context, id string) (Server, error) {
 
 // EnrollmentResult is what a successful enrollment produces.
 //
-// The node's private key is in here and travels exactly once, inside the
-// encrypted enrollment response. It is never stored by the controller: the node
-// writes it to its own state directory and the controller keeps only the
-// certificate, its serial, and its fingerprint.
+// It contains NO PRIVATE KEY. The node generated its own key pair and sent only
+// the public half, so the controller has nothing secret to hold: a compromise of
+// the control plane can issue identities but cannot authenticate as an already
+// enrolled node. This is why the field set here is certificate material only.
 type EnrollmentResult struct {
-	Server    Server
-	NodeURI   string
-	CertPEM   []byte
-	KeyPEM    []byte
-	Serial    string
-	NotBefore time.Time
-	NotAfter  time.Time
+	Server      Server
+	NodeURI     string
+	CertPEM     []byte
+	Serial      string
+	Fingerprint string
+	NotBefore   time.Time
+	NotAfter    time.Time
+}
+
+// RedeemRequest carries everything a node presents during enrollment.
+//
+// It is a struct rather than a growing parameter list because enrollment has
+// several independent facts and positional arguments for them would let a caller
+// pass an OS family where a version belongs without the compiler objecting.
+type RedeemRequest struct {
+	// Token is the presented one-time enrollment token.
+	Token string
+	// PublicKey is the node's OWN public key. The controller signs it and never
+	// sees the matching private half, so a controller compromise can mint
+	// identities but cannot authenticate as an already-enrolled node.
+	PublicKey crypto.PublicKey
+	// NodeAddress is the host:port the controller dials for agent operations.
+	NodeAddress string
+	// AgentVersion, OSFamily and OSVersion are the facts the agent reports about
+	// itself. They are recorded at enrollment rather than waiting for the first
+	// heartbeat, so a server row is never "active" with no idea what is running
+	// on it.
+	AgentVersion string
+	OSFamily     string
+	OSVersion    string
 }
 
 // Redeem exchanges a one-time token for a long-lived node identity.
@@ -303,11 +330,30 @@ type EnrollmentResult struct {
 //
 // The first statement claims the token with a conditional UPDATE, so two
 // concurrent redemptions of one token cannot both succeed.
-func (s *Store) Redeem(ctx context.Context, auth *Authority, presentedToken string) (EnrollmentResult, error) {
+func (s *Store) Redeem(ctx context.Context, auth *Authority, req RedeemRequest) (EnrollmentResult, error) {
 	if auth == nil {
 		return EnrollmentResult{}, errors.New("nodes: authority is required")
 	}
-	digest, err := tokenDigest(presentedToken)
+	if req.PublicKey == nil {
+		return EnrollmentResult{}, fmt.Errorf("%w: a node public key is required", ErrInvalid)
+	}
+	address, err := validNodeAddress(req.NodeAddress)
+	if err != nil {
+		return EnrollmentResult{}, err
+	}
+	osFamily, err := boundedHostFact("os_family", req.OSFamily, 32)
+	if err != nil {
+		return EnrollmentResult{}, err
+	}
+	osVersion, err := boundedHostFact("os_version", req.OSVersion, 64)
+	if err != nil {
+		return EnrollmentResult{}, err
+	}
+	agentVersion, err := boundedHostFact("agent_version", req.AgentVersion, 64)
+	if err != nil {
+		return EnrollmentResult{}, err
+	}
+	digest, err := tokenDigest(req.Token)
 	if err != nil {
 		return EnrollmentResult{}, ErrTokenInvalid
 	}
@@ -352,19 +398,24 @@ func (s *Store) Redeem(ctx context.Context, auth *Authority, presentedToken stri
 		return EnrollmentResult{}, ErrTokenInvalid
 	}
 
-	// Step 2: create the server. The name comes from the token, not from the
+	// Step 2: create the server. The NAME comes from the token, not from the
 	// caller, so an attacker holding a token cannot pick a name that collides
-	// with an existing server or impersonate one. enrolled_at is set here rather
-	// than by a follow-up UPDATE so the row is never briefly "active but not
-	// enrolled", which a concurrent list would render as a server with no
-	// enrollment time.
+	// with an existing server or impersonate one. The address and host facts come
+	// from the caller, because only the node knows where it listens and what it
+	// runs — they are descriptive, not identity-bearing, and are validated above.
+	//
+	// enrolled_at is set here rather than by a follow-up UPDATE so the row is
+	// never briefly "active but not enrolled", which a concurrent list would
+	// render as a server with no enrollment time.
 	var server Server
 	now := s.clock().UTC()
 	err = tx.QueryRow(ctx, fmt.Sprintf(`
-		INSERT INTO servers (name, status, enrolled_at, created_by)
-		VALUES ($1, 'active', $2, (SELECT created_by FROM enrollment_tokens WHERE id = $3))
+		INSERT INTO servers (name, address, os_family, os_version, agent_version,
+		                     status, enrolled_at, created_by)
+		VALUES ($1, $2, $3, $4, $5, 'active', $6,
+		        (SELECT created_by FROM enrollment_tokens WHERE id = $7))
 		RETURNING %s`, serverColumns),
-		nodeName, now, tokenID).Scan(
+		nodeName, address, osFamily, osVersion, agentVersion, now, tokenID).Scan(
 		&server.ID, &server.Name, &server.Description, &server.Address, &server.Status,
 		&server.CertStatus, &server.OSFamily, &server.OSVersion, &server.AgentVersion,
 		&server.LastSeenAt, &server.EnrolledAt, &server.CreatedAt, &server.DeletedAt)
@@ -375,9 +426,11 @@ func (s *Store) Redeem(ctx context.Context, auth *Authority, presentedToken stri
 		return EnrollmentResult{}, fmt.Errorf("nodes: create server: %w", err)
 	}
 
-	// Step 3: issue the node certificate. The private key leaves the controller
-	// exactly once, in this function's return value, and is never persisted here.
-	leaf, err := auth.IssueNodeLeaf(server.ID)
+	// Step 3: issue the node certificate for the key the NODE generated. The
+	// returned Leaf deliberately carries no private key material: the controller
+	// never had it. See pki.CA.IssueLeafForKey for why that distinction is a
+	// security property and not a tidiness preference.
+	leaf, err := auth.IssueNodeLeafForKey(server.ID, req.PublicKey)
 	if err != nil {
 		return EnrollmentResult{}, err
 	}
@@ -406,14 +459,54 @@ func (s *Store) Redeem(ctx context.Context, auth *Authority, presentedToken stri
 	}
 	server.CertStatus = "active"
 	return EnrollmentResult{
-		Server:    server,
-		NodeURI:   NodeIdentity(server.ID).String(),
-		CertPEM:   leaf.CertPEM(),
-		KeyPEM:    leaf.KeyPEM(),
-		Serial:    leaf.SerialHex(),
-		NotBefore: leaf.Cert().NotBefore,
-		NotAfter:  leaf.Cert().NotAfter,
+		Server:      server,
+		NodeURI:     NodeIdentity(server.ID).String(),
+		CertPEM:     leaf.CertPEM(),
+		Serial:      leaf.SerialHex(),
+		Fingerprint: leaf.Fingerprint(),
+		NotBefore:   leaf.Cert().NotBefore,
+		NotAfter:    leaf.Cert().NotAfter,
 	}, nil
+}
+
+// validNodeAddress checks the address the controller will dial.
+//
+// It must be a literal host:port and must be bounded. The value is later handed
+// to net.Dial, so an unvalidated string is a request-forgery primitive: an agent
+// could register an address pointing at the controller's own database port, and
+// a subsequent "restart service" would open a connection somewhere unexpected.
+// SplitHostPort also refuses the forms that are ambiguous about where the port
+// begins, which is the check that matters most here.
+func validNodeAddress(raw string) (string, error) {
+	address := strings.TrimSpace(raw)
+	if address == "" {
+		return "", fmt.Errorf("%w: a node address is required", ErrInvalid)
+	}
+	if len(address) > 255 {
+		return "", fmt.Errorf("%w: node address is too long", ErrInvalid)
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", fmt.Errorf("%w: node address must be host:port: %v", ErrInvalid, err)
+	}
+	if host == "" || port == "" {
+		return "", fmt.Errorf("%w: node address needs both a host and a port", ErrInvalid)
+	}
+	return address, nil
+}
+
+// boundedHostFact trims and bounds a self-reported host fact.
+//
+// These are agent-supplied and end up in a list view, so they are length-bounded
+// rather than trusted. An empty value is allowed: a platform that cannot report
+// its OS version should still be able to enroll, and an empty cell is honest
+// where a fabricated one is not.
+func boundedHostFact(field, raw string, max int) (string, error) {
+	v := strings.TrimSpace(raw)
+	if len(v) > max {
+		return "", fmt.Errorf("%w: %s exceeds %d characters", ErrInvalid, field, max)
+	}
+	return v, nil
 }
 
 // tokenDigest computes the stored digest for a presented token.
@@ -491,6 +584,158 @@ func (s *Store) IsRevoked(ctx context.Context, serial string) (bool, error) {
 		return false, fmt.Errorf("nodes: check revocation: %w", err)
 	}
 	return revoked, nil
+}
+
+// RecordHeartbeat appends one observation and rolls it up onto the server.
+//
+// Both happen in ONE transaction, and that is not tidiness: last_seen_at is a
+// projection of the observation stream, and a crash between the two writes would
+// leave a server that looks offline while a heartbeat row says it reported. The
+// list view would then contradict the time series, and the operator would have to
+// decide which of the two to believe.
+//
+// The status is NOT changed here. A heartbeat is an observation, not a state
+// transition: a node that reports while suspended must not silently reactivate
+// itself, or "suspend" would be a hint rather than a control.
+func (s *Store) RecordHeartbeat(ctx context.Context, serverID string, report nodewire.HeartbeatInput) error {
+	if strings.TrimSpace(serverID) == "" {
+		return fmt.Errorf("%w: a server id is required", ErrInvalid)
+	}
+	// Validated with the SHARED rules, so an impossible reading is refused with
+	// the same message on both ends rather than stored as plausible numbers.
+	if err := report.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if report.ObservedAt.IsZero() {
+		return fmt.Errorf("%w: observed_at is required", ErrInvalid)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("nodes: begin heartbeat: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO node_heartbeats (server_id, observed_at, received_at,
+		                             uptime_seconds, load1_milli,
+		                             mem_total_bytes, mem_used_bytes, workload_count)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		serverID, report.ObservedAt.UTC(), s.clock().UTC(),
+		report.UptimeSeconds, report.Load1Milli,
+		report.MemTotalBytes, report.MemUsedBytes, report.WorkloadCount)
+	if err != nil {
+		if isForeignKeyViolation(err) {
+			// The certificate was valid but the server row is gone: a tombstoned
+			// server whose node is still beating. Unknown, not a fault.
+			return ErrNotFound
+		}
+		return fmt.Errorf("nodes: record heartbeat: %w", err)
+	}
+
+	// last_seen_at moves forward only. A node with a clock behind the controller
+	// would otherwise walk its own last-seen time backwards, making a live server
+	// look like it stopped reporting.
+	tag, err := tx.Exec(ctx, `
+		UPDATE servers
+		   SET last_seen_at = GREATEST(coalesce(last_seen_at, $1), $1),
+		       updated_at = $2
+		 WHERE id = $3 AND deleted_at IS NULL`,
+		report.ObservedAt.UTC(), s.clock().UTC(), serverID)
+	if err != nil {
+		return fmt.Errorf("nodes: update last seen: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("nodes: commit heartbeat: %w", err)
+	}
+	return nil
+}
+
+// RecordCapabilities replaces a server's capability inventory.
+//
+// Replace-in-place rather than merge: the report is the node's CURRENT truth, and
+// merging would keep a capability the node no longer has — a node that lost
+// PostgreSQL would still advertise it forever, and the panel would offer work the
+// node cannot do.
+//
+// Delete-then-insert inside one transaction, because the intermediate state of a
+// merge-by-upsert is a table that briefly claims capabilities the node just
+// disowned, and a concurrent list would read exactly that.
+func (s *Store) RecordCapabilities(ctx context.Context, serverID string, result nodewire.CapabilitiesResult) error {
+	if strings.TrimSpace(serverID) == "" {
+		return fmt.Errorf("%w: a server id is required", ErrInvalid)
+	}
+	for _, c := range result.Capabilities {
+		if strings.TrimSpace(c.Kind) == "" || strings.TrimSpace(c.Name) == "" {
+			return fmt.Errorf("%w: a capability needs a kind and a name", ErrInvalid)
+		}
+		switch c.State {
+		case nodewire.CapabilityAvailable, nodewire.CapabilityDegraded, nodewire.CapabilityUnsupported:
+		default:
+			return fmt.Errorf("%w: unknown capability state %q", ErrInvalid, c.State)
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("nodes: begin capability update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err = tx.Exec(ctx, `DELETE FROM node_capabilities WHERE server_id = $1`, serverID); err != nil {
+		return fmt.Errorf("nodes: clear capabilities: %w", err)
+	}
+	observedAt := result.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = s.clock().UTC()
+	}
+	for _, c := range result.Capabilities {
+		detail, marshalErr := json.Marshal(detailOrEmpty(c.Detail))
+		if marshalErr != nil {
+			return fmt.Errorf("nodes: encode capability detail: %w", marshalErr)
+		}
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO node_capabilities (server_id, kind, name, version, state, detail, observed_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			serverID, c.Kind, c.Name, c.Version, c.State, detail, observedAt); err != nil {
+			if isForeignKeyViolation(err) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("nodes: record capability %s/%s: %w", c.Kind, c.Name, err)
+		}
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE servers
+		   SET capabilities_observed_at = $1,
+		       os_family = coalesce(nullif($2, ''), os_family),
+		       os_version = coalesce(nullif($3, ''), os_version),
+		       agent_version = coalesce(nullif($4, ''), agent_version),
+		       updated_at = $5
+		 WHERE id = $6 AND deleted_at IS NULL`,
+		observedAt, result.OSFamily, result.OSVersion, result.AgentVersion, s.clock().UTC(), serverID)
+	if err != nil {
+		return fmt.Errorf("nodes: update server capabilities rollup: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("nodes: commit capability update: %w", err)
+	}
+	return nil
+}
+
+// detailOrEmpty keeps a nil detail map out of the JSON encoder, which would
+// produce the literal "null" and violate the column's NOT NULL default.
+func detailOrEmpty(detail map[string]any) map[string]any {
+	if detail == nil {
+		return map[string]any{}
+	}
+	return detail
 }
 
 // ActiveCertificate returns the newest unrevoked certificate for a server.
@@ -599,6 +844,10 @@ func isUniqueViolation(err error) bool { return pgCode(err) == "23505" }
 
 // isCheckViolation reports a CHECK constraint breach (23514).
 func isCheckViolation(err error) bool { return pgCode(err) == "23514" }
+
+// isForeignKeyViolation reports a foreign-key breach (23503), which in this
+// package means the referenced server row is gone.
+func isForeignKeyViolation(err error) bool { return pgCode(err) == "23503" }
 
 func pgCode(err error) string {
 	var pgErr *pgconn.PgError

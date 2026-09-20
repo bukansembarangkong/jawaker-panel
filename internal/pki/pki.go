@@ -36,6 +36,7 @@
 package pki
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -403,6 +404,82 @@ func (ca *CA) IssueLeaf(params LeafParams) (*Leaf, error) {
 	}, nil
 }
 
+// HasPrivateKey reports whether this Leaf carries private key material.
+//
+// A leaf issued by IssueLeafForKey does not: the caller supplied only a public
+// key, which is the point. Callers that persist key material must check this
+// rather than writing an empty PEM and discovering the problem at the next start.
+func (l *Leaf) HasPrivateKey() bool { return len(l.keyPEM) > 0 }
+
+// IssueLeafForKey signs a certificate for a PUBLIC KEY supplied by the caller.
+//
+// This exists for node enrollment, and the reason is a real security property
+// rather than tidiness: when the controller generates a node's key pair and
+// transmits it, a controller compromise yields the private key of every enrolled
+// node — and that key is the node's only proof of identity. On this path the node
+// generates its own pair and sends only the public half, so the controller can
+// issue identities but can never authenticate AS a node.
+//
+// The returned Leaf carries no private key (HasPrivateKey is false); the caller
+// already holds it.
+//
+// Every check IssueLeaf performs applies identically here. They are re-stated
+// rather than shared through a helper because each one is security relevant, and
+// a future refactor that silently dropped one from this path would be invisible
+// in review.
+func (ca *CA) IssueLeafForKey(params LeafParams, publicKey crypto.PublicKey) (*Leaf, error) {
+	if publicKey == nil {
+		return nil, errors.New("pki: a public key is required")
+	}
+	dnsName, err := dnsNameFor(params.Identity.Kind)
+	if err != nil {
+		return nil, err
+	}
+	if params.Identity.Kind != ca.kind {
+		return nil, fmt.Errorf("pki: %s CA cannot issue a %s certificate", ca.kind, params.Identity.Kind)
+	}
+	if params.Identity.ID == "" {
+		return nil, errors.New("pki: leaf identity requires an id")
+	}
+	if !params.NotAfter.After(params.now()) {
+		return nil, errors.New("pki: leaf notAfter must be in the future")
+	}
+	serial, err := newSerial()
+	if err != nil {
+		return nil, err
+	}
+	now := params.now()
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName:   params.Identity.String(),
+			Organization: []string{"JAWAKER"},
+		},
+		NotBefore: now.Add(-notBeforeSkew),
+		NotAfter:  params.NotAfter,
+		KeyUsage:  x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		DNSNames: []string{dnsName},
+		URIs:     []*url.URL{params.Identity.URI()},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca.cert, publicKey, ca.key)
+	if err != nil {
+		return nil, fmt.Errorf("pki: sign certificate for supplied key: %w", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, fmt.Errorf("pki: reparse leaf certificate: %w", err)
+	}
+	return &Leaf{
+		cert:    cert,
+		key:     nil,
+		certPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+	}, nil
+}
+
 // Cert exposes the leaf certificate. Public material.
 func (l *Leaf) Cert() *x509.Certificate { return l.cert }
 
@@ -561,6 +638,59 @@ func DecodeCertPEM(s string) (*x509.Certificate, error) {
 	return cert, nil
 }
 
+// DecodePublicKeyPEM parses a PEM stream containing exactly one PUBLIC KEY.
+//
+// It exists for node enrollment, where the node sends the public half of a key
+// pair it generated locally. The refusals are strict rather than forgiving:
+//
+//   - a private key block is rejected. A node that sent one has broken the
+//     property the whole flow exists to establish, and accepting it silently
+//     would hide that from the operator;
+//   - a certificate is rejected, because a certificate is not a bare public key
+//     and accepting it would mean trusting a chain nobody verified;
+//   - anything after the first key block is rejected. Extra material in a
+//     credential request is never benign enough to ignore;
+//   - the key must be one the CA can actually sign for. RSA and ECDSA are both
+//     accepted since the check is "parseable PKIX public key", not "a curve I
+//     happen to use".
+func DecodePublicKeyPEM(s string) (crypto.PublicKey, error) {
+	rest := []byte(s)
+	var parsed crypto.PublicKey
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		switch block.Type {
+		case "PUBLIC KEY":
+			if parsed != nil {
+				return nil, fmt.Errorf("%w: stream contains more than one public key", ErrMalformed)
+			}
+			key, err := x509.ParsePKIXPublicKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("%w: parse public key: %v", ErrMalformed, err)
+			}
+			parsed = key
+		case "CERTIFICATE":
+			return nil, fmt.Errorf("%w: stream contains a certificate, expected a public key", ErrMalformed)
+		case "PRIVATE KEY", "EC PRIVATE KEY", "RSA PRIVATE KEY":
+			return nil, fmt.Errorf("%w: stream contains a private key", ErrMalformed)
+		default:
+			return nil, fmt.Errorf("%w: unexpected PEM block %q", ErrMalformed, block.Type)
+		}
+	}
+	if parsed == nil {
+		return nil, fmt.Errorf("%w: stream contains no public key", ErrMalformed)
+	}
+	// Non-PEM trailing material is refused for the same reason a second key is:
+	// the caller asked for a public key and got a public key plus something else.
+	if trailing := bytes.TrimSpace(rest); len(trailing) > 0 {
+		return nil, fmt.Errorf("%w: %d bytes follow the public key", ErrMalformed, len(trailing))
+	}
+	return parsed, nil
+}
+
 // splitPair separates a PEM stream into its certificate bytes and, if present,
 // its private key block.
 func splitPair(s string) (certPEM []byte, keyBlock *pem.Block, err error) {
@@ -700,4 +830,18 @@ func IdentityOf(cert *x509.Certificate) (Identity, error) {
 		return Identity{}, fmt.Errorf("%w: nil certificate", ErrMalformed)
 	}
 	return identityOf(cert)
+}
+
+// SerialHexOf renders a certificate's serial in the lowercase-hex form the
+// control plane stores, so a revocation check can compare the two directly.
+//
+// The function is exported rather than re-implemented at the call site for the
+// same reason the enrollment-token digest lives in secureid: a canonical form
+// with two definitions will eventually drift, and the drift shows up as a
+// revocation that silently never matches.
+func SerialHexOf(cert *x509.Certificate) (string, error) {
+	if cert == nil {
+		return "", fmt.Errorf("%w: nil certificate", ErrMalformed)
+	}
+	return serialHex(cert.SerialNumber), nil
 }

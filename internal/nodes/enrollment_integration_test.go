@@ -3,7 +3,14 @@
 package nodes
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -22,13 +29,61 @@ func makeToken(t *testing.T, h *harness, name string) string {
 	return plaintext
 }
 
+// testNodeKey generates a node key pair and returns BOTH halves.
+//
+// Tests need the private half for the same reason a node does: to pair it with
+// the certificate the controller issues. The controller never sees it, which is
+// the property under test.
+func testNodeKey(t *testing.T) (*ecdsa.PrivateKey, crypto.PublicKey) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate node key: %v", err)
+	}
+	return key, key.Public()
+}
+
+// privateKeyPEM encodes a node key the way the agent's state directory holds it.
+func privateKeyPEM(t *testing.T, key *ecdsa.PrivateKey) string {
+	t.Helper()
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal node key: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
+// redeemWith exercises Redeem with a caller-chosen authority and a fresh node
+// key, mirroring what an agent does.
+func redeemWith(t *testing.T, h *harness, auth *Authority, token string, publicKey crypto.PublicKey) (EnrollmentResult, error) {
+	t.Helper()
+	return h.store.Redeem(h.ctx, auth, RedeemRequest{
+		Token:        token,
+		PublicKey:    publicKey,
+		NodeAddress:  "127.0.0.1:9443",
+		AgentVersion: "test-agent-1.0.0",
+		OSFamily:     "linux",
+		OSVersion:    "test-distro 1",
+	})
+}
+
+// redeemToken redeems against the harness's own authority, generating the node
+// key inline. It is the stand-in for the twenty-odd call sites that care about
+// the token's fate and not about the key material.
+func redeemToken(t *testing.T, h *harness, token string) (EnrollmentResult, error) {
+	t.Helper()
+	_, publicKey := testNodeKey(t)
+	return redeemWith(t, h, h.auth, token, publicKey)
+}
+
 // --- the happy path -----------------------------------------------------------
 
 func TestRedeemIssuesIdentityAndCertificate(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "web-01")
+	nodeKey, publicKey := testNodeKey(t)
 
-	result, err := h.store.Redeem(h.ctx, h.auth, token)
+	result, err := redeemWith(t, h, h.auth, token, publicKey)
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
@@ -48,11 +103,20 @@ func TestRedeemIssuesIdentityAndCertificate(t *testing.T) {
 		t.Errorf("node URI = %q, want the server's identity", result.NodeURI)
 	}
 
-	// The issued certificate must actually chain to the NODE root and carry the
-	// right identity — not merely be well-formed.
-	leaf, err := pki.DecodeLeaf(string(result.CertPEM) + string(result.KeyPEM))
+	// THE PROPERTY THIS TEST EXISTS FOR: the controller returned a certificate
+	// and no key material. EnrollmentResult has no private-key field at all, so
+	// this is structural rather than a value check — but the pairing below proves
+	// the certificate is for the key the NODE generated, not one the controller
+	// made up.
+	if result.CertPEM == nil || len(result.CertPEM) == 0 {
+		t.Fatal("no certificate was issued")
+	}
+	leaf, err := pki.DecodeLeaf(string(result.CertPEM) + privateKeyPEM(t, nodeKey))
 	if err != nil {
-		t.Fatalf("DecodeLeaf: %v", err)
+		t.Fatalf("issued certificate does not pair with the node's own key: %v", err)
+	}
+	if !leaf.HasPrivateKey() {
+		t.Error("the decoded leaf has no private key; the test key did not round-trip")
 	}
 	id, err := leaf.Identity()
 	if err != nil {
@@ -71,6 +135,103 @@ func TestRedeemIssuesIdentityAndCertificate(t *testing.T) {
 	if leaf.SerialHex() != result.Serial {
 		t.Errorf("serial = %q, want %q", leaf.SerialHex(), result.Serial)
 	}
+	if result.Fingerprint == "" {
+		t.Error("the enrollment result carries no certificate fingerprint")
+	}
+}
+
+// Enrollment must record what the agent reported about itself. The columns
+// existed before this and were never populated, so a server row was "active" with
+// no address to dial and no idea what ran on it.
+func TestRedeemRecordsHostFacts(t *testing.T) {
+	h := newHarness(t)
+	token := makeToken(t, h, "facts-01")
+	_, publicKey := testNodeKey(t)
+
+	result, err := h.store.Redeem(h.ctx, h.auth, RedeemRequest{
+		Token:        token,
+		PublicKey:    publicKey,
+		NodeAddress:  "10.1.2.3:9443",
+		AgentVersion: "jawaker-agent 2.4.1",
+		OSFamily:     "debian",
+		OSVersion:    "12.7",
+	})
+	if err != nil {
+		t.Fatalf("Redeem: %v", err)
+	}
+	if result.Server.Address != "10.1.2.3:9443" {
+		t.Errorf("address = %q, want 10.1.2.3:9443", result.Server.Address)
+	}
+	if result.Server.AgentVersion != "jawaker-agent 2.4.1" {
+		t.Errorf("agent version = %q, want jawaker-agent 2.4.1", result.Server.AgentVersion)
+	}
+	if result.Server.OSFamily != "debian" || result.Server.OSVersion != "12.7" {
+		t.Errorf("os = %q/%q, want debian/12.7", result.Server.OSFamily, result.Server.OSVersion)
+	}
+
+	// And it survives the round trip through the database, so the columns were
+	// written and not merely set on the returned struct.
+	stored, err := h.store.GetServer(h.ctx, result.Server.ID)
+	if err != nil {
+		t.Fatalf("GetServer: %v", err)
+	}
+	if stored.Address != "10.1.2.3:9443" || stored.OSFamily != "debian" {
+		t.Errorf("stored server = %+v, want the reported facts", stored)
+	}
+}
+
+// The address the controller will later dial is a trust-boundary value, so it is
+// validated here rather than left to net.Dial discovering something odd at
+// connection time.
+func TestRedeemRefusesBadNodeAddress(t *testing.T) {
+	h := newHarness(t)
+	for i, address := range []string{
+		"",                     // nothing to dial
+		"   ",                  // whitespace only
+		"localhost",            // no port
+		":9443",                // no host
+		"http://10.0.0.1:9443", // a URL is not an address
+		"10.0.0.1:9443:extra",  // ambiguous about where the port begins
+		"10.0.0.1:9443",        // valid: the control case below
+	} {
+		// The server name comes from the TOKEN and must be a valid name, so it
+		// cannot be derived from the address under test — that would fail CreateToken
+		// first and the test would pass for the wrong reason.
+		token := makeToken(t, h, fmt.Sprintf("addr-%02d", i))
+		_, publicKey := testNodeKey(t)
+		_, err := h.store.Redeem(h.ctx, h.auth, RedeemRequest{
+			Token:        token,
+			PublicKey:    publicKey,
+			NodeAddress:  address,
+			AgentVersion: "test",
+		})
+		wantValid := address == "10.0.0.1:9443"
+		if wantValid && err != nil {
+			t.Errorf("Redeem(address=%q) = %v, want success", address, err)
+			continue
+		}
+		if !wantValid && !errors.Is(err, ErrInvalid) {
+			t.Errorf("Redeem(address=%q) error = %v, want ErrInvalid", address, err)
+		}
+	}
+}
+
+// A nil public key is refused before any database work: enrollment without a key
+// would create a server row that can never authenticate.
+func TestRedeemRefusesMissingPublicKey(t *testing.T) {
+	h := newHarness(t)
+	token := makeToken(t, h, "nokey-01")
+	_, err := h.store.Redeem(h.ctx, h.auth, RedeemRequest{
+		Token:       token,
+		NodeAddress: "127.0.0.1:9443",
+	})
+	if !errors.Is(err, ErrInvalid) {
+		t.Errorf("error = %v, want ErrInvalid", err)
+	}
+	// The token must still be usable, since nothing was claimed.
+	if _, err := redeemToken(t, h, token); err != nil {
+		t.Errorf("the token was consumed by the refused attempt: %v", err)
+	}
 }
 
 // --- single-use ---------------------------------------------------------------
@@ -81,10 +242,10 @@ func TestRedeemRefusesReusedToken(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "web-02")
 
-	if _, err := h.store.Redeem(h.ctx, h.auth, token); err != nil {
+	if _, err := redeemToken(t, h, token); err != nil {
 		t.Fatalf("first redemption: %v", err)
 	}
-	_, err := h.store.Redeem(h.ctx, h.auth, token)
+	_, err := redeemToken(t, h, token)
 	if err == nil {
 		t.Fatal("second redemption of the same token succeeded, want refusal")
 	}
@@ -118,7 +279,7 @@ func TestRedeemIsSingleUseUnderConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := h.store.Redeem(h.ctx, h.auth, token)
+			_, err := redeemToken(t, h, token)
 			results <- err
 		}()
 	}
@@ -164,7 +325,7 @@ func TestRedeemRefusesExpiredToken(t *testing.T) {
 
 	h.clock.advance(TokenLifetime + time.Minute)
 
-	_, err := h.store.Redeem(h.ctx, h.auth, token)
+	_, err := redeemToken(t, h, token)
 	if err == nil {
 		t.Fatal("an expired token was redeemed, want refusal")
 	}
@@ -181,7 +342,7 @@ func TestRedeemAcceptsTokenJustBeforeExpiry(t *testing.T) {
 
 	h.clock.advance(TokenLifetime - time.Second)
 
-	if _, err := h.store.Redeem(h.ctx, h.auth, token); err != nil {
+	if _, err := redeemToken(t, h, token); err != nil {
 		t.Fatalf("a token one second before expiry was refused: %v", err)
 	}
 }
@@ -197,7 +358,7 @@ func TestRedeemRefusesRevokedToken(t *testing.T) {
 	if err := h.store.RevokeToken(h.ctx, created.ID, ""); err != nil {
 		t.Fatalf("RevokeToken: %v", err)
 	}
-	if _, err := h.store.Redeem(h.ctx, h.auth, plaintext); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := redeemToken(t, h, plaintext); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("error = %v, want ErrTokenInvalid", err)
 	}
 }
@@ -210,7 +371,7 @@ func TestRevokeRefusesAlreadyUsedToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateToken: %v", err)
 	}
-	if _, err := h.store.Redeem(h.ctx, h.auth, plaintext); err != nil {
+	if _, err := redeemToken(t, h, plaintext); err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
 	if err := h.store.RevokeToken(h.ctx, created.ID, ""); !errors.Is(err, ErrNotFound) {
@@ -248,7 +409,8 @@ func TestRedeemRefusesTokenBoundToAnotherController(t *testing.T) {
 		clock:        h.clock.now,
 	}
 
-	_, err := h.store.Redeem(h.ctx, impostor, token)
+	_, publicKey := testNodeKey(t)
+	_, err := redeemWith(t, h, impostor, token, publicKey)
 	if err == nil {
 		t.Fatal("a token bound to another controller was redeemed, want refusal")
 	}
@@ -276,7 +438,7 @@ func TestRedeemRefusesTokenBoundToAnotherController(t *testing.T) {
 
 	// The genuine controller can still use it, which is the point of the
 	// rollback.
-	if _, err := h.store.Redeem(h.ctx, h.auth, token); err != nil {
+	if _, err := redeemToken(t, h, token); err != nil {
 		t.Errorf("the genuine controller could not redeem the token afterwards: %v", err)
 	}
 }
@@ -303,17 +465,17 @@ func TestRedeemRejectionIsIndistinguishable(t *testing.T) {
 	h := newHarness(t)
 
 	unknown := "jwenroll_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	_, errUnknown := h.store.Redeem(h.ctx, h.auth, unknown)
+	_, errUnknown := redeemToken(t, h, unknown)
 
 	expiredToken := makeToken(t, h, "web-07")
 	h.clock.advance(TokenLifetime + time.Minute)
-	_, errExpired := h.store.Redeem(h.ctx, h.auth, expiredToken)
+	_, errExpired := redeemToken(t, h, expiredToken)
 
 	usedToken := makeToken(t, h, "web-08")
-	if _, err := h.store.Redeem(h.ctx, h.auth, usedToken); err != nil {
+	if _, err := redeemToken(t, h, usedToken); err != nil {
 		t.Fatalf("setup redemption: %v", err)
 	}
-	_, errUsed := h.store.Redeem(h.ctx, h.auth, usedToken)
+	_, errUsed := redeemToken(t, h, usedToken)
 
 	for name, err := range map[string]error{
 		"unknown": errUnknown,
@@ -337,7 +499,7 @@ func TestRedeemRejectionIsIndistinguishable(t *testing.T) {
 func TestRedeemRefusesMalformedToken(t *testing.T) {
 	h := newHarness(t)
 	for _, bad := range []string{"", "   ", "not-a-token", "jwenroll_", "jwsess_abcdefghijklmnop"} {
-		if _, err := h.store.Redeem(h.ctx, h.auth, bad); !errors.Is(err, ErrTokenInvalid) {
+		if _, err := redeemToken(t, h, bad); !errors.Is(err, ErrTokenInvalid) {
 			t.Errorf("Redeem(%q) error = %v, want ErrTokenInvalid", bad, err)
 		}
 	}
@@ -351,12 +513,12 @@ func TestRedeemRefusesMalformedToken(t *testing.T) {
 func TestDuplicateServerNameIsRefused(t *testing.T) {
 	h := newHarness(t)
 	first := makeToken(t, h, "dup-host")
-	if _, err := h.store.Redeem(h.ctx, h.auth, first); err != nil {
+	if _, err := redeemToken(t, h, first); err != nil {
 		t.Fatalf("first redemption: %v", err)
 	}
 
 	second := makeToken(t, h, "dup-host")
-	_, err := h.store.Redeem(h.ctx, h.auth, second)
+	_, err := redeemToken(t, h, second)
 	if err == nil {
 		t.Fatal("two servers were created with the same name, want refusal")
 	}
@@ -470,7 +632,7 @@ func TestListTokensExposesNoSecret(t *testing.T) {
 func TestRevokeCertificateTakesEffectImmediately(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "revoke-01")
-	result, err := h.store.Redeem(h.ctx, h.auth, token)
+	result, err := redeemToken(t, h, token)
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
@@ -530,7 +692,7 @@ func TestIsRevokedForUnknownSerial(t *testing.T) {
 func TestActiveCertificateAfterRevocation(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "active-cert")
-	result, err := h.store.Redeem(h.ctx, h.auth, token)
+	result, err := redeemToken(t, h, token)
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
@@ -557,7 +719,7 @@ func TestServerListFiltersAndPaginates(t *testing.T) {
 	h := newHarness(t)
 	for _, name := range []string{"list-a", "list-b", "list-c"} {
 		token := makeToken(t, h, name)
-		if _, err := h.store.Redeem(h.ctx, h.auth, token); err != nil {
+		if _, err := redeemToken(t, h, token); err != nil {
 			t.Fatalf("Redeem(%s): %v", name, err)
 		}
 	}
@@ -605,7 +767,7 @@ func TestServerListFiltersAndPaginates(t *testing.T) {
 func TestGetServerHidesTombstoned(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "gone-01")
-	result, err := h.store.Redeem(h.ctx, h.auth, token)
+	result, err := redeemToken(t, h, token)
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
@@ -620,7 +782,7 @@ func TestGetServerHidesTombstoned(t *testing.T) {
 func TestSetStatusRejectsUnknownStatus(t *testing.T) {
 	h := newHarness(t)
 	token := makeToken(t, h, "status-01")
-	result, err := h.store.Redeem(h.ctx, h.auth, token)
+	result, err := redeemToken(t, h, token)
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
