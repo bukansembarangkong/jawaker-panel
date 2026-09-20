@@ -52,6 +52,19 @@ export function isUnauthenticated(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401;
 }
 
+/**
+ * True when the caller could perform this action but must re-authenticate first.
+ *
+ * The server distinguishes this from a plain refusal with the
+ * `step_up_required` code (API.md s8), and the distinction is the whole reason
+ * the code exists: a bare 403 must render as "denied", whereas this one must
+ * render as a password prompt. Branching on the code rather than the status is
+ * what keeps those two paths from collapsing into one.
+ */
+export function isStepUpRequired(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'step_up_required';
+}
+
 function newCorrelationId(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
@@ -211,6 +224,68 @@ export interface DisableResult {
   sessions_revoked: number;
 }
 
+/**
+ * One managed server, as the API describes it.
+ *
+ * The field names mirror the server's own spelling rather than a preferred
+ * local style, so a reader can diff a response against this type without a
+ * translation table.
+ */
+export interface Server {
+  id: string;
+  name: string;
+  description: string;
+  address: string;
+  /** pending | active | suspended | deleted */
+  status: string;
+  /** none | active | expiring | expired | revoked */
+  cert_status: string;
+  os_family: string;
+  os_version: string;
+  agent_version: string;
+  created_at: string;
+  last_seen_at?: string;
+  enrolled_at?: string;
+}
+
+export interface ServerPage {
+  servers: Server[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface EnrollmentToken {
+  id: string;
+  node_name: string;
+  expires_at: string;
+  created_at: string;
+  used_at: string | null;
+  revoked_at: string | null;
+  /** live | used | expired | revoked — derived server-side from the clock. */
+  state: string;
+}
+
+/**
+ * A freshly minted token. The plaintext exists in this response and nowhere
+ * else: it is never stored, and the list endpoint cannot reveal it.
+ */
+export interface IssuedEnrollmentToken {
+  token: string;
+  id: string;
+  node_name: string;
+  expires_at: string;
+  controller_fingerprint: string;
+  notice: string;
+}
+
+export interface ElevateResult {
+  elevated: boolean;
+  elevated_until: string;
+  ttl_seconds: number;
+}
+
 export const api = {
   getVersion: (): Promise<VersionInfo> => request<VersionInfo>('/api/v1/version'),
   getHealth: (): Promise<HealthInfo> => request<HealthInfo>('/healthz'),
@@ -245,6 +320,42 @@ export const api = {
   },
 
   getSession: (): Promise<AuthSession> => request<AuthSession>('/api/v1/auth/session'),
+
+  /**
+   * Exchanges a fresh password (and a second factor, when enrolled) for a
+   * short-lived elevation window on this session.
+   *
+   * The window is what the step-up-gated permissions need; without it they
+   * refuse every caller. The password is not retained anywhere — it is passed
+   * straight through and dropped.
+   */
+  elevate: (password: string, totpCode?: string): Promise<ElevateResult> =>
+    request<ElevateResult>('/api/v1/auth/elevate', {
+      method: 'POST',
+      body: totpCode ? { password, totp_code: totpCode } : { password },
+    }),
+
+  listServers: (): Promise<ServerPage> => request<ServerPage>('/api/v1/servers'),
+
+  getServer: (id: string): Promise<{ server: Server }> =>
+    request<{ server: Server }>(`/api/v1/servers/${encodeURIComponent(id)}`),
+
+  deleteServer: (id: string): Promise<{ status: string }> =>
+    request<{ status: string }>(`/api/v1/servers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  listEnrollmentTokens: (): Promise<{ tokens: EnrollmentToken[] }> =>
+    request<{ tokens: EnrollmentToken[] }>('/api/v1/servers/enrollment-tokens'),
+
+  createEnrollmentToken: (nodeName: string): Promise<IssuedEnrollmentToken> =>
+    request<IssuedEnrollmentToken>('/api/v1/servers/enrollment-tokens', {
+      method: 'POST',
+      body: { node_name: nodeName },
+    }),
+
+  revokeEnrollmentToken: (id: string): Promise<{ status: string }> =>
+    request<{ status: string }>(`/api/v1/servers/enrollment-tokens/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 
   mfaStatus: (): Promise<MFAStatus> => request<MFAStatus>('/api/v1/auth/mfa'),
 
