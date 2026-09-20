@@ -301,6 +301,21 @@ type LeafParams struct {
 	Identity Identity
 	// NotAfter bounds the leaf's validity. Leaves are short-lived by policy.
 	NotAfter time.Time
+	// Now supplies the clock used for the notBefore skew and for the
+	// future-validity check. Nil means time.Now.
+	//
+	// It is a parameter rather than an internal time.Now call because the caller
+	// that decides NotAfter must be the same clock that validates it. A component
+	// with an injected clock would otherwise fail its own issuance, and the
+	// failure ("notAfter must be in the future") would name the wrong cause.
+	Now func() time.Time
+}
+
+func (p LeafParams) now() time.Time {
+	if p.Now != nil {
+		return p.Now()
+	}
+	return time.Now()
 }
 
 // Leaf is an issued certificate plus its private key.
@@ -332,7 +347,7 @@ func (ca *CA) IssueLeaf(params LeafParams) (*Leaf, error) {
 	if params.Identity.ID == "" {
 		return nil, errors.New("pki: leaf identity requires an id")
 	}
-	if !params.NotAfter.After(time.Now()) {
+	if !params.NotAfter.After(params.now()) {
 		return nil, errors.New("pki: leaf notAfter must be in the future")
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -343,7 +358,7 @@ func (ca *CA) IssueLeaf(params LeafParams) (*Leaf, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
+	now := params.now()
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{

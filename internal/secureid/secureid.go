@@ -44,7 +44,47 @@ func EnrollmentToken() (token string, tokenHash []byte, err error) {
 		return "", nil, err
 	}
 	// Prefix aids log correlation and prevents confusion with other tokens.
-	return "jwenroll_" + encodeToken(raw), HashToken(raw), nil
+	return enrollmentTokenPrefix + encodeToken(raw), HashToken(raw), nil
+}
+
+// enrollmentTokenPrefix is the readable part of an enrollment token. Exported
+// through EnrollmentTokenPrefix so a consumer validating the token's SHAPE does
+// not have to repeat the literal and drift from it.
+const enrollmentTokenPrefix = "jwenroll_"
+
+// EnrollmentTokenPrefix is the non-secret prefix of an enrollment token.
+func EnrollmentTokenPrefix() string { return enrollmentTokenPrefix }
+
+// HashEnrollmentToken returns the stored digest for a PRESENTED enrollment
+// token, which is the form a node submits.
+//
+// It lives here, beside the generator, for one reason: the digest must be
+// computed over the same bytes the generator hashed. Computing it anywhere else
+// means two definitions of the canonical form that can silently drift, which is
+// exactly the bug that made recovery codes unredeemable in Phase 1 — generation
+// hashed one form and lookup hashed another, so every valid code was refused.
+// Keeping both halves in one file makes that class of defect impossible to
+// reintroduce without deleting this function.
+func HashEnrollmentToken(token string) ([]byte, error) {
+	trimmed := strings.TrimSpace(token)
+	body, ok := strings.CutPrefix(trimmed, enrollmentTokenPrefix)
+	if !ok {
+		return nil, fmt.Errorf("secureid: token does not start with %s", enrollmentTokenPrefix)
+	}
+	if body == "" {
+		return nil, errors.New("secureid: enrollment token has no body")
+	}
+	// The digest is over the DECODED entropy, matching what EnrollmentToken
+	// stored. Hashing the encoded text would produce a different value and every
+	// lookup would miss.
+	raw, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		return nil, fmt.Errorf("secureid: decode enrollment token: %w", err)
+	}
+	if len(raw) != enrollmentBytes {
+		return nil, fmt.Errorf("secureid: enrollment token body is %d bytes, expected %d", len(raw), enrollmentBytes)
+	}
+	return HashToken(raw), nil
 }
 
 // APIToken returns a personal/service API token with a readable prefix.
