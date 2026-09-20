@@ -83,7 +83,7 @@ func TestValidateWebConfigAcceptsAValidCandidate(t *testing.T) {
 
 func TestValidateWebConfigReportsAnInvalidCandidateWithoutFailing(t *testing.T) {
 	// A web server that rejects, as nginx -t does for a bad configuration.
-	e, staging := newWebExecutors(t, `echo "nginx: [emerg] unexpected end of file"; exit 1`)
+	e, staging := newWebExecutors(t, `echo "nginx: [emerg] unexpected end of file" >&2; exit 1`)
 
 	out, err := e.ValidateWebConfig(context.Background(), nodewire.WebConfigValidateInput{
 		Config:   "server { this is not valid",
@@ -256,9 +256,9 @@ func TestValidateWebConfigStagesWithRestrictiveMode(t *testing.T) {
 		t.Fatalf("mkdir staging: %v", err)
 	}
 	// The fake inspects the mode of the file it was handed and echoes it to
-	// stdout, which the executor captures into Output on success. $2 is the -c
-	// argument, i.e. the staged candidate path.
-	bin := fakeNginx(t, dir, `stat -c %a "$2"; exit 0`)
+	// stdout, which the executor captures into Output on success. $3 is the
+	// staged candidate path (argv is [-t, -c, <staged>]).
+	bin := fakeNginx(t, dir, `stat -c %a "$3"; exit 0`)
 	e := NewExecutors(ExecutorOptions{NginxPath: bin, StagingDir: staging})
 
 	out, err := e.ValidateWebConfig(context.Background(), nodewire.WebConfigValidateInput{
@@ -301,7 +301,7 @@ func TestValidateWebConfigAlwaysRemovesTheStagedFile(t *testing.T) {
 // the wrong outcome.
 func TestValidateWebConfigFlagsTruncatedOutput(t *testing.T) {
 	// A web server that writes far more than the bound and then rejects.
-	e, staging := newWebExecutors(t, `i=0; while [ $i -lt 400 ]; do echo "error line $i padding padding padding"; i=$((i+1)); done; exit 1`)
+	e, staging := newWebExecutors(t, `i=0; while [ $i -lt 400 ]; do echo "error line $i padding padding padding" >&2; i=$((i+1)); done; exit 1`)
 
 	out, err := e.ValidateWebConfig(context.Background(), nodewire.WebConfigValidateInput{
 		Config: "server {}", Filename: "big.conf",
