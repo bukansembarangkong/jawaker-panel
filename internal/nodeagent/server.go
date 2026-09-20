@@ -146,6 +146,14 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 	if e.webServer.Available() && supportedOS() {
 		served[nodewire.OpWebConfigValidate] = true
 	}
+	// site.logs.tail is available on any Linux node. It does NOT require nginx
+	// to be installed or running: a node may have logs from a prior nginx
+	// installation, and the operation reads a file — it does not talk to the
+	// web server process. The gate is only the OS, matching the descriptor's
+	// OSSupport declaration.
+	if supportedOS() {
+		served[nodewire.OpSiteLogsTail] = true
+	}
 	return served
 }
 
@@ -427,6 +435,25 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			}
 		}
 		result, err := a.exec.ValidateWebConfig(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSiteLogsTail:
+		in, err := nodewire.DecodeInput[nodewire.SiteLogsTailInput](req)
+		if err != nil {
+			return nil, err
+		}
+		// Validate early so a malformed slug is refused with CodeInvalidInput
+		// before the executor opens a file path derived from it.
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{
+				Code:    nodewire.CodeInvalidInput,
+				Message: err.Error(),
+			}
+		}
+		result, err := a.exec.SiteLogs(ctx, in)
 		if err != nil {
 			return nil, err
 		}

@@ -97,6 +97,7 @@ func (h *SiteHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/projects/{project_id}/sites/{id}", h.handleDeleteSite)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/sites/{id}/validate", h.handleValidateConfig)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/sites/{id}/apply", h.handleApplyConfig)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/sites/{id}/logs", h.handleReadLogs)
 }
 
 // --- CRUD -------------------------------------------------------------------
@@ -471,6 +472,111 @@ func (h *SiteHandlers) handleApplyConfig(w http.ResponseWriter, r *http.Request)
 					"id":    job.ID,
 					"state": job.State,
 				},
+				"request_id": reqID,
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleReadLogs serves GET /api/v1/projects/{project_id}/sites/{id}/logs.
+//
+// Per D-005: log content is read from the node on demand and never stored in
+// PostgreSQL. Per D-006: this route uses the project-scoped site.logs.read
+// permission rather than the server-scoped logs.read.
+func (h *SiteHandlers) handleReadLogs(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "site.logs.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Cross-project 404 guard runs FIRST: GetInProject returns ErrNotFound
+			// for a site in a different project.
+			site, err := h.sites.GetInProject(r.Context(), projectID, id)
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+
+			// Validate query parameters before checking the dispatcher, so a
+			// client error returns 400 Bad Request rather than masking it
+			// behind a 503 Service Unavailable.
+			logType := r.URL.Query().Get("type")
+			if logType == "" {
+				logType = nodewire.LogTypeAccess
+			}
+			if logType != nodewire.LogTypeAccess && logType != nodewire.LogTypeError {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(
+					"type must be \"access\" or \"error\".",
+					map[string]any{"field": "type"}))
+				return
+			}
+
+			lines := nodewire.DefaultSiteLogsTailLines
+			if raw := r.URL.Query().Get("lines"); raw != "" {
+				n, parseErr := strconv.Atoi(raw)
+				if parseErr != nil || n < 1 {
+					httpserver.WriteError(w, r, apierr.InvalidRequest("lines must be a positive integer.", map[string]any{"field": "lines"}))
+					return
+				}
+				if n > nodewire.MaxSiteLogsTailLines {
+					httpserver.WriteError(w, r, apierr.InvalidRequest("lines exceeds the maximum.", map[string]any{
+						"field": "lines",
+						"max":   nodewire.MaxSiteLogsTailLines,
+					}))
+					return
+				}
+				lines = n
+			}
+
+			if h.dispatcher == nil {
+				httpserver.WriteError(w, r, apierr.ServiceUnavailable("Node dispatcher is not available on this controller."))
+				return
+			}
+
+			// Obtain the project slug to construct the node path. We read it
+			// from the pool rather than caching it in SiteHandlers to keep the
+			// struct dependency-free.
+			var projectSlug string
+			if scanErr := h.pool.QueryRow(r.Context(),
+				`SELECT slug FROM projects WHERE id = $1 AND deleted_at IS NULL`,
+				projectID).Scan(&projectSlug); scanErr != nil {
+				httpserver.WriteError(w, r, apierr.Internal(scanErr))
+				return
+			}
+
+			reqID := httpserver.RequestIDFromRequest(r)
+			result, readErr := h.dispatcher.ReadSiteLogs(r.Context(), site.ServerID, reqID, nodewire.SiteLogsTailInput{
+				ProjectSlug: projectSlug,
+				SiteSlug:    site.Slug,
+				LogType:     logType,
+				Lines:       lines,
+			})
+			if readErr != nil {
+				var opErr *nodes.NodeOperationError
+				if errors.As(readErr, &opErr) && opErr.Unsupported() {
+					httpserver.WriteError(w, r, apierr.ServiceUnavailable("Log reading is not supported on this host."))
+					return
+				}
+				httpserver.WriteError(w, r, apierr.Internal(readErr))
+				return
+			}
+
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "site.logs.read",
+				ResourceType: "site",
+				ResourceID:   site.ID,
+				Result:       audit.ResultSuccess,
+				Context: map[string]any{
+					"log_type": logType,
+					"lines":    lines,
+				},
+			})
+
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"site_id":    site.ID,
+				"log_type":   result.LogType,
+				"lines":      result.Lines,
+				"truncated":  result.Truncated,
 				"request_id": reqID,
 			})
 		})).ServeHTTP(w, r)

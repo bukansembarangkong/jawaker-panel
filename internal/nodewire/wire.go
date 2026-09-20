@@ -76,6 +76,12 @@ const (
 	// configuration is never touched. That distinction is the whole safety
 	// story of this operation: it cannot break a running site.
 	OpWebConfigValidate Operation = "web.config.validate" //nolint:gosec // G101: an operation wire name, not a credential
+	// OpSiteLogsTail returns a bounded tail of one site's access or error log,
+	// read from the node on demand. Per docs/decisions.md D-005 no log content is
+	// ever copied into the control-plane database; this is a read-through to the
+	// host that serves the site. It is read-only and touches no subprocess: the
+	// agent opens a confined path and reads its final bytes.
+	OpSiteLogsTail Operation = "site.logs.tail" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
