@@ -45,7 +45,14 @@ func decodeJSONStrict(raw []byte, dst any) error {
 // one filesystem and is therefore atomic. Creating it elsewhere (the system temp
 // directory, say) would make the rename a copy across devices, which is neither
 // atomic nor necessarily permitted.
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+//
+// mode is a parameter, not a constant: this is a general atomic-write primitive
+// (analogous to os.WriteFile), and what mode is correct is the CALLER's policy
+// — 0600 for key material, and it would be wrong for the primitive to decide
+// that for every file it will ever be asked to write. unparam flags it only
+// because today's callers happen to agree on 0600; that agreement is a property
+// of the call sites, not a reason to fold the decision into the primitive.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error { //nolint:unparam // mode is caller policy; every current caller uses 0600 but that is not the primitive's decision to make
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {

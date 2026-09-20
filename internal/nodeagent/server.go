@@ -139,6 +139,13 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpServiceInspect] = true
 		served[nodewire.OpServiceRestart] = true
 	}
+	// web.config.validate requires a detected web server AND the staging
+	// directory it stages candidates in. Advertising it from the binary alone
+	// would offer an operator a check that always fails, which is precisely what
+	// the systemd gate above exists to avoid.
+	if e.webServer.Available() && supportedOS() {
+		served[nodewire.OpWebConfigValidate] = true
+	}
 	return served
 }
 
@@ -404,10 +411,33 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 		}
 		return nodewire.EncodeResult(result)
 
+	case nodewire.OpWebConfigValidate:
+		in, err := nodewire.DecodeInput[nodewire.WebConfigValidateInput](req)
+		if err != nil {
+			return nil, err
+		}
+		// Validate is called by the executor as well. Doing it here too is not
+		// belt-and-braces for its own sake: DecodeInput is generic and cannot
+		// know a payload's rules, and the dispatch switch is where a reviewer
+		// looks to see what an operation does before it runs.
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{
+				Code:    nodewire.CodeInvalidInput,
+				Message: err.Error(),
+			}
+		}
+		result, err := a.exec.ValidateWebConfig(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
 	default:
 		// Unreachable: DecodeRequest already refused anything not in served, and
-		// served only ever contains the four cases above. Reaching here means the
-		// two lists drifted, which must be loud rather than silent.
+		// served only ever contains operations this switch handles. Reaching
+		// here means the two lists drifted, which must be loud rather than
+		// silent. The check that they have not is TestDispatchHandlesEveryServed
+		// Operation, which compares the switch's cases against the served set.
 		return nil, &nodewire.Error{
 			Code:    nodewire.CodeUnsupportedOperation,
 			Message: fmt.Sprintf("operation %q reached dispatch without being served", req.Operation),

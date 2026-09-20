@@ -52,6 +52,10 @@ type Executors struct {
 	// absence of an error: an agent that took an action during a controller outage
 	// is the failure the whole design exists to prevent.
 	spawns atomic.Int64
+	// webServer is the detected web server and staging directory, resolved once
+	// at startup for the same reason the systemd path is: the capability report
+	// and the refusal of web.config.validate must not disagree.
+	webServer WebServer
 }
 
 // ExecutorOptions configures detection.
@@ -63,6 +67,11 @@ type ExecutorOptions struct {
 	WorkloadCount func() int
 	// SystemctlPath overrides detection, for tests.
 	SystemctlPath string
+	// NginxPath overrides web-server detection, for tests.
+	NginxPath string
+	// StagingDir overrides where candidates are staged, for tests. It must
+	// already exist; detection reports the web server as unavailable otherwise.
+	StagingDir string
 }
 
 // NewExecutors detects what this node can do.
@@ -76,6 +85,11 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 		now:           now,
 		workloadCount: opts.WorkloadCount,
 	}
+	// Web-server detection happens here, BEFORE the systemd branch, because a
+	// host may well have nginx and no systemd. Detecting it after the early
+	// returns would make the web capability silently depend on an unrelated one.
+	e.webServer = detectWebServer(opts.NginxPath, opts.StagingDir)
+
 	path := opts.SystemctlPath
 	if path == "" {
 		var found bool
@@ -98,6 +112,12 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 
 // SystemctlPath reports the resolved binary, empty when systemd is unavailable.
 func (e *Executors) SystemctlPath() string { return e.systemctlPath }
+
+// WebServer reports the detected web server and its staging directory. It is
+// derived from the same detection the capability report reads, so an operation
+// and the inventory cannot disagree about whether this host can validate a
+// configuration.
+func (e *Executors) WebServer() WebServer { return e.webServer }
 
 // Spawns reports how many privileged commands this node has started. The outage
 // gate asserts this stays zero while the controller is unreachable, so "the agent
@@ -153,6 +173,36 @@ func (e *Executors) Capabilities() (nodewire.CapabilitiesResult, error) {
 		}
 		caps = append(caps, nodewire.Capability{
 			Kind: "init", Name: "systemd", State: nodewire.CapabilityUnsupported,
+			Detail: map[string]any{"reason": reason},
+		})
+	}
+
+	// web: a web server AND a staging directory are both required, because
+	// validation stages a candidate before asking the server about it. Reporting
+	// the capability from the binary alone would let a node advertise a check it
+	// cannot perform — the same defect the honest-advertisement rule for
+	// service.* exists to prevent.
+	if e.webServer.Available() {
+		caps = append(caps, nodewire.Capability{
+			Kind: "web", Name: "nginx", Version: e.webServer.Version,
+			State: nodewire.CapabilityAvailable,
+			Detail: map[string]any{
+				"binary":      e.webServer.Path,
+				"staging_dir": e.webServer.StagingDir,
+			},
+		})
+	} else {
+		// The reason names which half is missing, because the two have different
+		// remedies: install nginx, or provision the directory. The directory is
+		// not named here because on the failure path detection returned without
+		// recording it, and naming the default would be wrong for a node
+		// configured with a different one.
+		reason := "no web server was found on this host"
+		if e.webServer.Path != "" {
+			reason = "the staging directory for candidate configurations does not exist, so a candidate cannot be validated"
+		}
+		caps = append(caps, nodewire.Capability{
+			Kind: "web", Name: "nginx", State: nodewire.CapabilityUnsupported,
 			Detail: map[string]any{"reason": reason},
 		})
 	}

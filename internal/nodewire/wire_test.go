@@ -20,14 +20,15 @@ func TestRegistryIsWellFormed(t *testing.T) {
 	}
 }
 
-// Every declared Phase 2 operation must exist. Adding an operation means adding
-// it HERE too, so a rename cannot silently drop one.
-func TestRegistryContainsExactlyThePhase2Operations(t *testing.T) {
+// Every declared operation must exist. Adding an operation means adding it HERE
+// too, so a rename cannot silently drop one and an addition cannot be silent.
+func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 	want := []Operation{
 		OpNodeCapabilities,
 		OpNodeHeartbeat,
 		OpServiceInspect,
 		OpServiceRestart,
+		OpWebConfigValidate,
 	}
 	if len(Operations) != len(want) {
 		t.Errorf("registry has %d operations %v, want %d", len(Operations), Names(), len(want))
@@ -68,19 +69,32 @@ func TestRegistryHasNoGenericExecutionOperation(t *testing.T) {
 	}
 }
 
-// A mutating operation must name the units it may touch, and none of them may be
-// a wildcard — "restart anything" is generic execution with extra steps.
-func TestMutatingOperationsHaveExplicitServiceScope(t *testing.T) {
+// A mutating operation must name the resources it may touch, and none of them may
+// be a wildcard — "restart anything" is generic execution with extra steps.
+//
+// Phase 2 asserted this for SERVICE scope, because every mutating operation then
+// acted on a unit. Phase 3 adds one that writes a file, so the requirement is
+// stated in terms of scope generally: a mutation must reach some declared
+// resource, whichever kind. The checks that matter are unchanged — no wildcards,
+// no retries on a non-idempotent mutation, and a declared rollback — because those
+// are what stop a mutating operation from being reviewed as one thing and acting
+// as another.
+func TestMutatingOperationsDeclareBoundedScope(t *testing.T) {
 	for op, desc := range Operations {
 		if !desc.Mutating {
 			continue
 		}
-		if len(desc.Scope.Services) == 0 {
-			t.Errorf("mutating operation %q declares no service scope", op)
+		if len(desc.Scope.Services) == 0 && len(desc.Scope.FilesystemWrite) == 0 {
+			t.Errorf("mutating operation %q declares neither a service nor a filesystem scope", op)
 		}
 		for _, unit := range desc.Scope.Services {
 			if unit == "*" || unit == "" || strings.Contains(unit, "*") {
 				t.Errorf("operation %q declares a wildcard unit %q", op, unit)
+			}
+		}
+		for _, path := range desc.Scope.FilesystemWrite {
+			if path == "/" || path == "" || strings.ContainsAny(path, "*?") {
+				t.Errorf("operation %q declares a wildcard write path %q", op, path)
 			}
 		}
 		// Non-idempotent side effects must not declare automatic retries; the
