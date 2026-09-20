@@ -13,8 +13,10 @@ LDFLAGS := -s -w \
 
 BIN_DIR := bin
 CONTROLLER := $(BIN_DIR)/jawaker-controller
+NODE_AGENT := $(BIN_DIR)/jawaker-node-agent
 
-.PHONY: help build build-controller test test-integration lint fmt vet vuln tidy \
+.PHONY: help build build-controller build-node-agent test test-integration lint fmt vet vuln tidy \
+	doctor doctor-node \
 	web-install web-dev web-test web-lint web-typecheck web-build \
 	db-up db-down migrate-up check clean
 
@@ -22,11 +24,21 @@ help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-build: build-controller web-build ## Build controller binary and web bundle
+build: build-controller build-node-agent web-build ## Build both binaries and the web bundle
 
 build-controller: ## Build the controller with injected version metadata
 	@mkdir -p $(BIN_DIR)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(CONTROLLER) ./cmd/controller
+
+build-node-agent: ## Build the node agent with injected version metadata
+	@mkdir -p $(BIN_DIR)
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(NODE_AGENT) ./cmd/node-agent
+
+doctor: ## Report the controller installation's condition
+	go run ./cmd/controller doctor
+
+doctor-node: ## Report this node agent's condition
+	go run ./cmd/node-agent doctor
 
 test: ## Run Go unit tests
 	go test ./...

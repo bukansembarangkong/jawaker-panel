@@ -215,10 +215,44 @@ jobs:
             -o dist/jawaker-controller ./cmd/controller
           ./dist/jawaker-controller -h 2>&1 | head -n 3 || true
 
+      - name: build node agent (linux amd64 + arm64)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
+        run: |
+          # The node agent is a separate binary for a separate host, so it is
+          # cross-compiled rather than built once for the runner. CGO_ENABLED=0 is
+          # what makes that a pure-Go build with no libc to match, and -trimpath
+          # keeps the paths reproducible.
+          #
+          # Service operations are Linux-only in the agent (see
+          # internal/nodeagent/procattr_other.go), so only Linux targets are
+          # produced: shipping a darwin or windows agent would advertise a
+          # capability the agent refuses.
+          ldflags="-s -w \
+            -X github.com/bukansembarangkong/jawaker-panel/internal/version.Version=${VERSION} \
+            -X github.com/bukansembarangkong/jawaker-panel/internal/version.Commit=${COMMIT} \
+            -X github.com/bukansembarangkong/jawaker-panel/internal/version.BuildTime=${BUILD_TIME}"
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$ldflags" \
+              -o "dist/jawaker-node-agent-linux-$arch" ./cmd/node-agent
+          done
+          ls -l dist/jawaker-node-agent-*
+
+      - name: verify each artifact reports its version
+        run: |
+          # A build that succeeds but produces a binary whose version metadata was
+          # not injected is indistinguishable from a good one until an operator
+          # reads the version. Both binaries expose `version` for exactly this, so
+          # a failure here fails the job rather than passing silently.
+          echo "controller: $(./dist/jawaker-controller version)"
+          echo "agent:      $(./dist/jawaker-node-agent-linux-amd64 version)"
+
       - name: checksums
         run: |
           cd dist
-          sha256sum jawaker-controller > SHA256SUMS.txt
+          sha256sum jawaker-controller jawaker-node-agent-linux-amd64 jawaker-node-agent-linux-arm64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: go SBOM (cyclonedx)

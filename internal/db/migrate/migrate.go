@@ -207,6 +207,95 @@ func (m *Migrator) Up(ctx context.Context, pool *pgxpool.Pool) ([]string, error)
 	return newlyApplied, nil
 }
 
+// StatusResult describes the schema's position relative to the embedded set.
+type StatusResult struct {
+	// Total is the number of migrations in the embedded set.
+	Total int
+	// Applied is the number recorded in schema_migrations.
+	Applied int
+	// Pending names migrations present in the set but not applied, in order.
+	Pending []string
+	// Tampered names applied migrations whose recorded checksum no longer
+	// matches the file, which means released history was edited.
+	Tampered []string
+	// Unknown lists versions recorded in the database that this binary does not
+	// carry, which means the schema was migrated by a NEWER build. Upgrading
+	// forward from there is safe; downgrading is not, and this is how an
+	// operator can tell which happened.
+	Unknown []string
+	// Initialized is false when schema_migrations does not exist yet, i.e. a
+	// database this installation has never migrated.
+	Initialized bool
+}
+
+// UpToDate reports whether the schema matches the embedded set exactly.
+func (s StatusResult) UpToDate() bool {
+	return s.Initialized && len(s.Pending) == 0 && len(s.Tampered) == 0
+}
+
+// Status inspects the schema WITHOUT changing it.
+//
+// It exists because a diagnostic command must be read-only: running `doctor`
+// against an installation that is already broken must not be able to make a
+// second thing broken. Reusing loadApplied keeps the checksum comparison in one
+// package instead of being reimplemented against the same table.
+func (m *Migrator) Status(ctx context.Context, pool *pgxpool.Pool) (StatusResult, error) {
+	if pool == nil {
+		return StatusResult{}, errors.New("migrate: pool is required")
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return StatusResult{}, fmt.Errorf("migrate: acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	// A database that has never been migrated has no schema_migrations table.
+	// That is a legitimate answer rather than an error: it is what a fresh
+	// installation looks like, and it is why Status reports Initialized
+	// separately from Applied.
+	var exists bool
+	if err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+		)`).Scan(&exists); err != nil {
+		return StatusResult{}, fmt.Errorf("migrate: check for schema_migrations: %w", err)
+	}
+	out := StatusResult{Total: len(m.migrations), Initialized: exists}
+	if !exists {
+		for _, mig := range m.migrations {
+			out.Pending = append(out.Pending, mig.Name)
+		}
+		return out, nil
+	}
+
+	applied, err := loadApplied(ctx, conn)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	out.Applied = len(applied)
+
+	seen := make(map[int64]struct{}, len(applied))
+	for _, mig := range m.migrations {
+		prev, ok := applied[mig.Version]
+		if !ok {
+			out.Pending = append(out.Pending, mig.Name)
+			continue
+		}
+		seen[mig.Version] = struct{}{}
+		if prev.checksum != mig.Checksum {
+			out.Tampered = append(out.Tampered, mig.Name)
+		}
+	}
+	for version, row := range applied {
+		if _, ok := seen[version]; !ok {
+			out.Unknown = append(out.Unknown, row.name)
+		}
+	}
+	sort.Strings(out.Unknown)
+	return out, nil
+}
+
 type appliedRow struct {
 	name     string
 	checksum string

@@ -72,6 +72,45 @@ make web-test     # frontend tests
 make lint         # Go + frontend linters
 ```
 
+## Node agent
+
+A managed server runs `jawaker-node-agent`. Enrollment is a one-time, operator-witnessed exchange; after it the agent runs forever on the identity it was given.
+
+```bash
+# 1. Build the agent (CI publishes linux/amd64 and linux/arm64 artifacts)
+make build-node-agent
+
+# 2. Enroll. -fingerprint is REQUIRED: without it, whoever answers the
+#    controller address becomes this node's permanently trusted controller.
+sudo ./bin/jawaker-node-agent enroll \
+  -controller https://controller.example:8443 \
+  -token "$ENROLLMENT_TOKEN" \
+  -fingerprint <controller root fingerprint> \
+  -node-address "$(hostname -I | awk '{print $1}'):9443"
+
+# 3. Run. The controller starts the node listener with -node-listen.
+sudo ./bin/jawaker-node-agent run -listen :9443
+```
+
+The state directory is `/var/lib/jawaker-node`, mode `0700`, holding the private key at `0600`. A directory or key that is group- or world-readable is **refused**, not silently repaired: by the time the agent notices, the key may already have been copied, and the only correct response is to re-enroll.
+
+A controller outage is a non-event on a node: heartbeats fail and are logged, local workloads keep serving, and nothing is signaled, stopped or restarted except in response to an authenticated operation.
+
+## Diagnostics
+
+Both binaries have a read-only `doctor`. It prints one row per check with concrete evidence — a certificate's remaining lifetime, a migration count, the mode of a directory — rather than a single health score, and it never creates, repairs or binds anything it keeps.
+
+```bash
+jawaker-controller doctor              # text report
+jawaker-controller doctor --json       # machine-readable
+jawaker-node-agent doctor              # this node
+jawaker-node-agent doctor --skip-connectivity   # local checks only
+```
+
+Exit status is non-zero only when a check **failed**. Warnings and skips exit zero: a warning is survivable by definition, and a skip means the check did not apply rather than that something is broken.
+
+`doctor` is safe to run against an installation that is already broken. A check that panics is reported as a failed check naming the panic, so the rest of the report still arrives.
+
 ## Configuration
 
 All configuration is environment-based; there is no config file to drift.
@@ -83,6 +122,13 @@ All configuration is environment-based; there is no config file to drift.
 | `JAWAKER_LOG_LEVEL`     | `info`                   | `debug`/`info`/`warn`/`error`        |
 | `JAWAKER_LOG_FORMAT`    | `json`                   | `json` or `text`                     |
 | `JAWAKER_RUN_MIGRATIONS`| `true`                   | Apply migrations on startup          |
+| `JAWAKER_SECRET_KEY_V<n>` | *(unset)*              | Base64 AES-256 key per version; unset disables second factors and node management |
+| `JAWAKER_COOKIE_SECURE` | `true`                   | Mark session cookies `Secure`        |
+| `JAWAKER_COOKIE_ALLOW_INSECURE` | `false`          | Development-only opt-out; `doctor` warns when set |
+
+The controller also takes flags rather than variables for two things that are deployment-topology decisions, not secrets: `-node-listen HOST:PORT` starts the node-facing mutual-TLS listener (empty disables it, so nodes cannot report), and `-migrate-only` applies pending migrations and exits.
+
+Several `JAWAKER_SECRET_KEY_V<n>` may be set at once. That is what a key rotation needs: the old version stays present to read existing ciphertext while the highest version seals new values.
 
 Never commit credentials. `.env` files and key material are ignored by Git.
 

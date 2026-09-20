@@ -58,6 +58,8 @@ func run(args []string) error {
 		return runEnroll(args[1:])
 	case "run":
 		return runAgent(args[1:])
+	case "doctor":
+		return runDoctor(args[1:])
 	case "version":
 		fmt.Println(version.String())
 		return nil
@@ -71,7 +73,7 @@ func run(args []string) error {
 
 func usageError() error {
 	usage()
-	return errors.New("expected one of: enroll, run, version")
+	return errors.New("expected one of: enroll, run, doctor, version")
 }
 
 func usage() {
@@ -80,6 +82,7 @@ func usage() {
 Usage:
   jawaker-node-agent enroll [flags]   exchange a one-time token for an identity
   jawaker-node-agent run [flags]      run the agent using the stored identity
+  jawaker-node-agent doctor [flags]   report what is wrong with this node
   jawaker-node-agent version          print the build version
 
 Enroll flags:
@@ -92,6 +95,12 @@ Enroll flags:
 Run flags:
   -listen ADDR             address to listen on (required)
   -state-dir DIR           state directory (default `+defaultStateDir+`)
+
+Doctor flags:
+  -state-dir DIR           state directory to inspect (default `+defaultStateDir+`)
+  -json                    emit the report as JSON instead of text
+  -skip-connectivity       omit the controller reachability probe
+  -connect-timeout DUR     how long to wait for the controller (default 5s)
 `)
 }
 
