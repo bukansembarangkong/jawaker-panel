@@ -373,10 +373,60 @@ func TestAgentJSONReportIsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JSON: %v", err)
 	}
-	for _, want := range []string{"node-identity", "pinned-controller", "server_id", "controller_id"} {
+	for _, want := range []string{
+		"node-identity", "pinned-controller", "server_id", "controller_id",
+		// host-identity's evidence is what scripts/distro-matrix.sh asserts
+		// against, so these keys are a contract with that script rather than
+		// incidental fields. Renaming one would silently stop the matrix from
+		// checking anything, because its greps would simply match nothing.
+		"host-identity", "os_family", "os_version", "architecture",
+	} {
 		if !containsAll(string(raw), want) {
 			t.Errorf("JSON report is missing %q", want)
 		}
+	}
+}
+
+// The host identity must be reported on every platform, because it answers the
+// first question of any support conversation: which host is this?
+func TestAgentReportsHostIdentity(t *testing.T) {
+	check := statusOf(t, agentReport(t, enrolledState(t)), "host-identity")
+
+	switch runtime.GOOS {
+	case "linux":
+		// /etc/os-release exists on every mainstream Linux, so a warning here
+		// means detection broke rather than that the host is unusual.
+		if check.Status != StatusOK {
+			t.Errorf("host-identity = %q (%s) on linux, want ok", check.Status, check.Detail)
+		}
+		if check.Evidence["os_family"] == "" {
+			t.Error("host-identity reported no os_family, so a distro matrix cannot check it")
+		}
+	default:
+		// Off Linux the family is legitimately absent: there is no
+		// /etc/os-release to read. A warning is the honest report, and a
+		// failure would contradict detectOS's deliberate degradation.
+		if check.Status != StatusWarn {
+			t.Errorf("host-identity = %q (%s) on %s, want warn", check.Status, check.Detail, runtime.GOOS)
+		}
+	}
+}
+
+// A host that cannot identify itself must not be reported as failing: detectOS
+// degrades to an empty field on purpose so the node can still enroll, and a
+// diagnostic that called that a fault would contradict the behavior it describes.
+func TestHostIdentityWarnsRatherThanFailsWhenUndetected(t *testing.T) {
+	check := checkHostIdentity(context.Background())
+	if runtime.GOOS == "linux" {
+		// On this platform the detection succeeds, so assert the positive
+		// direction: an ok check must carry the family it claims.
+		if check.Status == StatusOK && check.Evidence["os_family"] == "" {
+			t.Error("an ok host-identity carries no os_family, so the green tick means nothing")
+		}
+		return
+	}
+	if check.Status == StatusFail {
+		t.Errorf("host-identity = %q (%s), want warn or ok, never fail", check.Status, check.Detail)
 	}
 }
 

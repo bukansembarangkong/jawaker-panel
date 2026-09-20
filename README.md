@@ -111,6 +111,20 @@ Exit status is non-zero only when a check **failed**. Warnings and skips exit ze
 
 `doctor` is safe to run against an installation that is already broken. A check that panics is reported as a failed check naming the panic, so the rest of the report still arrives.
 
+## Supported distributions
+
+A distribution is supported because it was tested, not because the agent happens to start on it. [docs/distro-matrix.md](docs/distro-matrix.md) is the single source of truth: it names each certified test image by digest, its status, and exactly what the evidence covers.
+
+```bash
+./scripts/distro-matrix.sh              # raw equivalent of `make distro-matrix`
+./scripts/distro-matrix.sh --arch arm64
+```
+
+The script builds the agent once as a static binary, runs it inside each pinned image, and asserts what it **claims** — that it names the distribution it is on, that its inventory inputs are present, and that it reports service operations as unsupported where systemd is absent. Asserting claims rather than merely exit codes is the point: a binary that runs and then reports an empty OS, or one that claims a capability it cannot deliver, would pass a smoke test and fail an operator.
+
+> [!IMPORTANT]
+> Containers do not run systemd as PID 1, so the matrix validates the **non-systemd** path only. Certifying inspect/restart needs a real host, and no row is marked **Certified** until that has happened. See the limits section of the matrix document rather than reading a pass here as a claim about service management.
+
 ## Configuration
 
 All configuration is environment-based; there is no config file to drift.
