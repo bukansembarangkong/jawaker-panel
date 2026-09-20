@@ -146,6 +146,7 @@ func (h *Handlers) Routes(mux *http.ServeMux) {
 		RequireAuth(http.HandlerFunc(h.handleSession)))
 
 	h.registerMFARoutes(mux)
+	h.registerElevateRoutes(mux)
 }
 
 // --- CSRF priming ---------------------------------------------------------------

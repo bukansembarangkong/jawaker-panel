@@ -378,6 +378,45 @@ func RotatePassword(ctx context.Context, db Querier, userID, newPassword string,
 	return tx.Commit(ctx)
 }
 
+// DefaultElevationTTL is how long a step-up elevation lasts.
+//
+// SECURITY.md §4 asks for a SHORT-LIVED high-privilege elevation. Fifteen minutes
+// is the judgement call: long enough to mint a token, copy the install command,
+// and paste it into a node without the dialog reappearing mid-task, and short
+// enough that an unattended browser returns to its un-elevated state before the
+// coffee is cold. It is deliberately much shorter than the session lifetime —
+// elevation is a property of one risky action, not of the session.
+const DefaultElevationTTL = 15 * time.Minute
+
+// ElevateSession marks one session elevated until the given instant.
+//
+// This is the WRITE half of the step-up mechanism. Without it the column is only
+// ever read, and every permission the RBAC catalog marks as requiring step-up
+// (server.enroll, server.delete, and the rest) is refused forever — an
+// authorization rule that can never be satisfied is a lockout, not a control.
+//
+// Callers must have proven the caller's identity more strongly than the session
+// alone before calling this; the store cannot check that, so it lives at the
+// HTTP layer where the demonstration happens.
+func ElevateSession(ctx context.Context, db Execer, sessionID string, until time.Time) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return errors.New("identity: elevating a session requires a session id")
+	}
+	tag, err := db.Exec(ctx, `
+		UPDATE sessions SET elevated_until = $2
+		WHERE id = $1 AND revoked_at IS NULL`, sessionID, until)
+	if err != nil {
+		return fmt.Errorf("identity: elevate session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// The session was revoked between resolution and this write: the
+		// elevation would apply to a dead row, so report it as not found
+		// rather than reporting a success that grants nothing.
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SessionPolicy bounds session lifetime. Absolute expiry caps total lifetime
 // regardless of activity; idle expiry caps inactivity.
 type SessionPolicy struct {

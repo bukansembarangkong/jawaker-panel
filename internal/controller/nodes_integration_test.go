@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
 )
@@ -59,23 +58,24 @@ func (h *harness) signIn(t *testing.T, email, passwordValue string) {
 	}
 }
 
-// elevate marks the live session elevated, which is what a successful
+// elevate drives the REAL step-up endpoint, which is what a successful
 // re-authentication produces.
 //
-// It writes the column rather than driving the MFA flow because this suite is
-// about the node routes, not about how elevation is obtained; the elevation
-// mechanism itself is covered by the MFA suite. The point here is that the
-// step-up requirement is genuinely enforced by the node routes.
+// It used to write sessions.elevated_until directly, with a comment claiming the
+// elevation mechanism was covered elsewhere. It was not: no endpoint existed, so
+// the column was only ever read and every permission the catalog marks as
+// requiring step-up was refused forever. A helper that arranges the outcome it
+// wants to observe cannot detect that. Going through HTTP is what makes the
+// step-up assertions in this file mean anything.
 func (h *harness) elevate(t *testing.T) {
 	t.Helper()
-	tag, err := h.pool.Exec(context.Background(),
-		`UPDATE sessions SET elevated_until = $1 WHERE revoked_at IS NULL`,
-		time.Now().Add(15*time.Minute))
+	body, err := json.Marshal(map[string]string{"password": ownerPassword})
 	if err != nil {
-		t.Fatalf("elevate session: %v", err)
+		t.Fatalf("marshal elevate: %v", err)
 	}
-	if tag.RowsAffected() == 0 {
-		t.Fatal("no live session to elevate")
+	resp := h.post(t, "/api/v1/auth/elevate", string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("elevate status = %d, want 200", resp.StatusCode)
 	}
 }
 
