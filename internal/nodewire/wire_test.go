@@ -30,6 +30,7 @@ func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 		OpServiceRestart,
 		OpWebConfigValidate,
 		OpSiteLogsTail,
+		OpWebConfigApply,
 	}
 	if len(Operations) != len(want) {
 		t.Errorf("registry has %d operations %v, want %d", len(Operations), Names(), len(want))

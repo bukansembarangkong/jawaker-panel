@@ -77,6 +77,9 @@ type ExecutorOptions struct {
 	StagingDir string
 	// LogDir overrides the nginx log root for site.logs.tail, for tests.
 	LogDir string
+	// SitesEnabledDir overrides the nginx sites-enabled directory for
+	// web.config.apply, for tests.
+	SitesEnabledDir string
 }
 
 // NewExecutors detects what this node can do.
@@ -98,7 +101,7 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 	// Web-server detection happens here, BEFORE the systemd branch, because a
 	// host may well have nginx and no systemd. Detecting it after the early
 	// returns would make the web capability silently depend on an unrelated one.
-	e.webServer = detectWebServer(opts.NginxPath, opts.StagingDir)
+	e.webServer = detectWebServer(opts.NginxPath, opts.StagingDir, opts.SitesEnabledDir)
 
 	path := opts.SystemctlPath
 	if path == "" {

@@ -465,6 +465,38 @@ func (d *Dispatcher) ReadSiteLogs(ctx context.Context, serverID, requestID strin
 	return out, nil
 }
 
+// ApplyWebConfig writes a validated configuration to the live sites-enabled
+// directory, reloads nginx, and rolls back on any step failure.
+//
+// Target is "nginx": the descriptor declares Services:["nginx"], so
+// nodewire.EncodeRequest requires a non-empty target that matches the declared
+// service. Passing the site ID or an empty string would be refused by the
+// agent's scope check before the payload is read.
+func (d *Dispatcher) ApplyWebConfig(ctx context.Context, serverID, requestID string, in nodewire.WebConfigApplyInput) (nodewire.WebConfigApplyResult, error) {
+	var out nodewire.WebConfigApplyResult
+	if len(in.Config) > nodewire.MaxWebConfigBytes {
+		return out, fmt.Errorf("nodes: candidate config is %d bytes, limit is %d",
+			len(in.Config), nodewire.MaxWebConfigBytes)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpWebConfigApply,
+		RequestID: requestID,
+		// Target MUST be "nginx": the descriptor has Scope.Services:["nginx"],
+		// and EncodeRequest calls validateTarget which rejects any target that
+		// is not exactly one of the listed service names.
+		Target: "nginx",
+		Input:  in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode web config apply: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.

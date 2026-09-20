@@ -42,6 +42,10 @@ var nginxBinaryCandidates = []string{"/usr/sbin/nginx", "/usr/bin/nginx", "/sbin
 // operation may touch.
 const defaultStagingDir = "/etc/nginx/jawaker/staging"
 
+// defaultSitesEnabledDir is where nginx site configs are installed live.
+// It matches the descriptor's FilesystemWrite scope for web.config.apply.
+const defaultSitesEnabledDir = "/etc/nginx/jawaker/sites-enabled"
+
 // validationOutputLimit bounds what is returned to the controller. It is smaller
 // than exec.go's 64 KiB per-stream cap on purpose: this value travels back over
 // the wire inside the reply envelope, and the reply is bound by the same kind of
@@ -54,27 +58,35 @@ type WebServer struct {
 	Path string
 	// Version is the reported version, best-effort.
 	Version string
-	// StagingDir is where candidates are staged. It must exist: this code never
-	// creates a directory tree, because a directory appearing as a side effect
-	// of a validation is a filesystem change nobody asked for and nobody
-	// reviewed.
+	// StagingDir is where candidates are staged for validation. It must exist.
 	StagingDir string
+	// SitesEnabledDir is where nginx site configs are installed live. It must
+	// exist for web.config.apply to be served; it is optional for validate.
+	SitesEnabledDir string
 }
 
-// Available reports whether a usable web server was detected.
+// Available reports whether a usable web server was detected for validation.
 func (w WebServer) Available() bool { return w.Path != "" && w.StagingDir != "" }
 
-// detectWebServer resolves nginx and the staging directory once, at startup,
-// alongside the other capability detection.
+// CanApply reports whether the web server supports live config apply.
+// It requires both validation capability AND the sites-enabled directory.
+func (w WebServer) CanApply() bool { return w.Available() && w.SitesEnabledDir != "" }
+
+// detectWebServer resolves nginx and the staging/sites-enabled directories once,
+// at startup, alongside the other capability detection.
 //
 // Detection at construction rather than per request is the same rule the
 // executors already follow: a capability report and an operation refusal must
 // read the same field, or the node can advertise a capability it will then
 // refuse.
-func detectWebServer(override, stagingOverride string) WebServer {
+func detectWebServer(override, stagingOverride, sitesEnabledOverride string) WebServer {
 	staging := stagingOverride
 	if staging == "" {
 		staging = defaultStagingDir
+	}
+	sitesEnabled := sitesEnabledOverride
+	if sitesEnabled == "" {
+		sitesEnabled = defaultSitesEnabledDir
 	}
 	path := override
 	if path == "" {
@@ -98,7 +110,21 @@ func detectWebServer(override, stagingOverride string) WebServer {
 		// remedies. Available() still requires both, so nothing can act on this.
 		return WebServer{Path: path}
 	}
-	return WebServer{Path: path, Version: nginxVersion(path), StagingDir: staging}
+
+	// sites-enabled: optional for validate (which writes staging only), required
+	// for apply (which installs the config live). If it is absent CanApply()
+	// returns false and web.config.apply is not served, but validate still is.
+	var sitesEnabledPath string
+	if si, err := os.Stat(sitesEnabled); err == nil && si.IsDir() {
+		sitesEnabledPath = sitesEnabled
+	}
+
+	return WebServer{
+		Path:            path,
+		Version:         nginxVersion(path),
+		StagingDir:      staging,
+		SitesEnabledDir: sitesEnabledPath,
+	}
 }
 
 // nginxVersion asks the binary for its version, best-effort.
@@ -266,4 +292,202 @@ func (e *Executors) ValidateWebConfig(ctx context.Context, in nodewire.WebConfig
 
 	out.Valid = true
 	return out, nil
+}
+
+// ApplyWebConfig writes a validated candidate to the LIVE site configuration
+// path and reloads the web server. The key safety invariant is:
+//
+//	AN INVALID CANDIDATE CANNOT REPLACE THE ACTIVE KNOWN-GOOD CONFIGURATION.
+//
+// The six-step order is the enforcement, not documentation:
+//
+//  1. Validate payload (refused as CodeInvalidInput, no side effect).
+//  2. Verify the web server is fully available including sites-enabled.
+//  3. Confine and resolve the live path inside sites-enabled.
+//  4. Backup any existing file (atomic rename in the same directory).
+//  5. Write the candidate (atomic temp-rename).
+//  6. Run nginx -t against the FULL config. Failure → restore backup → reload →
+//     return RolledBack:true (NOT an error, a verdict like validate).
+//  7. Reload nginx on success. Failure → restore backup → return error.
+//  8. Remove backup. Return Applied:true.
+//
+// Each failure path restores the known-good state and says what happened.
+func (e *Executors) ApplyWebConfig(ctx context.Context, in nodewire.WebConfigApplyInput) (nodewire.WebConfigApplyResult, error) {
+	var out nodewire.WebConfigApplyResult
+
+	// Step 1: validate payload.
+	if err := in.Validate(); err != nil {
+		return out, &nodewire.Error{
+			Code:    nodewire.CodeInvalidInput,
+			Message: err.Error(),
+		}
+	}
+
+	// Step 2: check full apply capability.
+	web := e.WebServer()
+	if !web.CanApply() {
+		reason := "the web server or its sites-enabled directory is not available on this host"
+		if web.Path != "" && web.StagingDir == "" {
+			reason = "the staging directory is not present; the web server cannot validate configs"
+		} else if web.Path != "" && web.SitesEnabledDir == "" {
+			reason = "the sites-enabled directory is not provisioned on this host"
+		}
+		return out, &nodewire.Error{
+			Code:    nodewire.CodeUnsupportedOperation,
+			Message: reason,
+		}
+	}
+	if !e.hasSystemd || !supportedOS() {
+		return out, notAvailable("config apply requires systemd on Linux for the nginx reload")
+	}
+
+	// Step 3: confinement.
+	conf, err := newConfinement([]string{web.SitesEnabledDir})
+	if err != nil {
+		return out, fmt.Errorf("nodeagent: apply confinement: %w", err)
+	}
+	// Unlike validate, the live path is the DESTINATION, not inside staging.
+	// We use resolve() which rejects symlinks in the final component — a
+	// symlinked config file would silently redirect the write.
+	livePath, err := conf.resolve(filepath.Join(web.SitesEnabledDir, in.Filename))
+	if err != nil {
+		return out, &nodewire.Error{
+			Code:    nodewire.CodeInvalidInput,
+			Message: "the configuration file name is not acceptable",
+		}
+	}
+	out.LivePath = livePath
+	out.Tool = "nginx"
+	out.ToolVersion = web.Version
+	out.ObservedAt = e.now().UTC()
+
+	// Step 4: backup the existing live file (atomic rename; no-op if absent).
+	backupPath := livePath + ".jawaker-bak"
+	out.BackupPath = backupPath
+	hasBackup := false
+	if _, statErr := os.Lstat(livePath); statErr == nil {
+		// The file exists. Rename is atomic within one filesystem — no partial
+		// writes for the backup itself.
+		if renErr := os.Rename(livePath, backupPath); renErr != nil {
+			return out, fmt.Errorf("nodeagent: backup live config: %w", renErr)
+		}
+		hasBackup = true
+	}
+
+	// restoreBackup returns the node to its known-good state. It runs on failure
+	// paths only, so any error here goes directly to the log via the wrapping
+	// error; the caller already knows the apply failed.
+	restoreBackup := func() bool {
+		if !hasBackup {
+			// There was nothing to restore; the live path simply did not exist.
+			_ = os.Remove(livePath)
+			return true
+		}
+		if renErr := os.Rename(backupPath, livePath); renErr != nil {
+			// The backup restore itself failed. We log it through the returned
+			// error; do not panic, as panicking would kill the agent.
+			return false
+		}
+		return true
+	}
+
+	// Step 5: write the candidate atomically.
+	// 0644 so the nginx worker (group) can read it. The sites-enabled tree is
+	// owned by the JAWAKER user; 0644 is consistent with packages that ship
+	// their own conf files there.
+	if writeErr := writeFileAtomic(livePath, []byte(in.Config), 0o644); writeErr != nil {
+		_ = restoreBackup()
+		return out, fmt.Errorf("nodeagent: write live config: %w", writeErr)
+	}
+
+	// Step 6: nginx -t on the FULL config (not the candidate in isolation).
+	// This is what the gate requires: the candidate must be valid in context,
+	// not just valid on its own.
+	e.spawns.Add(1)
+	verifyCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	verifyResult, verifyErr := runCommand(verifyCtx, CommandSpec{
+		Path: web.Path,
+		Args: []string{"-t"},
+	})
+	// Capture output for the result, whatever happened.
+	var exitErr *ErrCommandFailed
+	switch {
+	case errors.Is(verifyErr, ErrOutputLimit):
+		out.Truncated = true
+	case errors.As(verifyErr, &exitErr):
+		out.Output = exitErr.Stderr
+		if len(exitErr.Stderr) >= BoundForMessageLimit {
+			out.Truncated = true
+		}
+	default:
+		out.Output = strings.TrimSpace(verifyResult.Stdout + verifyResult.Stderr)
+	}
+	if len(out.Output) > validationOutputLimit {
+		out.Output = out.Output[:validationOutputLimit]
+		out.Truncated = true
+	}
+
+	// If -t failed, the full configuration is invalid. Restore and reload.
+	// This is the core gate: the invalid candidate never runs.
+	if verifyErr != nil && !errors.As(verifyErr, &exitErr) && errors.Is(verifyErr, context.DeadlineExceeded) {
+		// Deadline — restore and report.
+		_ = restoreBackup()
+		e.spawns.Add(1)
+		_ = e.reloadNginx(ctx, web.Path)
+		return out, &nodewire.Error{
+			Code:    nodewire.CodeExecutionFailed,
+			Message: "the web server did not finish validating within the time allowed",
+		}
+	}
+	if verifyErr != nil {
+		// nginx -t rejected the full config; candidate may be individually valid
+		// but breaks an include or another site's config. Restore.
+		restored := restoreBackup()
+		e.spawns.Add(1)
+		_ = e.reloadNginx(ctx, web.Path)
+		out.RolledBack = restored
+		return out, nil // verdict: RolledBack:true, Applied:false
+	}
+
+	// Step 7: reload nginx with the new config in place.
+	e.spawns.Add(1)
+	if reloadErr := e.reloadNginx(ctx, web.Path); reloadErr != nil {
+		_ = restoreBackup()
+		return out, &nodewire.Error{
+			Code:    nodewire.CodeExecutionFailed,
+			Message: "nginx reload failed; the previous configuration has been restored",
+		}
+	}
+
+	// Step 8: success. Remove backup.
+	if hasBackup {
+		_ = os.Remove(backupPath) // best-effort; the file is stale anyway
+	}
+	out.Applied = true
+	out.BackupPath = "" // cleared: no longer relevant, no cleanup needed
+	return out, nil
+}
+
+// reloadNginx asks the web server to reload its configuration gracefully.
+//
+// "Reload" is the correct semantic for a config change: worker processes finish
+// their current connections before exiting, unlike "restart" which kills them.
+// The systemctl binary is assumed to be at e.systemctlPath, which the caller
+// checks before calling.
+func (e *Executors) reloadNginx(ctx context.Context, nginxBin string) error {
+	if !e.hasSystemd {
+		// No systemd: try nginx -s reload instead. Less graceful, but better
+		// than nothing on a non-systemd host that somehow has nginx.
+		_, err := runCommand(ctx, CommandSpec{
+			Path: nginxBin,
+			Args: []string{"-s", "reload"},
+		})
+		return err
+	}
+	_, err := runCommand(ctx, CommandSpec{
+		Path: e.systemctlPath,
+		Args: []string{"reload", "--", "nginx"},
+	})
+	return err
 }

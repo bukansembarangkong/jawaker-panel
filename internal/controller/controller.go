@@ -310,6 +310,22 @@ func Build(opts Options) (*Handler, error) {
 		}
 		siteRoutes := siteHandlers.Routes
 
+		// The background worker that executes enqueued site.apply jobs. Without
+		// it handleApplyConfig would enqueue work nobody ever claims, and the
+		// API's 202 would be a promise the panel never keeps. It is built even
+		// when the dispatcher is nil: the handler fails such jobs honestly
+		// with dispatcher_unavailable rather than leaving them queued forever.
+		siteWorker, workerErr := NewSiteApplyWorker(SiteWorkerOptions{
+			Pool:       opts.DB,
+			Sites:      out.Sites,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger.With("component", "site-worker"),
+		})
+		if workerErr != nil {
+			return nil, fmt.Errorf("controller: site worker: %w", workerErr)
+		}
+		out.SiteWorker = siteWorker
+
 		authRoutes := handlers.Routes
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)

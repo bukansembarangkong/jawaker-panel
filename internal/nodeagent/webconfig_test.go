@@ -390,3 +390,49 @@ func assertStagingEmpty(t *testing.T, staging string) {
 		t.Errorf("staging directory still holds %v; every path must clean up", names)
 	}
 }
+
+// --- web.config.apply tests --------------------------------------------------
+
+func TestApplyWebConfigRejectsBadPayloads(t *testing.T) {
+	e := NewExecutors(ExecutorOptions{})
+	ctx := context.Background()
+
+	bad := []struct {
+		name string
+		in   nodewire.WebConfigApplyInput
+	}{
+		{"empty config", nodewire.WebConfigApplyInput{Filename: "site.conf"}},
+		{"empty filename", nodewire.WebConfigApplyInput{Config: "server {}"}},
+		{"path traversal in filename", nodewire.WebConfigApplyInput{Config: "server {}", Filename: "../escape.conf"}},
+		{"absolute filename", nodewire.WebConfigApplyInput{Config: "server {}", Filename: "/etc/shadow"}},
+		{"oversized config", nodewire.WebConfigApplyInput{Config: strings.Repeat("a", nodewire.MaxWebConfigBytes+1), Filename: "site.conf"}},
+	}
+	for _, tc := range bad {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := e.ApplyWebConfig(ctx, tc.in)
+			if err == nil {
+				t.Fatalf("ApplyWebConfig accepted %s", tc.name)
+			}
+			var wireErr *nodewire.Error
+			if !errors.As(err, &wireErr) || wireErr.Code != nodewire.CodeInvalidInput {
+				t.Errorf("got error %v, want nodewire.Error with code %s", err, nodewire.CodeInvalidInput)
+			}
+		})
+	}
+}
+
+func TestApplyWebConfigRefusesWhenNotConfigured(t *testing.T) {
+	// An executor with no web server or no sites-enabled directory refuses apply.
+	e := NewExecutors(ExecutorOptions{})
+	_, err := e.ApplyWebConfig(context.Background(), nodewire.WebConfigApplyInput{
+		Config:   "server { listen 80; }",
+		Filename: "site.conf",
+	})
+	if err == nil {
+		t.Fatal("ApplyWebConfig succeeded with no web server configured")
+	}
+	var wireErr *nodewire.Error
+	if !errors.As(err, &wireErr) || (wireErr.Code != nodewire.CodeUnsupportedOperation && wireErr.Code != nodewire.CodeNotAvailable) {
+		t.Errorf("got error %v, want CodeUnsupportedOperation or CodeNotAvailable", err)
+	}
+}

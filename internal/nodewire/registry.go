@@ -170,6 +170,54 @@ var Operations = map[Operation]Descriptor{
 		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 2},
 		Mutating: false,
 	},
+
+	OpWebConfigApply: {
+		Operation: OpWebConfigApply,
+		// site.manage: this changes what a live site serves. Unlike validate
+		// (site.read), apply is a management action and requires step-up at
+		// the controller's RBAC layer.
+		Permission: "site.manage",
+		InputSchema: "{config: string, filename: string} — the VALIDATED candidate config " +
+			"text and the bare file name it is installed as under sites-enabled; " +
+			"target must be \"nginx\"",
+		Validation: "config must be non-empty, below MaxWebConfigBytes, and contain no NUL " +
+			"byte; filename must be a bare file name (one path segment, no separators, no " +
+			"leading dot); the live path is resolved through the agent's path confinement " +
+			"and refused unless it lands strictly inside the sites-enabled root; the " +
+			"candidate is re-validated with nginx -t against the FULL configuration " +
+			"BEFORE the reload, and the previous file is restored on any failure",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			// Read covers the live tree and the main config because nginx -t
+			// parses the full configuration including every include.
+			FilesystemRead:  []string{"/etc/nginx/jawaker/sites-enabled", "/etc/nginx/nginx.conf"},
+			FilesystemWrite: []string{"/etc/nginx/jawaker/sites-enabled"},
+			// The reload target. Declared so validateTarget enforces that the
+			// envelope says exactly which unit gets reloaded — "nginx", never
+			// anything else, never empty.
+			Services: []string{"nginx"},
+			Network:  "none",
+		},
+		// Per-site serialization: two concurrent applies to one site would race
+		// on the backup file. The controller's job lock (site:<id>) is the
+		// primary serializer; this is the node-side statement of the same need.
+		LockKeys: []string{"web.config.apply"},
+		// nginx -t on the full config plus a graceful reload. Longer than
+		// validate because the reload waits for worker handoff.
+		Timeout:     60 * time.Second,
+		AuditAction: "web.config.apply",
+		// NOT idempotent: repeating an apply reloads the server again, which
+		// interrupts in-flight connections each time. No automatic retry; the
+		// job engine's own retry policy (with a fresh validate) is the retry
+		// path, not blind repetition here.
+		Retry: RetryPolicy{Idempotent: false, MaxAttempts: 0},
+		Rollback: "the previous live file is backed up before the candidate is written. " +
+			"If nginx -t rejects the full configuration, or the reload fails, the backup " +
+			"is restored and nginx is reloaded again, returning the site to the active " +
+			"known-good configuration. The backup is removed only after a fully " +
+			"successful apply.",
+		Mutating: true,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for
@@ -494,37 +542,45 @@ type WebConfigValidateInput struct {
 // here, in addition to the confinement check the agent applies when it resolves
 // the resulting path.
 func (in WebConfigValidateInput) Validate() error {
+	return validateConfigAndFilename(in.Config, in.Filename)
+}
+
+// validateConfigAndFilename holds the rules shared by the validate and apply
+// payloads: both carry a config text and a bare file name that becomes part of a
+// filesystem path. One definition, so the two operations cannot drift on what a
+// safe file name is.
+func validateConfigAndFilename(config, filename string) error {
 	var errs []error
 
-	if in.Config == "" {
+	if config == "" {
 		errs = append(errs, errors.New("config is required"))
 	}
-	if len(in.Config) > MaxWebConfigBytes {
-		errs = append(errs, fmt.Errorf("config is %d bytes, limit is %d", len(in.Config), MaxWebConfigBytes))
+	if len(config) > MaxWebConfigBytes {
+		errs = append(errs, fmt.Errorf("config is %d bytes, limit is %d", len(config), MaxWebConfigBytes))
 	}
 	// A NUL byte in the text would truncate the file as seen by the syscall
 	// layer, so what is staged would not be what was validated.
-	if strings.ContainsRune(in.Config, 0) {
+	if strings.ContainsRune(config, 0) {
 		errs = append(errs, errors.New("config contains a NUL byte"))
 	}
 
 	switch {
-	case in.Filename == "":
+	case filename == "":
 		errs = append(errs, errors.New("filename is required"))
-	case strings.ContainsRune(in.Filename, 0):
+	case strings.ContainsRune(filename, 0):
 		errs = append(errs, errors.New("filename contains a NUL byte"))
-	case in.Filename != filepath.Base(in.Filename):
+	case filename != filepath.Base(filename):
 		// Covers every separator and the traversal shapes "." and "..": if the
 		// value is not its own base name, it was naming something other than a
 		// single file in a single directory.
-		errs = append(errs, fmt.Errorf("filename %q is not a bare file name", in.Filename))
-	case strings.HasPrefix(in.Filename, "."):
+		errs = append(errs, fmt.Errorf("filename %q is not a bare file name", filename))
+	case strings.HasPrefix(filename, "."):
 		// A dot-prefixed name is a hidden file, which on a config tree means a
 		// file an operator is not going to find. It also covers "." and ".."
 		// explicitly, which the base-name check above would already have caught.
-		errs = append(errs, fmt.Errorf("filename %q must not begin with a dot", in.Filename))
-	case !validWebConfigFilename.MatchString(in.Filename):
-		errs = append(errs, fmt.Errorf("filename %q contains a character outside [a-zA-Z0-9._-]", in.Filename))
+		errs = append(errs, fmt.Errorf("filename %q must not begin with a dot", filename))
+	case !validWebConfigFilename.MatchString(filename):
+		errs = append(errs, fmt.Errorf("filename %q contains a character outside [a-zA-Z0-9._-]", filename))
 	}
 
 	return errors.Join(errs...)
@@ -654,5 +710,60 @@ type SiteLogsTailResult struct {
 	// LogType echoes the requested log type.
 	LogType string `json:"log_type"`
 	// ObservedAt is when the file was read, on the NODE's clock.
+	ObservedAt time.Time `json:"observed_at"`
+}
+
+// --- web.config.apply ---------------------------------------------------------
+
+// WebConfigApplyInput is the payload for web.config.apply.
+//
+// The shape is intentionally identical to WebConfigValidateInput: the candidate
+// is validated on the controller side before this operation is called, and the
+// input travels unchanged from the controller's job payload to the node. Having
+// two distinct types rather than one shared one avoids collapsing two different
+// operations into one type, which would make the validate/apply distinction
+// invisible to a reader of the descriptor or the agent.
+type WebConfigApplyInput struct {
+	// Config is the candidate configuration text, already validated.
+	Config string `json:"config"`
+	// Filename is the bare file name to install the config as under sites-enabled.
+	Filename string `json:"filename"`
+}
+
+// Validate checks the payload. The same rules as WebConfigValidateInput.
+func (in WebConfigApplyInput) Validate() error {
+	return validateConfigAndFilename(in.Config, in.Filename)
+}
+
+// WebConfigApplyResult is the reply to web.config.apply.
+//
+// Both Applied and RolledBack can be false: if the full-config nginx -t passes
+// but the reload fails after a restore attempt, neither flag is set and the node
+// reports execution_failed. That signals the controller to investigate rather
+// than assume the site is healthy.
+type WebConfigApplyResult struct {
+	// Applied reports whether the candidate is now live.
+	Applied bool `json:"applied"`
+	// RolledBack reports whether a failure was caught and the backup restored,
+	// leaving the previous known-good config in force. It is mutually exclusive
+	// with Applied.
+	RolledBack bool `json:"rolled_back,omitempty"`
+	// Output is the nginx -t output on the full configuration, whether or not the
+	// apply succeeded.
+	Output string `json:"output,omitempty"`
+	// Truncated reports that Output was cut short to fit the wire.
+	Truncated bool `json:"truncated,omitempty"`
+	// Tool names the web server program that ran the verification.
+	Tool string `json:"tool"`
+	// ToolVersion is the detected version.
+	ToolVersion string `json:"tool_version,omitempty"`
+	// LivePath is the path the config was written to (or restored to, if rolled
+	// back). Exposed so the audit trail and a human reader can see exactly which
+	// file was involved; the value is agent-derived and never caller-chosen.
+	LivePath string `json:"live_path"`
+	// BackupPath is where the previous config was backed up before the write. It
+	// is the same directory as LivePath and is removed on success.
+	BackupPath string `json:"backup_path,omitempty"`
+	// ObservedAt is when the operation completed, on the NODE's clock.
 	ObservedAt time.Time `json:"observed_at"`
 }
