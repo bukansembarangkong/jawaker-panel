@@ -92,7 +92,7 @@ func run() error {
 		return nil
 	}
 
-	assembled, err := controller.Build(controller.Options{Config: cfg, Logger: logger, DB: pool})
+	assembled, err := controller.Build(controller.Options{Config: cfg, Logger: logger, DB: pool, Context: ctx})
 	if err != nil {
 		return err
 	}

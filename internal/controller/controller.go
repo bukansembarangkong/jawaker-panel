@@ -8,6 +8,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
+	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
@@ -42,6 +44,14 @@ type Options struct {
 	// PasswordParams overrides the argon2id parameters. Zero value uses
 	// password.DefaultParams(). Tests use cheaper parameters.
 	PasswordParams *password.Params
+	// Context bounds startup work that reaches external systems. Nil means
+	// context.Background().
+	//
+	// It exists because building the node subsystem creates the internal
+	// certificate authorities on first run, which writes to PostgreSQL. Using
+	// context.Background() internally would make that write uninterruptible, so a
+	// stuck database would hang startup with no way to cancel it.
+	Context context.Context
 }
 
 // Handler is the assembled stack.
@@ -57,6 +67,16 @@ type Handler struct {
 	Events *eventstream.Broker
 	// EventStreamMounted reports whether /api/v1/events/* is registered.
 	EventStreamMounted bool
+	// NodeRoutesMounted reports whether /api/v1/servers/* is registered. It is
+	// false when no secret keys or database are configured, or when the
+	// certificate authority could not be prepared, so a caller can distinguish
+	// "not configured" from "mounted but empty".
+	NodeRoutesMounted bool
+	// Authority is the installation's certificate authority, nil when the node
+	// subsystem is disabled. Exposed so main can report fingerprints at startup
+	// and so the node-agent listener (PR #13) can reuse it instead of loading the
+	// roots a second time.
+	Authority *nodes.Authority
 	// CookieConfig is the session/CSRF cookie attributes in effect, so callers
 	// (and tests) can assert what clients will actually receive.
 	CookieConfig auth.CookieConfig
@@ -88,6 +108,11 @@ func Build(opts Options) (*Handler, error) {
 	cfg := opts.Config
 	logger := opts.Logger
 
+	ctx := opts.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	cookies := auth.DefaultCookieConfig()
 	cookies.Secure = cfg.CookieSecure
 	cookies.AllowInsecure = cfg.CookieAllowInsecure
@@ -106,6 +131,9 @@ func Build(opts Options) (*Handler, error) {
 	var (
 		register     func(*http.ServeMux)
 		sessionLayer func(http.Handler) http.Handler
+		// nodeRoutes is set only when the node subsystem came up; a nil value
+		// means its routes are not mounted at all.
+		nodeRoutes func(*http.ServeMux)
 	)
 
 	switch {
@@ -170,17 +198,67 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: event stream handler: %w", err)
 		}
 
+		// The node subsystem needs the secret store for CA custody. Its routes are
+		// mounted only when the authority is available: an installation whose CA
+		// could not be prepared would otherwise serve a fleet UI whose every
+		// action fails, which reads as a bug rather than as a missing configuration.
+		//
+		// EnsureAuthority (not LoadAuthority) is used here because this is a
+		// startup path: on a fresh installation the roots must be created, and on
+		// an existing one they are read back unchanged. The distinction is
+		// recorded by the created flag below so the event is visible in the log
+		// exactly once, at the moment it happens.
+		authority, caCreated, caErr := nodes.EnsureAuthority(ctx, nodes.AuthorityOptions{
+			DB:      opts.DB,
+			Secrets: secrets,
+			Now:     now,
+		})
+		switch {
+		case caErr != nil:
+			// Not fatal: authentication and the API still work, and refusing to
+			// start would take down a running panel because of one subsystem.
+			logger.Error("node management disabled: certificate authority unavailable",
+				"error", caErr)
+		default:
+			if caCreated {
+				// Fingerprints rather than the keys themselves: an operator needs
+				// to be able to record WHICH root was created, never the key.
+				logger.Info("internal certificate authorities created",
+					"controller_fingerprint", authority.ControllerFingerprint(),
+					"node_fingerprint", authority.NodeFingerprint())
+			}
+			nodeStore := nodes.NewStore(opts.DB, now)
+			nodeHandlers, nodeErr := nodes.NewHandlers(nodes.HandlerOptions{
+				Store:     nodeStore,
+				Authority: authority,
+				Audit:     opts.DB,
+				Logger:    logger,
+				Now:       now,
+			})
+			if nodeErr != nil {
+				logger.Error("node management disabled: handlers could not be built", "error", nodeErr)
+			} else {
+				nodeRoutes = nodeHandlers.Routes
+				out.Authority = authority
+			}
+		}
+
 		authRoutes := handlers.Routes
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
+			if nodeRoutes != nil {
+				nodeRoutes(mux)
+			}
 		}
 		out.Events = broker
 		out.EventStreamMounted = true
+		out.NodeRoutesMounted = nodeRoutes != nil
 		logger.Info("authentication routes enabled",
 			"secret_key_versions", len(cfg.SecretKeys),
 			"secure_cookies", cfg.CookieSecure,
-			"trusted_origins", len(cfg.TrustedOrigins))
+			"trusted_origins", len(cfg.TrustedOrigins),
+			"node_routes", out.NodeRoutesMounted)
 	}
 
 	handler, err := httpserver.New(httpserver.Options{

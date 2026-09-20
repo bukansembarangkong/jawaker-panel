@@ -60,6 +60,81 @@ func TestEnrollmentTokenPrefixAndUniqueness(t *testing.T) {
 	}
 }
 
+// The critical property: the digest a LOOKUP computes for a presented token must
+// equal the digest GENERATION stored. Phase 1 shipped recovery codes where these
+// two disagreed (generation hashed one form, lookup another) and every valid
+// code was refused. That defect was invisible to the generator's own tests, so
+// this asserts the round trip directly.
+func TestHashEnrollmentTokenMatchesGeneration(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		token, stored, err := EnrollmentToken()
+		if err != nil {
+			t.Fatalf("EnrollmentToken: %v", err)
+		}
+		lookedUp, err := HashEnrollmentToken(token)
+		if err != nil {
+			t.Fatalf("HashEnrollmentToken(%q): %v", token, err)
+		}
+		if string(lookedUp) != string(stored) {
+			t.Fatalf("digest mismatch for %q: generation and lookup disagree", token)
+		}
+	}
+}
+
+// Surrounding whitespace is how a token arrives after being copied from a UI or
+// a shell, so it must not change the digest.
+func TestHashEnrollmentTokenTrimsWhitespace(t *testing.T) {
+	token, stored, err := EnrollmentToken()
+	if err != nil {
+		t.Fatalf("EnrollmentToken: %v", err)
+	}
+	for _, padded := range []string{"  " + token, token + "\n", "\t" + token + " "} {
+		got, err := HashEnrollmentToken(padded)
+		if err != nil {
+			t.Fatalf("HashEnrollmentToken(%q): %v", padded, err)
+		}
+		if string(got) != string(stored) {
+			t.Errorf("padded token %q produced a different digest", padded)
+		}
+	}
+}
+
+// A malformed token must fail rather than produce a digest that matches nothing,
+// so the caller can distinguish "not a token" from "unknown token" internally
+// while still reporting one opaque error externally.
+func TestHashEnrollmentTokenRejectsMalformed(t *testing.T) {
+	cases := map[string]string{
+		"empty":          "",
+		"whitespace":     "   ",
+		"missing prefix": "notan enrollment token",
+		"prefix only":    EnrollmentTokenPrefix(),
+		"wrong prefix":   "jwsess_abcdefghijklmnopqrstuv",
+		"invalid base64": EnrollmentTokenPrefix() + "!!!not base64!!!",
+		"too short":      EnrollmentTokenPrefix() + "abc",
+		"too long":       EnrollmentTokenPrefix() + strings.Repeat("A", 64),
+	}
+	for name, token := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := HashEnrollmentToken(token); err == nil {
+				t.Errorf("HashEnrollmentToken(%q) succeeded, want rejection", token)
+			}
+		})
+	}
+}
+
+// A token presented with its prefix stripped is not the same credential and must
+// not hash to the stored digest: the prefix is part of the canonical form.
+func TestHashEnrollmentTokenRequiresPrefix(t *testing.T) {
+	token, _, err := EnrollmentToken()
+	if err != nil {
+		t.Fatalf("EnrollmentToken: %v", err)
+	}
+	body := strings.TrimPrefix(token, EnrollmentTokenPrefix())
+	if _, err := HashEnrollmentToken(body); err == nil {
+		t.Error("HashEnrollmentToken accepted a token without its prefix, want rejection")
+	}
+}
+
 func TestAPITokenRequiresPrefix(t *testing.T) {
 	if _, _, err := APIToken(""); err == nil {
 		t.Error("APIToken with empty prefix should fail")
