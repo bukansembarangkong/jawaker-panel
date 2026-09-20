@@ -1,9 +1,9 @@
 # JAWAKER — supported distribution matrix
 
 This file is the **single source of truth** for which distribution and version a
-JAWAKER node is certified on. Status is a claim about evidence, so every row
-names the test image it was validated against and the digest that evidence
-applies to.
+JAWAKER node runs on, and what evidence that claim rests on. Status is a claim
+about evidence, so every row names the test image it was validated against and
+the digest that evidence applies to.
 
 > [!IMPORTANT]
 > A distribution must never be treated as supported because the node agent
@@ -14,9 +14,16 @@ applies to.
 
 ## Status vocabulary (PRD.md §7.2, TESTING.md §7)
 
+The meanings below are the specification's, not this document's. "Certified" is
+deliberately the highest bar: per TESTING.md §7 it requires installation, core
+operation, upgrade and recovery scenarios to pass on the exact supported version
+family, and per PRD.md §7.3 that also spans package management, firewall,
+networking, web engines, runtimes, databases, containers, backup/restore and
+rollback. Nothing in Phase 2 reaches it, which is why no row below is Certified.
+
 | Status | Meaning |
 | --- | --- |
-| **Certified** | The automated validation suite for this phase passed on this exact image. |
+| **Certified** | Install + core operation + upgrade + recovery passed on this exact version family (TESTING.md §7, PRD.md §7.3). |
 | **Testing** | Under active validation; usable in development, not in production. |
 | **Experimental** | The agent is expected to work but has not been run through the suite. |
 | **Deprecated** | Previously certified; a replacement exists and this pair is on its way out. |
@@ -24,11 +31,13 @@ applies to.
 
 ## Phase 2 matrix — node agent
 
-Phase 2 certifies the **node agent**: enrollment, mTLS, heartbeat, capability
+Phase 2 validates the **node agent**: enrollment, mTLS, heartbeat, capability
 and OS inventory, typed service inspection/restart, and `doctor`. It does **not**
-certify installation, Nginx, PHP, databases, backups, upgrades, or rollback —
-those arrive with their own phases (PRD.md §7.3), and marking a row "Certified"
-here is a claim about the agent only.
+cover installation, package management, upgrade, recovery, Nginx, PHP, databases
+or backup — PRD.md §7.3 requires all of those before the word "Certified" may be
+used, and those arrive with their own phases. So the strongest status any row
+here can hold is **Testing**. A green run is evidence toward Certified, not a
+shorter route to it: it covers part of "core operation" and none of the rest.
 
 | Family | Version | Status | Test image | amd64 digest |
 | --- | --- | --- | --- | --- |
@@ -38,7 +47,9 @@ here is a claim about the agent only.
 | Rocky Linux | 9 | Testing | `rockylinux:9-minimal` | `sha256:197b1569a8e5d46de75412cfd80b88a437d25bb2a5338dc82d5421d835245ec7` |
 | Fedora Server | 42 | Testing | `fedora:42` | `sha256:7c63468daf71fdc5bda3699cd483b169bb995b5137265d5ffe8f04e2ce87fbb8` |
 
-The families are the ones PRD.md §7.1 names. No row is **Certified**: the Phase 2 suite passes on every image above, but certification in PRD.md §7.3 also requires systemd service management, installation, upgrade and recovery to pass, and containers cannot exercise those. Claiming Certified on a green container run would be exactly the false status these labels exist to prevent.
+These are the families PRD.md §7.1 names, and the suite passes on every digest
+above. Containers cannot run systemd, so service management is not exercised
+anywhere in it.
 
 The suite has passed on these digests, reporting the versions below — note that they are not what a human would have written in the table, which is why the version assertion matches a prefix:
 
@@ -89,19 +100,20 @@ Asserted per row:
 1. `jawaker-node-agent version` runs and reports the injected version — a binary
    that cannot execute on the image fails here rather than later.
 2. `doctor --json` completes and emits parseable JSON.
-3. The report's `runtime-files` check is not a failure, so the inventory inputs
-   the agent reads are present.
-4. The capability report names the distribution the container is actually
-   running, matched against the matrix row.
-5. On an image without systemd, `operation-support` reports the degraded path
-   explicitly rather than reporting a green tick that implies service management
-   works.
+3. `host-identity` is `ok`, and its `os_family` and `os_version` match the matrix
+   row — so a row cannot pass on an image that reports a different distribution.
+4. `runtime-files` is `ok`, so the inventory inputs the agent reads are present.
+5. `operation-support` is **not** `ok`, because the image has no systemd and a
+   green tick here would imply service management works.
+6. `node-identity` is **not** `ok`, because nothing has enrolled this host —
+   reporting identity that does not exist is the failure this catches.
 
 Not asserted, and deliberately not claimed by "Testing":
 
 - **systemd service operations.** Containers do not run systemd as PID 1, so
-  inspect/restart cannot be exercised here. A row moves to Certified only when
-  this is covered on a real systemd host; until then the agent's own
+  inspect/restart cannot be exercised here. Covering them on a real systemd host
+  is necessary for Certified but not sufficient — TESTING.md §7 also requires
+  install, upgrade and recovery. Until all of that passes, the agent's own
   `CapabilityUnsupported` report is what tells an operator the truth.
 - **Enrollment against a live controller.** Covered by the integration suite
   (`internal/controller/nodes_integration_test.go`), not by this matrix.

@@ -113,7 +113,7 @@ Exit status is non-zero only when a check **failed**. Warnings and skips exit ze
 
 ## Supported distributions
 
-A distribution is supported because it was tested, not because the agent happens to start on it. [docs/distro-matrix.md](docs/distro-matrix.md) is the single source of truth: it names each certified test image by digest, its status, and exactly what the evidence covers.
+A distribution is supported because it was tested, not because the agent happens to start on it. [docs/distro-matrix.md](docs/distro-matrix.md) is the single source of truth: it names each test image by digest, its status, and exactly what the evidence covers.
 
 ```bash
 ./scripts/distro-matrix.sh              # raw equivalent of `make distro-matrix`
@@ -123,7 +123,7 @@ A distribution is supported because it was tested, not because the agent happens
 The script builds the agent once as a static binary, runs it inside each pinned image, and asserts what it **claims** — that it names the distribution it is on, that its inventory inputs are present, and that it reports service operations as unsupported where systemd is absent. Asserting claims rather than merely exit codes is the point: a binary that runs and then reports an empty OS, or one that claims a capability it cannot deliver, would pass a smoke test and fail an operator.
 
 > [!IMPORTANT]
-> Containers do not run systemd as PID 1, so the matrix validates the **non-systemd** path only. Certifying inspect/restart needs a real host, and no row is marked **Certified** until that has happened. See the limits section of the matrix document rather than reading a pass here as a claim about service management.
+> Containers do not run systemd as PID 1, so the matrix validates the **non-systemd** path only, and no row is marked **Certified** — that status additionally requires installation, upgrade and recovery to pass (TESTING.md §7, PRD.md §7.3). See the limits section of the matrix document rather than reading a pass here as a claim about service management.
 
 ## Configuration
 
