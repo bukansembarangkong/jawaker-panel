@@ -74,9 +74,21 @@ type Handler struct {
 	NodeRoutesMounted bool
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
-	// and so the node-agent listener (PR #13) can reuse it instead of loading the
+	// and so the node-agent listener can reuse it instead of loading the
 	// roots a second time.
 	Authority *nodes.Authority
+	// NodeListener is the node-facing mutual-TLS listener, nil when the node
+	// subsystem is disabled. It is a SEPARATE listener from the public API: a
+	// node authenticates with a client certificate, and mixing that credential
+	// class with session-authenticated browser traffic on one port would mean one
+	// set of middleware reasons about both.
+	NodeListener *nodes.NodeListener
+	// Dispatcher performs operations on enrolled nodes, nil when the node
+	// subsystem is disabled.
+	Dispatcher *nodes.Dispatcher
+	// Store is the node inventory, exposed so a caller can read it without
+	// building a second one over the same pool.
+	Store *nodes.Store
 	// CookieConfig is the session/CSRF cookie attributes in effect, so callers
 	// (and tests) can assert what clients will actually receive.
 	CookieConfig auth.CookieConfig
@@ -237,10 +249,37 @@ func Build(opts Options) (*Handler, error) {
 			})
 			if nodeErr != nil {
 				logger.Error("node management disabled: handlers could not be built", "error", nodeErr)
-			} else {
-				nodeRoutes = nodeHandlers.Routes
-				out.Authority = authority
+				break
 			}
+
+			// The node-facing listener is built here but STARTED by main, because
+			// it binds its own port and a library that opens sockets is a library
+			// that is hard to test and awkward to shut down.
+			nodeListener, listenerErr := nodes.NewNodeListener(nodes.NodeListenerOptions{
+				Handlers: nodeHandlers,
+				Logger:   logger,
+				Now:      now,
+			})
+			if listenerErr != nil {
+				// Not fatal: the fleet API and enrollment endpoint still work over
+				// the public listener; only the node-facing mTLS port is missing.
+				logger.Error("node listener unavailable", "error", listenerErr)
+			}
+
+			dispatcher, dispatchErr := nodes.NewDispatcher(nodes.DispatchOptions{
+				Authority: authority,
+				Store:     nodeStore,
+				Now:       now,
+			})
+			if dispatchErr != nil {
+				logger.Error("node dispatch unavailable: operations on nodes cannot be performed", "error", dispatchErr)
+			}
+
+			nodeRoutes = nodeHandlers.Routes
+			out.Authority = authority
+			out.Store = nodeStore
+			out.NodeListener = nodeListener
+			out.Dispatcher = dispatcher
 		}
 
 		authRoutes := handlers.Routes

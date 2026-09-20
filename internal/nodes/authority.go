@@ -26,6 +26,7 @@ package nodes
 
 import (
 	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"time"
@@ -292,7 +293,12 @@ func (a *Authority) IssueControllerLeaf() (*pki.Leaf, error) {
 	return leaf, nil
 }
 
-// IssueNodeLeaf mints a certificate for one node.
+// IssueNodeLeaf mints a certificate for one node, generating the key pair too.
+//
+// This is only for callers that will immediately hand the key to the node over a
+// channel they control — in practice, nothing in the enrollment path. Enrollment
+// goes through IssueNodeLeafForKey, because a key generated here is a key the
+// controller knows.
 func (a *Authority) IssueNodeLeaf(serverID string) (*pki.Leaf, error) {
 	leaf, err := a.node.IssueLeaf(pki.LeafParams{
 		Identity: pki.Identity{Kind: pki.KindNode, ID: serverID},
@@ -301,6 +307,28 @@ func (a *Authority) IssueNodeLeaf(serverID string) (*pki.Leaf, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("nodes: issue node leaf: %w", err)
+	}
+	return leaf, nil
+}
+
+// IssueNodeLeafForKey mints a node certificate for a public key the NODE owns.
+//
+// This is the enrollment path, and the difference from IssueNodeLeaf is the whole
+// point: the controller signs key material it cannot use. A compromise of the
+// control plane still lets an attacker mint identities, but it does not hand them
+// the private key of every enrolled node — which is the node's only proof of who
+// it is, and would otherwise be a fleet-wide impersonation.
+func (a *Authority) IssueNodeLeafForKey(serverID string, publicKey crypto.PublicKey) (*pki.Leaf, error) {
+	if serverID == "" {
+		return nil, fmt.Errorf("%w: a server id is required", ErrInvalid)
+	}
+	leaf, err := a.node.IssueLeafForKey(pki.LeafParams{
+		Identity: pki.Identity{Kind: pki.KindNode, ID: serverID},
+		NotAfter: a.clock().Add(pki.DefaultLeafLifetime),
+		Now:      a.clock,
+	}, publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("nodes: issue node leaf for supplied key: %w", err)
 	}
 	return leaf, nil
 }

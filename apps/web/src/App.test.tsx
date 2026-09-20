@@ -130,7 +130,11 @@ describe('authenticated shell', () => {
     expect(screen.getByText('owner@example.test')).toBeInTheDocument();
     expect(screen.getByText('Platform owner')).toBeInTheDocument();
     // The highest-priority action in this build is the owner lacking a factor.
-    expect(screen.getByText('The platform owner has no second factor')).toBeInTheDocument();
+    // It is derived from the /auth/mfa fetch, which resolves after the shell
+    // renders, so it must be awaited rather than asserted synchronously.
+    await waitFor(() =>
+      expect(screen.getByText('The platform owner has no second factor')).toBeInTheDocument(),
+    );
   });
 
   it('flags a critically low recovery-code count', async () => {

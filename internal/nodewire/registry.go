@@ -247,6 +247,48 @@ func (h HeartbeatInput) Validate() error {
 	return errors.Join(errs...)
 }
 
+// HeartbeatPath is the controller endpoint a heartbeat is posted to.
+//
+// It is a controller route rather than a registered Operation, and the reason is
+// the DIRECTION: for every operation the controller is the client and the node
+// answers, whereas a heartbeat is the node calling the controller. Reusing the
+// operation envelope would give one direction of traffic two shapes, and one of
+// them would eventually be forgotten.
+//
+// It is defined here, beside the payload, so the agent's client and the
+// controller's handler cannot disagree about the URL.
+const HeartbeatPath = "/api/v1/node/heartbeat"
+
+// HeartbeatPayload is what a heartbeat carries.
+type HeartbeatPayload struct {
+	// ServerID is the node's own claim about which server it is. The controller
+	// treats it as a claim and not as identity: what identifies the peer is the
+	// certificate, and a body field is what the peer chose to say.
+	ServerID string `json:"server_id"`
+	// Reported is the reading itself, validated by the same rules on both ends.
+	Reported HeartbeatInput `json:"report"`
+	// AgentVersion is sent on every beat so a controller that never received the
+	// enrollment facts still learns which build a node runs.
+	AgentVersion string `json:"agent_version"`
+}
+
+// Validate checks a heartbeat payload at either end.
+//
+// It is the SAME validator the controller applies, so an impossible reading is
+// refused in one place with one message rather than accepted here and rejected
+// there — which would produce a time series whose shape depends on which end
+// happened to parse it.
+func (h HeartbeatPayload) Validate() error {
+	var errs []error
+	if h.ServerID == "" {
+		errs = append(errs, errors.New("server_id is required"))
+	}
+	if err := h.Reported.Validate(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
 // ServiceState is the observed state of one unit.
 //
 // Per OBSERVABILITY.md §10, a service can be RUNNING yet DEGRADED. A single

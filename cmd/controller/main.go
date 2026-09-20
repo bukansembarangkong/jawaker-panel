@@ -42,6 +42,8 @@ func main() {
 
 func run() error {
 	migrateOnly := flag.Bool("migrate-only", false, "apply pending database migrations and exit")
+	nodeListenAddr := flag.String("node-listen", "",
+		"host:port for the node-facing mutual-TLS listener (empty disables it; nodes will not be able to report)")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -97,8 +99,21 @@ func run() error {
 		return err
 	}
 	handler := assembled.HTTP
-	if err != nil {
-		return err
+
+	// The node-facing mutual-TLS listener runs on its OWN port, separate from the
+	// public API. It is started only when the node subsystem came up: without an
+	// authority there is nothing to verify a node against, and a listener that
+	// refused every connection would look like a network fault.
+	var nodeListenerErr chan error
+	if assembled.NodeListener != nil {
+		if *nodeListenAddr == "" {
+			logger.Warn("node listener not started: -node-listen is empty; nodes will be unable to report")
+		} else {
+			nodeListenerErr = make(chan error, 1)
+			listener := assembled.NodeListener
+			addr := *nodeListenAddr
+			go func() { nodeListenerErr <- listener.ListenAndServe(ctx, addr) }()
+		}
 	}
 
 	srv := &http.Server{
@@ -123,6 +138,8 @@ func run() error {
 			return nil
 		}
 		return fmt.Errorf("http server failed: %w", err)
+	case err := <-nodeListenerErr:
+		return fmt.Errorf("node listener failed: %w", err)
 	case <-ctx.Done():
 		logger.Info("shutdown signal received")
 	}
