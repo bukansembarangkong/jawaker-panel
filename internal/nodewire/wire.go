@@ -103,6 +103,38 @@ const (
 	// process starts. Arguments are passed as an argv slice, never interpreted by
 	// a shell.
 	OpAppDeploy Operation = "app.deploy" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpDatabaseManage creates or drops a database or database user on the local
+	// engine (PostgreSQL or MariaDB). Authentication uses the OS-level peer/socket
+	// auth for the jawaker system user — no root credential is stored or sent
+	// (SECURITY.md §6, PRD.md §12.4).
+	//
+	// There is deliberately no generic SQL execution path: every action is an
+	// enumerated value (create_db, drop_db, create_user, drop_user, set_grants)
+	// and the agent refuses any action not in the allowlist.
+	OpDatabaseManage Operation = "database.manage" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpDatabaseDump runs pg_dump or mariadb-dump to a path confined inside
+	// /var/lib/jawaker/db-dumps/. The result includes the SHA-256 and byte size
+	// so the controller can verify receipt without re-reading the file.
+	OpDatabaseDump Operation = "database.dump" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpDatabaseRestore runs pg_restore or mariadb from a dump file confined
+	// inside /var/lib/jawaker/db-dumps/. It is idempotent: applying the same
+	// dump file twice leaves the database in the same final state.
+	OpDatabaseRestore Operation = "database.restore" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpDatabaseMetrics collects point-in-time connection counts and slow-query
+	// snapshots. It is read-only: no process is spawned, no file is written.
+	// PostgreSQL uses pg_stat_activity + pg_stat_statements; MariaDB uses
+	// information_schema.PROCESSLIST and slow-query log tail.
+	OpDatabaseMetrics Operation = "database.metrics" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpDatabaseUpgrade performs a safe engine version bump (pg_upgrade /
+	// mariadb-upgrade). It MUST write a pre-upgrade dump before touching the
+	// engine — the upgrade is refused if the pre-dump path is empty. Rollback
+	// uses the pre-upgrade dump to restore the database if the upgrade fails.
+	OpDatabaseUpgrade Operation = "database.upgrade" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
