@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bukansembarangkong/jawaker-panel/internal/apps"
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
@@ -78,17 +79,24 @@ type Handler struct {
 	// SiteRoutesMounted reports whether /api/v1/projects/{project_id}/sites/*
 	// is registered. Requires both database and secret keys.
 	SiteRoutesMounted bool
+	// AppRoutesMounted reports whether /api/v1/projects/{project_id}/apps/*
+	// is registered.
+	AppRoutesMounted bool
 	// ProjectRoutesMounted reports whether /api/v1/projects/* is registered.
 	ProjectRoutesMounted bool
 	// JobRoutesMounted reports whether /api/v1/jobs/* is registered.
 	JobRoutesMounted bool
 	// Sites is the hosted sites inventory store.
 	Sites *sites.Store
+	// Apps is the applications inventory store.
+	Apps *apps.Store
 	// Projects is the tenant boundary store.
 	Projects *projects.Store
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
+	// AppWorker is the background jobs worker executing application deployments.
+	AppWorker *jobs.Worker
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -346,6 +354,37 @@ func Build(opts Options) (*Handler, error) {
 		}
 		projectRoutes := projectHandlers.Routes
 
+		// Application management: apps CRUD and deploy endpoint. The worker
+		// is started even when the dispatcher is nil — it fails jobs honestly
+		// with dispatcher_unavailable rather than leaving them queued forever.
+		out.Apps = apps.NewStore(opts.DB, now)
+		appHandlers, appErr := NewAppHandlers(AppHandlerOptions{
+			Apps:       out.Apps,
+			Pool:       opts.DB,
+			Secrets:    out.Secrets,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger,
+			Audit:      opts.DB,
+			Now:        now,
+		})
+		if appErr != nil {
+			return nil, fmt.Errorf("controller: app handlers: %w", appErr)
+		}
+		appRoutes := appHandlers.Routes
+
+		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
+			Pool:       opts.DB,
+			Apps:       out.Apps,
+			Projects:   out.Projects,
+			Secrets:    out.Secrets,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger.With("component", "app-worker"),
+		})
+		if appWorkerErr != nil {
+			return nil, fmt.Errorf("controller: app worker: %w", appWorkerErr)
+		}
+		out.AppWorker = appWorker
+
 		jobHandlers, jobErr := NewJobHandlers(JobHandlerOptions{
 			Pool:   opts.DB,
 			Logger: logger,
@@ -364,10 +403,12 @@ func Build(opts Options) (*Handler, error) {
 				nodeRoutes(mux)
 			}
 			siteRoutes(mux)
+			appRoutes(mux)
 			projectRoutes(mux)
 			jobRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
+		out.AppRoutesMounted = true
 		out.ProjectRoutesMounted = true
 		out.JobRoutesMounted = true
 		out.Events = broker
