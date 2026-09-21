@@ -628,6 +628,48 @@ func (d *Dispatcher) UpgradeDatabase(ctx context.Context, serverID, requestID st
 	return out, nil
 }
 
+// ArchiveFiles packs source paths into a tar.gz on the node.
+func (d *Dispatcher) ArchiveFiles(ctx context.Context, serverID, requestID string, in nodewire.FileArchiveInput) (nodewire.FileArchiveResult, error) {
+	var out nodewire.FileArchiveResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid file archive input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpFileArchive,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode file archive result: %w", err)
+	}
+	return out, nil
+}
+
+// RestoreFiles extracts an archive into a destination directory on the node.
+func (d *Dispatcher) RestoreFiles(ctx context.Context, serverID, requestID string, in nodewire.FileRestoreInput) (nodewire.FileRestoreResult, error) {
+	var out nodewire.FileRestoreResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid file restore input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpFileRestore,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode file restore result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.
