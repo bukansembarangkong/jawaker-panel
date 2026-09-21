@@ -135,6 +135,19 @@ const (
 	// engine — the upgrade is refused if the pre-dump path is empty. Rollback
 	// uses the pre-upgrade dump to restore the database if the upgrade fails.
 	OpDatabaseUpgrade Operation = "database.upgrade" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpFileArchive packs a closed set of source paths into a tar.gz archive
+	// under /var/lib/jawaker/backups. Sources are confined to reviewed roots
+	// (app releases and the nginx config tree); there is no way to name an
+	// arbitrary path, which is what keeps this from being a read-anything
+	// primitive.
+	OpFileArchive Operation = "file.archive" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpFileRestore extracts a previously created archive into a destination
+	// directory under the same reviewed roots. Extraction never follows
+	// absolute paths or ".." members out of the destination (tar refuses them
+	// by default; the archive path itself is confined before tar runs).
+	OpFileRestore Operation = "file.restore" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not

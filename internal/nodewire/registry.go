@@ -409,6 +409,61 @@ var Operations = map[Operation]Descriptor{
 			"old data directories are left for the operator to remove once satisfied.",
 		Mutating: true,
 	},
+
+	OpFileArchive: {
+		Operation:  OpFileArchive,
+		Permission: "backup.create",
+		InputSchema: "{source_paths: [string], archive_path: string} — source_paths are absolute " +
+			"paths inside the reviewed source roots; archive_path is the tar.gz destination",
+		Validation: "source_paths must be non-empty and at most MaxArchiveSourcePaths entries; " +
+			"every source path must be absolute, clean, and inside /var/www/jawaker or " +
+			"/etc/nginx/jawaker; archive_path must be absolute, clean, and strictly inside " +
+			"/var/lib/jawaker/backups; no field may contain a NUL byte; a path with a \"..\" " +
+			"segment is not clean and is refused",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead:  []string{"/var/www/jawaker", "/etc/nginx/jawaker"},
+			FilesystemWrite: []string{"/var/lib/jawaker/backups"},
+			Network:         "none",
+		},
+		LockKeys:    []string{"file.archive"},
+		Timeout:     30 * 60 * time.Second,
+		AuditAction: "file.archive",
+		// Re-running the same archive overwrites the same file with the same
+		// contents. Safe to retry.
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Rollback: "archive failure leaves a partial file which the agent removes before " +
+			"returning the error, so the caller never sees a partial artifact. The source " +
+			"paths are only read and are untouched.",
+		Mutating: true,
+	},
+
+	OpFileRestore: {
+		Operation:  OpFileRestore,
+		Permission: "backup.restore",
+		InputSchema: "{archive_path: string, destination_dir: string} — archive_path is the tar.gz " +
+			"to extract; destination_dir is where it lands",
+		Validation: "archive_path must already exist, be absolute and clean, and be strictly inside " +
+			"/var/lib/jawaker/backups; destination_dir must be absolute, clean, and inside " +
+			"/var/www/jawaker or /etc/nginx/jawaker; no field may contain a NUL byte",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead:  []string{"/var/lib/jawaker/backups"},
+			FilesystemWrite: []string{"/var/www/jawaker", "/etc/nginx/jawaker"},
+			Network:         "none",
+		},
+		LockKeys:    []string{"file.restore"},
+		Timeout:     30 * 60 * time.Second,
+		AuditAction: "file.restore",
+		// NOT idempotent: extracting again overwrites whatever changed at the
+		// destination since the last restore. No automatic retry; the controller
+		// job engine decides whether to try again.
+		Retry: RetryPolicy{Idempotent: false, MaxAttempts: 0},
+		Rollback: "restore failure leaves the destination in an indeterminate state. The caller " +
+			"recovers by restoring from a different archive or redeploying. The archive file is " +
+			"NOT removed on failure (the caller decides retention).",
+		Mutating: true,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for

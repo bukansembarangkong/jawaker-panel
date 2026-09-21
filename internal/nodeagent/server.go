@@ -179,6 +179,12 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpDatabaseMetrics] = true
 		served[nodewire.OpDatabaseUpgrade] = true
 	}
+	// file.* operations require tar and Linux. Same honest-advertisement rule:
+	// a node without tar must not offer a backup that always fails.
+	if e.tarPath != "" && supportedOS() {
+		served[nodewire.OpFileArchive] = true
+		served[nodewire.OpFileRestore] = true
+	}
 	return served
 }
 
@@ -587,6 +593,34 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.UpgradeDatabase(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpFileArchive:
+		in, err := nodewire.DecodeInput[nodewire.FileArchiveInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.ArchiveFiles(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpFileRestore:
+		in, err := nodewire.DecodeInput[nodewire.FileRestoreInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.RestoreFiles(ctx, in)
 		if err != nil {
 			return nil, err
 		}

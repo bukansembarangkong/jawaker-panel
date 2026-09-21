@@ -79,6 +79,11 @@ type Executors struct {
 	// dbDumpDir is the path-confined root for database dump artifacts.
 	// Defaults to /var/lib/jawaker/db-dumps; overridable for tests.
 	dbDumpDir string
+	// backupDir is the path-confined root for file backup archives. Defaults
+	// to nodewire.BackupArchiveRoot; overridable for tests.
+	backupDir string
+	// tarPath is the resolved tar binary, empty when absent.
+	tarPath string
 	// cmdRunner executes subprocesses. Defaults to runCommand; tests replace it
 	// to assert the argv a database executor would spawn without a real engine.
 	cmdRunner func(context.Context, CommandSpec) (CommandResult, error)
@@ -115,6 +120,10 @@ type ExecutorOptions struct {
 	MariaAvailable bool
 	// DBDumpDir overrides the database dump directory, for tests.
 	DBDumpDir string
+	// BackupDir overrides the file backup archive root, for tests.
+	BackupDir string
+	// TarPath overrides tar binary detection, for tests.
+	TarPath string
 }
 
 // NewExecutors detects what this node can do.
@@ -169,6 +178,19 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 		dbDumpDir = "/var/lib/jawaker/db-dumps"
 	}
 	e.dbDumpDir = dbDumpDir
+
+	backupDir := opts.BackupDir
+	if backupDir == "" {
+		backupDir = nodewire.BackupArchiveRoot
+	}
+	e.backupDir = backupDir
+	// Same reasoning as git detection: a host without systemd may still have
+	// tar, and this field must be set regardless of which early return fires.
+	if opts.TarPath != "" {
+		e.tarPath = opts.TarPath
+	} else if tarBin, ok := resolveProgram("/usr/bin/tar", "/bin/tar"); ok {
+		e.tarPath = tarBin
+	}
 
 	// PostgreSQL detection: createdb is the lightest sentinel — present on any
 	// host with the postgresql-client package. If the test override is set, use it.
