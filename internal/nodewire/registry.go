@@ -270,6 +270,145 @@ var Operations = map[Operation]Descriptor{
 			"a health failure removes the symlink and marks the deploy as failed.",
 		Mutating: true,
 	},
+
+	OpDatabaseManage: {
+		Operation: OpDatabaseManage,
+		// database.manage: creates or drops databases and users. The controller
+		// RBAC layer must confirm the caller holds this project-scoped permission
+		// and has completed step-up re-authentication before dispatching.
+		Permission: "database.manage",
+		InputSchema: "{engine: \"postgresql\"|\"mariadb\", db_name: string, " +
+			"action: \"create_db\"|\"drop_db\"|\"create_user\"|\"drop_user\"|\"set_grants\", " +
+			"username?: string, privileges?: [\"SELECT\"|\"INSERT\"|\"UPDATE\"|\"DELETE\"|\"CREATE\"|\"DROP\"|\"ALL\"], " +
+			"socket_path: string}",
+		Validation: "engine must be postgresql or mariadb; action must be one of the enumerated values; " +
+			"username must match ^[a-z0-9_]{2,32}$ when present; privileges must be a subset of the " +
+			"allowlist; socket_path must be a valid unix socket path under /var/run/postgresql or " +
+			"/var/run/mysqld; no field may contain a NUL byte; there is no generic SQL execution path",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			// Unix sockets only — the agent never opens a TCP connection to the engine.
+			FilesystemRead: []string{"/var/run/postgresql", "/var/run/mysqld"},
+			// create_db/drop_db/create_user mutate the engine's own data directory
+			// through the socket-authenticated admin command; declare it so the scope
+			// is honest about what the operation reaches.
+			FilesystemWrite: []string{"/var/lib/postgresql", "/var/lib/mysql"},
+			Network:         "unix-socket-only",
+		},
+		// Per-database serialization: two concurrent creates/drops on the same
+		// database_id would race. The controller job lock serializes at the
+		// controller level; this LockKey is the node-side statement.
+		LockKeys:    []string{"database.manage"},
+		Timeout:     60 * time.Second,
+		AuditAction: "database.manage",
+		// create_db and create_user are idempotent (IF NOT EXISTS semantics);
+		// drop_db and drop_user are also idempotent (IF EXISTS). set_grants
+		// replaces the grant set atomically. MaxAttempts=2 is safe.
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Rollback: "create_db failure leaves no database; create_user failure leaves no user; " +
+			"drop_db and drop_user are their own recovery (idempotent). set_grants failure " +
+			"leaves the previous grant set in force. No separate rollback step is required.",
+		Mutating: true,
+	},
+
+	OpDatabaseDump: {
+		Operation:  OpDatabaseDump,
+		Permission: "database.manage",
+		InputSchema: "{engine: \"postgresql\"|\"mariadb\", db_name: string, " +
+			"dump_path: string, socket_path: string}",
+		Validation: "engine must be postgresql or mariadb; db_name must match ^[a-z0-9_]{2,63}$; " +
+			"dump_path must be an absolute path confined strictly inside /var/lib/jawaker/db-dumps/ " +
+			"(path traversal refused); socket_path must be under /var/run/postgresql or /var/run/mysqld; " +
+			"no field may contain a NUL byte",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead:  []string{"/var/run/postgresql", "/var/run/mysqld"},
+			FilesystemWrite: []string{"/var/lib/jawaker/db-dumps"},
+			Network:         "unix-socket-only",
+		},
+		LockKeys:    []string{"database.dump"},
+		Timeout:     30 * 60 * time.Second, // large databases may take time
+		AuditAction: "database.dump",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Rollback: "dump failure leaves a partial file which the agent removes before returning the " +
+			"error, so the caller never sees a partial artifact. The source database is untouched.",
+		Mutating: true, // writes a file to disk
+	},
+
+	OpDatabaseRestore: {
+		Operation:  OpDatabaseRestore,
+		Permission: "database.manage",
+		InputSchema: "{engine: \"postgresql\"|\"mariadb\", db_name: string, " +
+			"dump_path: string, socket_path: string}",
+		Validation: "engine must be postgresql or mariadb; db_name must match ^[a-z0-9_]{2,63}$; " +
+			"dump_path must already exist and be confined inside /var/lib/jawaker/db-dumps/; " +
+			"socket_path must be under /var/run/postgresql or /var/run/mysqld; " +
+			"no field may contain a NUL byte",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/var/lib/jawaker/db-dumps", "/var/run/postgresql", "/var/run/mysqld"},
+			// pg_restore --clean --if-exists and the mariadb client rewrite the
+			// target database's contents through the engine; the engine writes its
+			// own data directory. Declared so the scope is honest.
+			FilesystemWrite: []string{"/var/lib/postgresql", "/var/lib/mysql"},
+			Network:         "unix-socket-only",
+		},
+		LockKeys:    []string{"database.restore"},
+		Timeout:     30 * 60 * time.Second,
+		AuditAction: "database.restore",
+		// Idempotent: applying the same dump file twice leaves the same database state
+		// because pg_restore uses --clean --if-exists and mariadb recreates from scratch.
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Rollback: "restore failure leaves the database in an indeterminate state. The caller " +
+			"must create the database fresh and retry the restore, or recover from a different " +
+			"backup. The dump file is NOT removed on failure (the caller decides retention).",
+		Mutating: true,
+	},
+
+	OpDatabaseMetrics: {
+		Operation:   OpDatabaseMetrics,
+		Permission:  "database.read",
+		InputSchema: "{engine: \"postgresql\"|\"mariadb\", socket_path: string}",
+		Validation: "engine must be postgresql or mariadb; socket_path must be under " +
+			"/var/run/postgresql or /var/run/mysqld; no field may contain a NUL byte",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/var/run/postgresql", "/var/run/mysqld"},
+			Network:        "unix-socket-only",
+		},
+		// No LockKeys: read-only; multiple concurrent metric polls are safe.
+		Timeout:     15 * time.Second,
+		AuditAction: "database.metrics.read",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpDatabaseUpgrade: {
+		Operation:  OpDatabaseUpgrade,
+		Permission: "database.manage",
+		InputSchema: "{engine: \"postgresql\"|\"mariadb\", from_version: string, to_version: string, " +
+			"pre_dump_path: string, socket_path: string}",
+		Validation: "engine must be postgresql or mariadb; from_version and to_version must be " +
+			"non-empty strings matching the engine's version format; pre_dump_path must be non-empty " +
+			"and confined inside /var/lib/jawaker/db-dumps/ — an empty pre_dump_path is refused to " +
+			"prevent upgrade without a safety checkpoint; socket_path must be under " +
+			"/var/run/postgresql or /var/run/mysqld",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead:  []string{"/var/lib/jawaker/db-dumps", "/var/run/postgresql", "/var/run/mysqld"},
+			FilesystemWrite: []string{"/var/lib/jawaker/db-dumps"},
+			Network:         "unix-socket-only",
+		},
+		LockKeys:    []string{"database.upgrade"},
+		Timeout:     60 * 60 * time.Second, // pg_upgrade on a large cluster can take tens of minutes
+		AuditAction: "database.upgrade",
+		Retry:       RetryPolicy{Idempotent: false, MaxAttempts: 0},
+		Rollback: "if the upgrade binary fails, the agent restores from the pre_dump_path (a full " +
+			"database restore) and returns RolledBack=true. The pre_dump_path is retained after " +
+			"rollback so the operator can inspect it. A successful upgrade removes nothing — " +
+			"old data directories are left for the operator to remove once satisfied.",
+		Mutating: true,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for

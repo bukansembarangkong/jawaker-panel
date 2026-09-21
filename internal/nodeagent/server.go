@@ -512,6 +512,76 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 		}
 		return nodewire.EncodeResult(result)
 
+	case nodewire.OpDatabaseManage:
+		in, err := nodewire.DecodeInput[nodewire.DatabaseManageInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.ManageDatabase(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpDatabaseDump:
+		in, err := nodewire.DecodeInput[nodewire.DatabaseDumpInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.DumpDatabase(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpDatabaseRestore:
+		in, err := nodewire.DecodeInput[nodewire.DatabaseRestoreInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.RestoreDatabase(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpDatabaseMetrics:
+		in, err := nodewire.DecodeInput[nodewire.DatabaseMetricsInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.GetDatabaseMetrics(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpDatabaseUpgrade:
+		in, err := nodewire.DecodeInput[nodewire.DatabaseUpgradeInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.UpgradeDatabase(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
 	default:
 		// Unreachable: DecodeRequest already refused anything not in served, and
 		// served only ever contains operations this switch handles. Reaching
