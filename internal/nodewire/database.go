@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// Engine names for Phase 5 database operations.
+const (
+	EnginePostgreSQL = "postgresql"
+	EngineMariaDB    = "mariadb"
+)
+
 // AllowedDatabaseEngines is the closed set of database engines.
 var AllowedDatabaseEngines = map[string]bool{
 	"postgresql": true,

@@ -169,6 +169,16 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 	if e.hasSystemd && e.gitAvailable && supportedOS() {
 		served[nodewire.OpAppDeploy] = true
 	}
+	// database.* operations require a detected database engine and Linux.
+	// Either PostgreSQL or MariaDB capability satisfies the gate; individual
+	// executors re-verify the specific engine requested by each payload.
+	if (e.pgAvailable || e.mariaAvailable) && supportedOS() {
+		served[nodewire.OpDatabaseManage] = true
+		served[nodewire.OpDatabaseDump] = true
+		served[nodewire.OpDatabaseRestore] = true
+		served[nodewire.OpDatabaseMetrics] = true
+		served[nodewire.OpDatabaseUpgrade] = true
+	}
 	return served
 }
 
