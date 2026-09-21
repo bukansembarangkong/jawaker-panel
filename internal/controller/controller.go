@@ -18,6 +18,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/apps"
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
+	"github.com/bukansembarangkong/jawaker-panel/internal/backups"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/databases"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
@@ -86,6 +87,9 @@ type Handler struct {
 	// DatabaseRoutesMounted reports whether /api/v1/projects/{project_id}/databases/*
 	// is registered.
 	DatabaseRoutesMounted bool
+	// BackupRoutesMounted reports whether /api/v1/projects/{project_id}/backup-*
+	// is registered.
+	BackupRoutesMounted bool
 	// ProjectRoutesMounted reports whether /api/v1/projects/* is registered.
 	ProjectRoutesMounted bool
 	// JobRoutesMounted reports whether /api/v1/jobs/* is registered.
@@ -96,6 +100,8 @@ type Handler struct {
 	Apps *apps.Store
 	// Databases is the managed databases inventory store.
 	Databases *databases.Store
+	// Backups is the backup plans and runs store.
+	Backups *backups.Store
 	// Projects is the tenant boundary store.
 	Projects *projects.Store
 	// SiteWorker is the background jobs worker executing configuration applies
@@ -400,6 +406,23 @@ func Build(opts Options) (*Handler, error) {
 		}
 		dbRoutes := dbHandlers.Routes
 
+		// Backup plans (Phase 6): CRUD, manual runs, verification, restore, and
+		// expiring download links. The backup.* job workers arrive in PR-E;
+		// jobs enqueued before that stay queued, which the jobs engine reports
+		// honestly rather than silently dropping.
+		out.Backups = backups.NewStore(opts.DB, now)
+		backupHandlers, backupErr := NewBackupHandlers(BackupHandlerOptions{
+			Backups: out.Backups,
+			Pool:    opts.DB,
+			Logger:  logger,
+			Audit:   opts.DB,
+			Now:     now,
+		})
+		if backupErr != nil {
+			return nil, fmt.Errorf("controller: backup handlers: %w", backupErr)
+		}
+		backupRoutes := backupHandlers.Routes
+
 		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
 			Pool:       opts.DB,
 			Apps:       out.Apps,
@@ -444,12 +467,14 @@ func Build(opts Options) (*Handler, error) {
 			siteRoutes(mux)
 			appRoutes(mux)
 			dbRoutes(mux)
+			backupRoutes(mux)
 			projectRoutes(mux)
 			jobRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
 		out.DatabaseRoutesMounted = true
+		out.BackupRoutesMounted = true
 		out.ProjectRoutesMounted = true
 		out.JobRoutesMounted = true
 		out.Events = broker
