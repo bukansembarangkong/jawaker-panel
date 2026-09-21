@@ -13,6 +13,8 @@ package apps
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -937,10 +939,12 @@ func (s *Store) TouchWebhookToken(ctx context.Context, id string) error {
 	return err
 }
 
-// RevokeWebhookToken marks a webhook token as revoked.
-func (s *Store) RevokeWebhookToken(ctx context.Context, id string) error {
+// RevokeWebhookToken marks a webhook token as revoked. The appID ensures a
+// caller cannot revoke a token that belongs to a different app.
+func (s *Store) RevokeWebhookToken(ctx context.Context, appID, tokenID string) error {
 	ct, err := s.pool.Exec(ctx,
-		`UPDATE app_webhook_tokens SET state = 'revoked' WHERE id = $1 AND state = 'active'`, id)
+		`UPDATE app_webhook_tokens SET state = 'revoked'
+		 WHERE id = $1 AND app_id = $2 AND state = 'active'`, tokenID, appID)
 	if err != nil {
 		return fmt.Errorf("apps: revoke webhook token: %w", err)
 	}
@@ -948,6 +952,35 @@ func (s *Store) RevokeWebhookToken(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ListWebhookTokens returns every token (active and revoked) for an app, newest
+// first. The plaintext token is never recoverable.
+func (s *Store) ListWebhookTokens(ctx context.Context, appID string) ([]WebhookToken, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, app_id, token_hash, state, created_at, last_used_at
+		 FROM app_webhook_tokens
+		 WHERE app_id = $1 ORDER BY created_at DESC`, appID)
+	if err != nil {
+		return nil, fmt.Errorf("apps: list webhook tokens: %w", err)
+	}
+	defer rows.Close()
+	var out []WebhookToken
+	for rows.Next() {
+		var wt WebhookToken
+		if err := rows.Scan(&wt.ID, &wt.AppID, &wt.TokenHash, &wt.State, &wt.CreatedAt, &wt.LastUsedAt); err != nil {
+			return nil, fmt.Errorf("apps: scan webhook token: %w", err)
+		}
+		out = append(out, wt)
+	}
+	return out, rows.Err()
+}
+
+// HashWebhookToken returns the hex-encoded SHA-256 digest of a raw webhook token.
+// The digest is stored; the raw token is shown once at creation time (SECURITY.md).
+func HashWebhookToken(raw string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
+	return hex.EncodeToString(sum[:])
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

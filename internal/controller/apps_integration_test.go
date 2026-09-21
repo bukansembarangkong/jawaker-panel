@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -705,5 +706,215 @@ func TestRedeployFromPastDeployment(t *testing.T) {
 	}
 	if sha != "abc1234" {
 		t.Errorf("new deployment commit_sha = %q, want abc1234", sha)
+	}
+}
+
+// --- PR-E: Git Webhook Tokens & Inbound Deployments ---------------------------
+
+// TestWebhookTokenManagementLifecycle proves an owner can create, list, and revoke
+// git webhook tokens for an application.
+func TestWebhookTokenManagementLifecycle(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "wh-mgmt", "9460")
+
+	// Create webhook token (requires step-up).
+	h.elevate(t)
+	createResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "")
+	if createResp.StatusCode != http.StatusCreated {
+		var errBody map[string]any
+		decodeBody(t, createResp, &errBody)
+		t.Fatalf("POST webhook-tokens = %d, want 201; body = %v", createResp.StatusCode, errBody)
+	}
+
+	var createdBody struct {
+		Token        string `json:"token"`
+		WebhookToken struct {
+			ID    string `json:"id"`
+			AppID string `json:"app_id"`
+			State string `json:"state"`
+		} `json:"webhook_token"`
+	}
+	decodeBody(t, createResp, &createdBody)
+	if !strings.HasPrefix(createdBody.Token, "jw_hook_") {
+		t.Errorf("token = %q, want jw_hook_ prefix", createdBody.Token)
+	}
+	if createdBody.WebhookToken.ID == "" {
+		t.Error("webhook_token.id is empty")
+	}
+	if createdBody.WebhookToken.State != "active" {
+		t.Errorf("webhook_token.state = %q, want active", createdBody.WebhookToken.State)
+	}
+	tokenID := createdBody.WebhookToken.ID
+
+	// List webhook tokens (requires deployment.read).
+	listResp := h.do("GET", "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "", nil)
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET webhook-tokens = %d, want 200", listResp.StatusCode)
+	}
+	var listBody struct {
+		WebhookTokens []struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"webhook_tokens"`
+	}
+	decodeBody(t, listResp, &listBody)
+	if len(listBody.WebhookTokens) != 1 {
+		t.Fatalf("got %d tokens, want 1", len(listBody.WebhookTokens))
+	}
+	if listBody.WebhookTokens[0].ID != tokenID {
+		t.Errorf("token ID = %q, want %q", listBody.WebhookTokens[0].ID, tokenID)
+	}
+
+	// Revoke webhook token (requires step-up).
+	h.elevate(t)
+	delResp := h.do("DELETE", "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens/"+tokenID, "", nil)
+	if delResp.StatusCode != http.StatusOK {
+		var errBody map[string]any
+		decodeBody(t, delResp, &errBody)
+		t.Fatalf("DELETE webhook-tokens = %d, want 200; body = %v", delResp.StatusCode, errBody)
+	}
+
+	// List again: token is now revoked.
+	listResp2 := h.do("GET", "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "", nil)
+	decodeBody(t, listResp2, &listBody)
+	if len(listBody.WebhookTokens) != 1 || listBody.WebhookTokens[0].State != "revoked" {
+		t.Errorf("after revoke: list = %+v, want 1 revoked token", listBody.WebhookTokens)
+	}
+}
+
+// TestGitWebhookTriggerDeployment proves a valid git push payload triggers a deployment
+// via the public webhook endpoint.
+func TestGitWebhookTriggerDeployment(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+	ctx := context.Background()
+
+	_, projectID, appID := appFixture(t, h, "wh-trigger", "9461")
+
+	// Create token.
+	h.elevate(t)
+	createResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "")
+	var created struct {
+		Token string `json:"token"`
+	}
+	decodeBody(t, createResp, &created)
+	rawToken := created.Token
+
+	// Trigger webhook unauthenticated (via doRaw, simulating GitHub/GitLab).
+	payload := `{"after":"abc1234","ref":"refs/heads/main"}`
+	whResp := h.doRaw("POST", "/api/v1/webhooks/git/"+rawToken, payload, nil)
+	if whResp.StatusCode != http.StatusAccepted {
+		var errBody map[string]any
+		decodeBody(t, whResp, &errBody)
+		t.Fatalf("POST webhook = %d, want 202; body = %v", whResp.StatusCode, errBody)
+	}
+
+	var depResp struct {
+		DeploymentID string `json:"deployment_id"`
+		Job          struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"job"`
+	}
+	decodeBody(t, whResp, &depResp)
+	if depResp.DeploymentID == "" {
+		t.Error("deployment_id is empty")
+	}
+	if depResp.Job.ID == "" {
+		t.Error("job.id is empty")
+	}
+
+	// Verify deployment row in DB: trigger='webhook', commit_sha='abc1234', git_ref='main'.
+	var trigger, sha, ref, state string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT trigger, commit_sha, git_ref, state FROM app_deployments WHERE id = $1`,
+		depResp.DeploymentID,
+	).Scan(&trigger, &sha, &ref, &state); err != nil {
+		t.Fatalf("query deployment: %v", err)
+	}
+	if trigger != "webhook" {
+		t.Errorf("trigger = %q, want webhook", trigger)
+	}
+	if sha != "abc1234" {
+		t.Errorf("commit_sha = %q, want abc1234", sha)
+	}
+	if ref != "main" {
+		t.Errorf("git_ref = %q, want main", ref)
+	}
+	if state != "queued" {
+		t.Errorf("state = %q, want queued", state)
+	}
+}
+
+// TestGitWebhookDuplicateIdempotencyGate proves Gate 4: a duplicate push event
+// for the same commit cannot double-deploy and returns 409 Conflict.
+func TestGitWebhookDuplicateIdempotencyGate(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "wh-idem", "9462")
+
+	h.elevate(t)
+	createResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "")
+	var created struct {
+		Token string `json:"token"`
+	}
+	decodeBody(t, createResp, &created)
+	rawToken := created.Token
+
+	payload := `{"after":"deadbeef","ref":"refs/heads/feature"}`
+
+	// First push succeeds.
+	first := h.doRaw("POST", "/api/v1/webhooks/git/"+rawToken, payload, nil)
+	if first.StatusCode != http.StatusAccepted {
+		t.Fatalf("first push = %d, want 202", first.StatusCode)
+	}
+
+	// Immediate second push with same SHA must conflict (Gate 4).
+	second := h.doRaw("POST", "/api/v1/webhooks/git/"+rawToken, payload, nil)
+	if second.StatusCode != http.StatusConflict {
+		t.Errorf("duplicate push = %d, want 409 Conflict (Gate 4)", second.StatusCode)
+	}
+}
+
+// TestGitWebhookRefusesUnknownToken proves unknown/revoked tokens return 404.
+func TestGitWebhookRefusesUnknownToken(t *testing.T) {
+	h := newHarness(t, nil)
+
+	resp := h.doRaw("POST", "/api/v1/webhooks/git/jw_hook_0000000000000000000000000000000000000000000000000000000000000000",
+		`{"after":"abc1234"}`, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown webhook token = %d, want 404", resp.StatusCode)
+	}
+}
+
+// TestGitWebhookRefusesInvalidPayload proves empty or malformed payloads are refused.
+func TestGitWebhookRefusesInvalidPayload(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "wh-bad", "9463")
+
+	h.elevate(t)
+	createResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/webhook-tokens", "")
+	var created struct {
+		Token string `json:"token"`
+	}
+	decodeBody(t, createResp, &created)
+	rawToken := created.Token
+
+	// Empty payload has no commit SHA.
+	emptyResp := h.doRaw("POST", "/api/v1/webhooks/git/"+rawToken, `{}`, nil)
+	if emptyResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("empty payload = %d, want 400", emptyResp.StatusCode)
+	}
+
+	// Branch deletion payload (all zeros) has no deployable SHA.
+	deleteBranch := h.doRaw("POST", "/api/v1/webhooks/git/"+rawToken,
+		`{"after":"0000000000000000000000000000000000000000","ref":"refs/heads/delete-me"}`, nil)
+	if deleteBranch.StatusCode != http.StatusBadRequest {
+		t.Errorf("branch delete payload = %d, want 400", deleteBranch.StatusCode)
 	}
 }
