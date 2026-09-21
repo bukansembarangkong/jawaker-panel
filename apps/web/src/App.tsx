@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
+import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
 import { DashboardPage } from './pages/DashboardPage';
 import { SecurityPage } from './pages/SecurityPage';
@@ -26,12 +27,13 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
   if (window.location.hash === '#/servers') return 'servers';
   if (window.location.hash === '#/sites') return 'sites';
+  if (window.location.hash === '#/apps') return 'apps';
   return 'dashboard';
 }
 
@@ -167,6 +169,19 @@ export default function App() {
                 Sites
               </a>
             </li>
+            <li>
+              <a
+                href="#/apps"
+                aria-current={route === 'apps' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'apps'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Apps
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -177,6 +192,8 @@ export default function App() {
             <ServersPage />
           ) : route === 'sites' ? (
             <SitesPage />
+          ) : route === 'apps' ? (
+            <AppsPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

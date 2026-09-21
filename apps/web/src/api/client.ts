@@ -469,6 +469,135 @@ export const api = {
 
   getJob: (id: string): Promise<JobStatus> =>
     request<JobStatus>(`/api/v1/jobs/${encodeURIComponent(id)}`),
+
+  // --- Apps -------------------------------------------------------------------
+
+  listApps: (projectId: string, params?: { limit?: number; offset?: number }): Promise<AppPage> => {
+    const q = new URLSearchParams();
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<AppPage>(`/api/v1/projects/${encodeURIComponent(projectId)}/apps${qs ? '?' + qs : ''}`);
+  },
+
+  createApp: (
+    projectId: string,
+    input: {
+      server_id: string;
+      slug: string;
+      name: string;
+      runtime_type: string;
+      git_repo_url: string;
+      git_ref_default?: string;
+      build_program?: string;
+      build_args?: string[];
+      start_program?: string;
+      start_args?: string[];
+      working_dir?: string;
+      port?: number;
+      health_path?: string;
+      env_name?: string;
+    },
+  ): Promise<{ app: App }> =>
+    request<{ app: App }>(`/api/v1/projects/${encodeURIComponent(projectId)}/apps`, {
+      method: 'POST',
+      body: input,
+    }),
+
+  getApp: (projectId: string, id: string): Promise<{ app: App }> =>
+    request<{ app: App }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(id)}`,
+    ),
+
+  deleteApp: (projectId: string, id: string): Promise<{ status: string; delete_after?: string }> =>
+    request<{ status: string; delete_after?: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  listEnvVars: (projectId: string, appId: string): Promise<{ env_vars: EnvVar[] }> =>
+    request<{ env_vars: EnvVar[] }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/env`,
+    ),
+
+  setEnvVar: (
+    projectId: string,
+    appId: string,
+    input: { name: string; value_source: 'literal' | 'secret_ref'; value: string },
+  ): Promise<{ env_var: EnvVar }> =>
+    request<{ env_var: EnvVar }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/env`,
+      { method: 'POST', body: input },
+    ),
+
+  deleteEnvVar: (projectId: string, appId: string, name: string): Promise<{ deleted: boolean }> =>
+    request<{ deleted: boolean }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/env/${encodeURIComponent(name)}`,
+      { method: 'DELETE' },
+    ),
+
+  deployApp: (
+    projectId: string,
+    appId: string,
+    input: { commit_sha: string; git_ref?: string },
+  ): Promise<DeployAccepted> =>
+    request<DeployAccepted>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/deploy`,
+      { method: 'POST', body: input },
+    ),
+
+  listDeployments: (
+    projectId: string,
+    appId: string,
+    params?: { limit?: number; offset?: number },
+  ): Promise<DeploymentPage> => {
+    const q = new URLSearchParams();
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<DeploymentPage>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/deployments${qs ? '?' + qs : ''}`,
+    );
+  },
+
+  getDeployment: (projectId: string, appId: string, depId: string): Promise<{ deployment: Deployment }> =>
+    request<{ deployment: Deployment }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/deployments/${encodeURIComponent(depId)}`,
+    ),
+
+  redeployApp: (projectId: string, appId: string, depId: string): Promise<DeployAccepted> =>
+    request<DeployAccepted>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/deployments/${encodeURIComponent(depId)}/redeploy`,
+      { method: 'POST' },
+    ),
+
+  listReleases: (projectId: string, appId: string): Promise<{ releases: Release[] }> =>
+    request<{ releases: Release[] }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/releases`,
+    ),
+
+  rollbackApp: (projectId: string, appId: string): Promise<DeployAccepted> =>
+    request<DeployAccepted>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/rollback`,
+      { method: 'POST' },
+    ),
+
+  listWebhookTokens: (projectId: string, appId: string): Promise<{ webhook_tokens: WebhookToken[] }> =>
+    request<{ webhook_tokens: WebhookToken[] }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/webhook-tokens`,
+    ),
+
+  createWebhookToken: (projectId: string, appId: string): Promise<{ token: string; webhook_token: WebhookToken }> =>
+    request<{ token: string; webhook_token: WebhookToken }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/webhook-tokens`,
+      { method: 'POST' },
+    ),
+
+  revokeWebhookToken: (projectId: string, appId: string, tokenId: string): Promise<{ revoked: boolean }> =>
+    request<{ revoked: boolean }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/webhook-tokens/${encodeURIComponent(tokenId)}`,
+      { method: 'DELETE' },
+    ),
 };
 
 // --- Domain types (mirrors API response shapes) --------------------------------
@@ -578,4 +707,104 @@ export interface JobStatus {
   };
   steps: JobStep[];
   request_id: string;
+}
+
+export interface App {
+  id: string;
+  project_id: string;
+  server_id: string;
+  slug: string;
+  name: string;
+  /** node | bun | python | php | static */
+  runtime_type: string;
+  /** active | suspended | pending_delete | deleted */
+  state: string;
+  git_repo_url: string;
+  git_ref_default: string;
+  build_program: string;
+  build_args: string[];
+  start_program: string;
+  start_args: string[];
+  working_dir: string;
+  port: number | null;
+  health_path: string | null;
+  env_name: string;
+  created_at: string;
+  updated_at: string;
+  delete_after?: string | null;
+}
+
+export interface AppPage {
+  apps: App[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface EnvVar {
+  id: string;
+  name: string;
+  /** literal | secret_ref */
+  value_source: string;
+  /** Present only for literal rows. secret_ref values are NEVER returned. */
+  value?: string;
+  /** Present only for secret_ref rows — the opaque secret:// URI, not a value. */
+  secret_ref?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Deployment {
+  id: string;
+  app_id: string;
+  project_id: string;
+  server_id: string;
+  /** manual | webhook | rollback */
+  trigger: string;
+  commit_sha: string | null;
+  git_ref: string;
+  /** queued | running | succeeded | failed | rolled_back | canceled */
+  state: string;
+  error_code: string;
+  error_summary: string;
+  job_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface DeploymentPage {
+  deployments: Deployment[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface DeployAccepted {
+  deployment_id: string;
+  job: { id: string; state: string };
+  request_id: string;
+}
+
+export interface Release {
+  id: string;
+  app_id: string;
+  deployment_id: string;
+  release_path: string;
+  commit_sha: string;
+  is_current: boolean;
+  /** unknown | healthy | unhealthy */
+  health_state: string;
+  created_at: string;
+}
+
+export interface WebhookToken {
+  id: string;
+  app_id: string;
+  /** active | revoked */
+  state: string;
+  created_at: string;
+  last_used_at: string | null;
 }
