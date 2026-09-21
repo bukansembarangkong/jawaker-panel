@@ -382,4 +382,200 @@ export const api = {
       method: 'POST',
       body: code ? { password, code } : { password },
     }),
+
+  // --- Projects ----------------------------------------------------------------
+
+  listProjects: (params?: { state?: string; limit?: number; offset?: number }): Promise<ProjectPage> => {
+    const q = new URLSearchParams();
+    if (params?.state) q.set('state', params.state);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<ProjectPage>(`/api/v1/projects${qs ? '?' + qs : ''}`);
+  },
+
+  createProject: (input: { slug: string; name: string; description?: string }): Promise<{ project: Project }> =>
+    request<{ project: Project }>('/api/v1/projects', { method: 'POST', body: input }),
+
+  getProject: (id: string): Promise<{ project: Project }> =>
+    request<{ project: Project }>(`/api/v1/projects/${encodeURIComponent(id)}`),
+
+  // --- Sites -------------------------------------------------------------------
+
+  listSites: (projectId: string, params?: { state?: string; limit?: number; offset?: number }): Promise<SitePage> => {
+    const q = new URLSearchParams();
+    if (params?.state) q.set('state', params.state);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<SitePage>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites${qs ? '?' + qs : ''}`,
+    );
+  },
+
+  createSite: (
+    projectId: string,
+    input: { server_id: string; slug: string; name: string; mode: string; doc_root?: string; upstream?: string; php_unit?: string },
+  ): Promise<{ site: Site }> =>
+    request<{ site: Site }>(`/api/v1/projects/${encodeURIComponent(projectId)}/sites`, {
+      method: 'POST',
+      body: input,
+    }),
+
+  getSite: (projectId: string, id: string): Promise<{ site: Site }> =>
+    request<{ site: Site }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(id)}`,
+    ),
+
+  deleteSite: (projectId: string, id: string): Promise<{ status: string }> =>
+    request<{ status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  validateConfig: (
+    projectId: string,
+    siteId: string,
+    input: { config: string; filename: string },
+  ): Promise<ValidateResult> =>
+    request<ValidateResult>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/validate`,
+      { method: 'POST', body: input },
+    ),
+
+  applyConfig: (
+    projectId: string,
+    siteId: string,
+    input: { config: string; filename: string; base_revision_id?: string },
+  ): Promise<ApplyAccepted> =>
+    request<ApplyAccepted>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/apply`,
+      { method: 'POST', body: input },
+    ),
+
+  readLogs: (
+    projectId: string,
+    siteId: string,
+    params: { type: 'access' | 'error'; lines?: number },
+  ): Promise<LogsTail> => {
+    const q = new URLSearchParams({ type: params.type });
+    if (params.lines !== undefined) q.set('lines', String(params.lines));
+    return request<LogsTail>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/logs?${q.toString()}`,
+    );
+  },
+
+  // --- Jobs --------------------------------------------------------------------
+
+  getJob: (id: string): Promise<JobStatus> =>
+    request<JobStatus>(`/api/v1/jobs/${encodeURIComponent(id)}`),
 };
+
+// --- Domain types (mirrors API response shapes) --------------------------------
+
+export interface Project {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  state: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  delete_after?: string;
+  deleted_at?: string;
+}
+
+export interface ProjectPage {
+  projects: Project[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface Site {
+  id: string;
+  project_id: string;
+  server_id: string;
+  slug: string;
+  name: string;
+  /** static | php | reverse_proxy */
+  mode: string;
+  /** active | pending_delete | deleted */
+  state: string;
+  doc_root: string;
+  upstream: string;
+  php_unit: string;
+  applied_revision_id?: string;
+  created_at: string;
+  updated_at: string;
+  delete_after?: string;
+  deleted_at?: string;
+}
+
+export interface SitePage {
+  sites: Site[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface ValidateResult {
+  valid: boolean;
+  tool: string;
+  tool_version: string;
+  output: string;
+  truncated: boolean;
+  staged: string;
+  observed_at: string;
+  request_id: string;
+}
+
+export interface ApplyAccepted {
+  revision_id: string;
+  job: { id: string; state: string };
+  request_id: string;
+}
+
+export interface LogsTail {
+  site_id: string;
+  log_type: string;
+  lines: string[];
+  truncated: boolean;
+  observed_at: string;
+  request_id: string;
+}
+
+export interface JobStep {
+  index: number;
+  name: string;
+  state: string;
+  output: Record<string, unknown> | null;
+  error_code: string;
+  error_summary: string;
+  attempt: number;
+  started_at?: string;
+  finished_at?: string;
+}
+
+export interface JobStatus {
+  job: {
+    id: string;
+    type: string;
+    server_id: string;
+    project_id: string;
+    state: string;
+    priority: number;
+    attempt_count: number;
+    max_attempts: number;
+    error_code: string;
+    error_summary: string;
+    created_at: string;
+    started_at?: string;
+    finished_at?: string;
+  };
+  steps: JobStep[];
+  request_id: string;
+}

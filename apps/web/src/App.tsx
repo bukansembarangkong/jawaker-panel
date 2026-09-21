@@ -5,6 +5,7 @@ import { AuthGate } from './pages/AuthGate';
 import { DashboardPage } from './pages/DashboardPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { ServersPage } from './pages/ServersPage';
+import { SitesPage } from './pages/SitesPage';
 import { useSession } from './session/useSession';
 import { useTheme } from './theme/useTheme';
 
@@ -25,11 +26,12 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
   if (window.location.hash === '#/servers') return 'servers';
+  if (window.location.hash === '#/sites') return 'sites';
   return 'dashboard';
 }
 
@@ -152,6 +154,19 @@ export default function App() {
                 Security
               </a>
             </li>
+            <li>
+              <a
+                href="#/sites"
+                aria-current={route === 'sites' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'sites'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Sites
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -160,6 +175,8 @@ export default function App() {
             <SecurityPage />
           ) : route === 'servers' ? (
             <ServersPage />
+          ) : route === 'sites' ? (
+            <SitesPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

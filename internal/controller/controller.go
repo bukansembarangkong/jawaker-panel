@@ -24,6 +24,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
+	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
 	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
@@ -77,8 +78,14 @@ type Handler struct {
 	// SiteRoutesMounted reports whether /api/v1/projects/{project_id}/sites/*
 	// is registered. Requires both database and secret keys.
 	SiteRoutesMounted bool
+	// ProjectRoutesMounted reports whether /api/v1/projects/* is registered.
+	ProjectRoutesMounted bool
+	// JobRoutesMounted reports whether /api/v1/jobs/* is registered.
+	JobRoutesMounted bool
 	// Sites is the hosted sites inventory store.
 	Sites *sites.Store
+	// Projects is the tenant boundary store.
+	Projects *projects.Store
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -326,6 +333,29 @@ func Build(opts Options) (*Handler, error) {
 		}
 		out.SiteWorker = siteWorker
 
+		out.Projects = projects.NewStore(opts.DB, now)
+		projectHandlers, projErr := NewProjectHandlers(ProjectHandlerOptions{
+			Projects: out.Projects,
+			Pool:     opts.DB,
+			Logger:   logger,
+			Audit:    opts.DB,
+			Now:      now,
+		})
+		if projErr != nil {
+			return nil, fmt.Errorf("controller: project handlers: %w", projErr)
+		}
+		projectRoutes := projectHandlers.Routes
+
+		jobHandlers, jobErr := NewJobHandlers(JobHandlerOptions{
+			Pool:   opts.DB,
+			Logger: logger,
+			Now:    now,
+		})
+		if jobErr != nil {
+			return nil, fmt.Errorf("controller: job handlers: %w", jobErr)
+		}
+		jobRoutes := jobHandlers.Routes
+
 		authRoutes := handlers.Routes
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
@@ -334,7 +364,12 @@ func Build(opts Options) (*Handler, error) {
 				nodeRoutes(mux)
 			}
 			siteRoutes(mux)
+			projectRoutes(mux)
+			jobRoutes(mux)
 		}
+		out.SiteRoutesMounted = true
+		out.ProjectRoutesMounted = true
+		out.JobRoutesMounted = true
 		out.Events = broker
 		out.EventStreamMounted = true
 		out.NodeRoutesMounted = nodeRoutes != nil
