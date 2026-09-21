@@ -288,7 +288,7 @@ var Operations = map[Operation]Descriptor{
 		OSSupport: []string{"linux"},
 		Scope: Scope{
 			// Unix sockets only — the agent never opens a TCP connection to the engine.
-			FilesystemRead:  []string{"/var/run/postgresql", "/var/run/mysqld"},
+			FilesystemRead: []string{"/var/run/postgresql", "/var/run/mysqld"},
 			// create_db/drop_db/create_user mutate the engine's own data directory
 			// through the socket-authenticated admin command; declare it so the scope
 			// is honest about what the operation reaches.
@@ -304,7 +304,7 @@ var Operations = map[Operation]Descriptor{
 		// create_db and create_user are idempotent (IF NOT EXISTS semantics);
 		// drop_db and drop_user are also idempotent (IF EXISTS). set_grants
 		// replaces the grant set atomically. MaxAttempts=2 is safe.
-		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 2},
 		Rollback: "create_db failure leaves no database; create_user failure leaves no user; " +
 			"drop_db and drop_user are their own recovery (idempotent). set_grants failure " +
 			"leaves the previous grant set in force. No separate rollback step is required.",
@@ -312,7 +312,7 @@ var Operations = map[Operation]Descriptor{
 	},
 
 	OpDatabaseDump: {
-		Operation: OpDatabaseDump,
+		Operation:  OpDatabaseDump,
 		Permission: "database.manage",
 		InputSchema: "{engine: \"postgresql\"|\"mariadb\", db_name: string, " +
 			"dump_path: string, socket_path: string}",
@@ -336,7 +336,7 @@ var Operations = map[Operation]Descriptor{
 	},
 
 	OpDatabaseRestore: {
-		Operation: OpDatabaseRestore,
+		Operation:  OpDatabaseRestore,
 		Permission: "database.manage",
 		InputSchema: "{engine: \"postgresql\"|\"mariadb\", db_name: string, " +
 			"dump_path: string, socket_path: string}",
@@ -346,7 +346,7 @@ var Operations = map[Operation]Descriptor{
 			"no field may contain a NUL byte",
 		OSSupport: []string{"linux"},
 		Scope: Scope{
-			FilesystemRead:  []string{"/var/lib/jawaker/db-dumps", "/var/run/postgresql", "/var/run/mysqld"},
+			FilesystemRead: []string{"/var/lib/jawaker/db-dumps", "/var/run/postgresql", "/var/run/mysqld"},
 			// pg_restore --clean --if-exists and the mariadb client rewrite the
 			// target database's contents through the engine; the engine writes its
 			// own data directory. Declared so the scope is honest.
@@ -358,7 +358,7 @@ var Operations = map[Operation]Descriptor{
 		AuditAction: "database.restore",
 		// Idempotent: applying the same dump file twice leaves the same database state
 		// because pg_restore uses --clean --if-exists and mariadb recreates from scratch.
-		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Retry: RetryPolicy{Idempotent: true, MaxAttempts: 1},
 		Rollback: "restore failure leaves the database in an indeterminate state. The caller " +
 			"must create the database fresh and retry the restore, or recover from a different " +
 			"backup. The dump file is NOT removed on failure (the caller decides retention).",
@@ -366,8 +366,8 @@ var Operations = map[Operation]Descriptor{
 	},
 
 	OpDatabaseMetrics: {
-		Operation: OpDatabaseMetrics,
-		Permission: "database.read",
+		Operation:   OpDatabaseMetrics,
+		Permission:  "database.read",
 		InputSchema: "{engine: \"postgresql\"|\"mariadb\", socket_path: string}",
 		Validation: "engine must be postgresql or mariadb; socket_path must be under " +
 			"/var/run/postgresql or /var/run/mysqld; no field may contain a NUL byte",
@@ -384,7 +384,7 @@ var Operations = map[Operation]Descriptor{
 	},
 
 	OpDatabaseUpgrade: {
-		Operation: OpDatabaseUpgrade,
+		Operation:  OpDatabaseUpgrade,
 		Permission: "database.manage",
 		InputSchema: "{engine: \"postgresql\"|\"mariadb\", from_version: string, to_version: string, " +
 			"pre_dump_path: string, socket_path: string}",

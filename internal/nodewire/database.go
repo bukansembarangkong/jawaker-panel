@@ -200,11 +200,11 @@ type DatabaseMetricsResult struct {
 
 // DatabaseUpgradeInput is the payload for OpDatabaseUpgrade.
 type DatabaseUpgradeInput struct {
-	Engine       string `json:"engine"`
-	FromVersion  string `json:"from_version"`
-	ToVersion    string `json:"to_version"`
-	PreDumpPath  string `json:"pre_dump_path"`
-	SocketPath   string `json:"socket_path"`
+	Engine      string `json:"engine"`
+	FromVersion string `json:"from_version"`
+	ToVersion   string `json:"to_version"`
+	PreDumpPath string `json:"pre_dump_path"`
+	SocketPath  string `json:"socket_path"`
 }
 
 // Validate checks DatabaseUpgradeInput before execution.
