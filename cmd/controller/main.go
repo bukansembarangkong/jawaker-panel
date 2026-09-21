@@ -163,6 +163,26 @@ func run() error {
 		}()
 	}
 
+	// The backup background worker executes enqueued backup.* jobs.
+	if assembled.BackupWorker != nil {
+		worker := assembled.BackupWorker
+		go func() {
+			if err := worker.Run(ctx); err != nil {
+				logger.Error("backup worker stopped with an error", "error", err)
+			}
+		}()
+	}
+
+	// The backup scheduler polls for due plans and enqueues scheduled runs.
+	if assembled.BackupScheduler != nil {
+		sched := assembled.BackupScheduler
+		go func() {
+			if err := sched.Run(ctx); err != nil {
+				logger.Error("backup scheduler stopped with an error", "error", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

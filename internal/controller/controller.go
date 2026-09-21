@@ -112,6 +112,10 @@ type Handler struct {
 	// DatabaseWorker is the background jobs worker executing managed database
 	// provisioning, dumps, restores, and deletes.
 	DatabaseWorker *jobs.Worker
+	// BackupWorker executes backup.run/verify/restore/delete jobs.
+	BackupWorker *jobs.Worker
+	// BackupScheduler enqueues scheduled backup runs and enforces retention.
+	BackupScheduler *BackupScheduler
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -446,6 +450,27 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: database worker: %w", dbWorkerErr)
 		}
 		out.DatabaseWorker = dbWorker
+
+		backupWorker, backupWorkerErr := NewBackupWorker(BackupWorkerOptions{
+			Pool:       opts.DB,
+			Backups:    out.Backups,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger.With("component", "backup-worker"),
+		})
+		if backupWorkerErr != nil {
+			return nil, fmt.Errorf("controller: backup worker: %w", backupWorkerErr)
+		}
+		out.BackupWorker = backupWorker
+
+		backupScheduler, schedErr := NewBackupScheduler(BackupSchedulerOptions{
+			Pool:    opts.DB,
+			Backups: out.Backups,
+			Logger:  logger.With("component", "backup-scheduler"),
+		})
+		if schedErr != nil {
+			return nil, fmt.Errorf("controller: backup scheduler: %w", schedErr)
+		}
+		out.BackupScheduler = backupScheduler
 
 		jobHandlers, jobErr := NewJobHandlers(JobHandlerOptions{
 			Pool:   opts.DB,
