@@ -164,6 +164,11 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 	if e.webServer.CanApply() && e.hasSystemd && supportedOS() {
 		served[nodewire.OpWebConfigApply] = true
 	}
+	// app.deploy WRITES a release directory, writes a systemd unit, and reloads
+	// systemd. It requires systemd, git installed on the host, and Linux.
+	if e.hasSystemd && e.gitAvailable && supportedOS() {
+		served[nodewire.OpAppDeploy] = true
+	}
 	return served
 }
 
@@ -483,6 +488,25 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			}
 		}
 		result, err := a.exec.ApplyWebConfig(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpAppDeploy:
+		in, err := nodewire.DecodeInput[nodewire.AppDeployInput](req)
+		if err != nil {
+			return nil, err
+		}
+		// Validate early so a malformed slug or program name is refused with
+		// CodeInvalidInput before any directory is created or process spawned.
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{
+				Code:    nodewire.CodeInvalidInput,
+				Message: err.Error(),
+			}
+		}
+		result, err := a.exec.DeployApp(ctx, in)
 		if err != nil {
 			return nil, err
 		}

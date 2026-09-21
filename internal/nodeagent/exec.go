@@ -79,6 +79,16 @@ type CommandSpec struct {
 	// Timeout bounds this specific command. Zero means no additional bound
 	// beyond the context deadline.
 	Timeout time.Duration
+	// Dir is the working directory for the child. Empty means the fixed
+	// safeWorkingDir(). A caller that sets it must have confined the path
+	// itself; the deploy executor resolves release directories under the apps
+	// root before passing one here.
+	Dir string
+	// Env is the COMPLETE environment for the child. Nil means the pinned
+	// controlledEnv(). A caller that sets it owns what the child sees; the
+	// deploy executor composes its value FROM controlledEnv() so the pinned
+	// locale and PATH survive unless deliberately replaced.
+	Env []string
 }
 
 // Validate refuses a spec that could not be safely executed.
@@ -89,12 +99,20 @@ func (s CommandSpec) Validate() error {
 	if !isAbsPath(s.Path) {
 		return fmt.Errorf("nodeagent: command path %q must be absolute", s.Path)
 	}
+	if s.Dir != "" && !isAbsPath(s.Dir) {
+		return fmt.Errorf("nodeagent: command dir %q must be absolute", s.Dir)
+	}
 	for i, a := range s.Args {
 		// A NUL cannot appear in an argument: the execve(2) interface is
 		// NUL-terminated, so a Go string containing one either fails or, worse,
 		// truncates the argument. Refusing here means the failure is named.
 		if containsNUL(a) {
 			return fmt.Errorf("nodeagent: argument %d contains a NUL byte", i)
+		}
+	}
+	for i, kv := range s.Env {
+		if containsNUL(kv) {
+			return fmt.Errorf("nodeagent: environment entry %d contains a NUL byte", i)
 		}
 	}
 	return nil
@@ -128,12 +146,21 @@ func runCommand(ctx context.Context, spec CommandSpec) (CommandResult, error) {
 	// and anything off the closed registry; no shell is invoked and spec.Path is
 	// resolved from a fixed candidate list rather than PATH.
 	cmd := exec.CommandContext(ctx, spec.Path, spec.Args...) //nolint:gosec // G204: argv is validated by CommandSpec.Validate above; no shell, absolute path only
-	// A controlled environment: nothing inherited. LANG/LC_ALL are pinned so
-	// parsed output does not change shape with the host's locale.
-	cmd.Env = controlledEnv()
-	// A fixed working directory, so a relative path inside the child cannot
-	// resolve against wherever the agent was started.
-	cmd.Dir = safeWorkingDir()
+	// A controlled environment: either the caller-supplied one (which the deploy
+	// executor builds from controlledEnv() plus the app's vars) or the pinned
+	// default. Nothing is INHERITED in either case.
+	if len(spec.Env) > 0 {
+		cmd.Env = spec.Env
+	} else {
+		cmd.Env = controlledEnv()
+	}
+	// Working directory: caller-supplied for the build step (release dir), or the
+	// fixed safeWorkingDir() for all system commands (systemctl, nginx, etc.).
+	if spec.Dir != "" {
+		cmd.Dir = spec.Dir
+	} else {
+		cmd.Dir = safeWorkingDir()
+	}
 	cmd.SysProcAttr = processGroupAttr()
 	cmd.Stdin = nil
 

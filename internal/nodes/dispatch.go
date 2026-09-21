@@ -497,6 +497,32 @@ func (d *Dispatcher) ApplyWebConfig(ctx context.Context, serverID, requestID str
 	return out, nil
 }
 
+// DeployApp invokes an atomic deployment on the target node.
+//
+// Target is intentionally empty: app.deploy has no Scope.Services (services are
+// managed dynamically as jw-<proj>-<app>.service rather than a static allowlist),
+// so nodewire.EncodeRequest rejects any non-empty target.
+func (d *Dispatcher) DeployApp(ctx context.Context, serverID, requestID string, in nodewire.AppDeployInput) (nodewire.AppDeployResult, error) {
+	var out nodewire.AppDeployResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid app deploy input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpAppDeploy,
+		RequestID: requestID,
+		// Target is intentionally empty.
+		Input: in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode app deploy result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.

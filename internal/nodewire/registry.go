@@ -218,6 +218,58 @@ var Operations = map[Operation]Descriptor{
 			"successful apply.",
 		Mutating: true,
 	},
+
+	OpAppDeploy: {
+		Operation: OpAppDeploy,
+		// deployment.create: this changes what an application serves, creates a
+		// release directory on disk, and writes a systemd unit. Controller-side
+		// RBAC must confirm the caller is a developer or owner before dispatching.
+		Permission: "deployment.create",
+		InputSchema: "{app: {project_slug, app_slug, runtime_type, port?, health_path?}, " +
+			"git: {repo_url, commit_sha, credential_kind: \"ssh_key\"|\"none\", ssh_key_pem?}, " +
+			"build: {program, args[]}, " +
+			"start: {program, args[]}, " +
+			"env: [{name, value}], " +
+			"working_dir}",
+		Validation: "commit_sha must be 7..40 lowercase hex; program names must be in the " +
+			"runtime allowlist detected at agent startup (e.g. node, npm, bun, python3, pip3); " +
+			"args must be non-empty strings without NUL; port must be 1024..65535 or absent; " +
+			"env names must match ^[A-Za-z_][A-Za-z0-9_]*$; env values must not contain NUL; " +
+			"ssh_key_pem, when present, must be a PEM block and is held in memory only; " +
+			"the release directory is resolved through path confinement under " +
+			"/var/www/jawaker/<project_slug>/<app_slug>/releases; " +
+			"the systemd unit path is confined under /etc/systemd/system; " +
+			"no argument is interpreted by a shell",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/var/www/jawaker"},
+			FilesystemWrite: []string{
+				"/var/www/jawaker",
+				"/etc/systemd/system",
+			},
+			// No Services declared. The agent manages the per-app unit via
+			// systemctl with a fixed unit name derived from project+app slug, not
+			// via the target mechanism. validateTarget therefore requires Target=""
+			// and the dispatcher sends no target.
+			Network: "outbound-git",
+		},
+		LockKeys: []string{"app.deploy"},
+		// Git clone/fetch, npm/bun/pip install, daemon-reload, and a health probe
+		// can all take substantial time. 15 minutes is generous but bounded.
+		Timeout:     15 * 60 * time.Second,
+		AuditAction: "app.deploy",
+		// NOT idempotent: a re-run creates a new release directory and restarts
+		// the service again. No automatic retry; the job engine drives retries
+		// at the controller layer after a fresh deploy record.
+		Retry: RetryPolicy{Idempotent: false, MaxAttempts: 0},
+		Rollback: "a new release directory is created and the 'current' symlink is switched " +
+			"atomically only after the build and unit generation succeed. If the health check " +
+			"fails after the switch, the symlink is restored to the previous release and the " +
+			"service restarted. The failed release directory is left on disk for diagnosis and " +
+			"pruned by the next successful deploy. If no previous release exists (first deploy), " +
+			"a health failure removes the symlink and marks the deploy as failed.",
+		Mutating: true,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for
@@ -766,4 +818,150 @@ type WebConfigApplyResult struct {
 	BackupPath string `json:"backup_path,omitempty"`
 	// ObservedAt is when the operation completed, on the NODE's clock.
 	ObservedAt time.Time `json:"observed_at"`
+}
+
+// --- app.deploy ---------------------------------------------------------------
+
+// AppSpec identifies the application on the node.
+type AppSpec struct {
+	ProjectSlug string `json:"project_slug"`
+	AppSlug     string `json:"app_slug"`
+	RuntimeType string `json:"runtime_type"`
+	Port        *int   `json:"port,omitempty"`
+	HealthPath  string `json:"health_path,omitempty"`
+}
+
+// GitSpec identifies the source repository and credentials.
+type GitSpec struct {
+	RepoURL        string `json:"repo_url"`
+	CommitSHA      string `json:"commit_sha"`
+	CredentialKind string `json:"credential_kind"` // "ssh_key" or "none"
+	// SSHKeyPEM is the raw PEM-encoded private key held ONLY in memory.
+	// It is written to a 0600 temp file for the git subprocess and immediately deleted.
+	SSHKeyPEM string `json:"ssh_key_pem,omitempty"`
+}
+
+// CommandSpecWire specifies an allowlisted program and its argv slice.
+type CommandSpecWire struct {
+	Program string   `json:"program"`
+	Args    []string `json:"args"`
+}
+
+// EnvEntryWire is a single environment variable key-value pair.
+type EnvEntryWire struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// AppDeployInput is the payload for app.deploy.
+type AppDeployInput struct {
+	App        AppSpec         `json:"app"`
+	Git        GitSpec         `json:"git"`
+	Build      CommandSpecWire `json:"build"`
+	Start      CommandSpecWire `json:"start"`
+	Env        []EnvEntryWire  `json:"env,omitempty"`
+	WorkingDir string          `json:"working_dir,omitempty"`
+}
+
+// AppDeployResult is the reply to app.deploy.
+type AppDeployResult struct {
+	Deployed       bool      `json:"deployed"`
+	CommitSHA      string    `json:"commit_sha"`
+	ReleasePath    string    `json:"release_path"`
+	CurrentPath    string    `json:"current_path"`
+	BuildOutput    string    `json:"build_output,omitempty"`
+	BuildTruncated bool      `json:"build_truncated,omitempty"`
+	HealthState    string    `json:"health_state"`
+	RolledBack     bool      `json:"rolled_back,omitempty"`
+	RollbackReason string    `json:"rollback_reason,omitempty"`
+	ObservedAt     time.Time `json:"observed_at"`
+}
+
+// commitSHARegex matches full (40-char) or short (7..39-char) lowercase hex SHAs.
+var commitSHARegex = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+// envWireNameRE mirrors the schema check: ^[A-Za-z_][A-Za-z0-9_]*$
+var envWireNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// Validate checks the deployment input before execution.
+func (in AppDeployInput) Validate() error {
+	var errs []error
+
+	if in.App.ProjectSlug == "" {
+		errs = append(errs, errors.New("app.project_slug is required"))
+	} else if !validSlugPattern.MatchString(in.App.ProjectSlug) {
+		errs = append(errs, fmt.Errorf("app.project_slug %q is not a valid slug", in.App.ProjectSlug))
+	}
+
+	if in.App.AppSlug == "" {
+		errs = append(errs, errors.New("app.app_slug is required"))
+	} else if !validSlugPattern.MatchString(in.App.AppSlug) {
+		errs = append(errs, fmt.Errorf("app.app_slug %q is not a valid slug", in.App.AppSlug))
+	}
+
+	switch in.App.RuntimeType {
+	case "node", "bun", "python", "php", "static":
+	default:
+		errs = append(errs, fmt.Errorf("app.runtime_type %q is not supported", in.App.RuntimeType))
+	}
+
+	if in.App.Port != nil && (*in.App.Port < 1024 || *in.App.Port > 65535) {
+		errs = append(errs, fmt.Errorf("app.port %d is out of range 1024..65535", *in.App.Port))
+	}
+
+	if in.Git.RepoURL == "" {
+		errs = append(errs, errors.New("git.repo_url is required"))
+	}
+
+	if in.Git.CommitSHA == "" {
+		errs = append(errs, errors.New("git.commit_sha is required"))
+	} else if !commitSHARegex.MatchString(in.Git.CommitSHA) {
+		errs = append(errs, fmt.Errorf("git.commit_sha %q must be 7..40 hex characters", in.Git.CommitSHA))
+	}
+
+	switch in.Git.CredentialKind {
+	case "none", "ssh_key", "":
+	default:
+		errs = append(errs, fmt.Errorf("git.credential_kind %q must be 'none' or 'ssh_key'", in.Git.CredentialKind))
+	}
+
+	// Build program can be empty (static apps or apps that need no build step)
+	if in.Build.Program != "" {
+		if strings.ContainsRune(in.Build.Program, 0) {
+			errs = append(errs, errors.New("build.program contains a NUL byte"))
+		}
+		for _, arg := range in.Build.Args {
+			if strings.ContainsRune(arg, 0) {
+				errs = append(errs, errors.New("build.args contains a NUL byte"))
+				break
+			}
+		}
+	}
+
+	// Start program is required for non-static apps
+	if in.App.RuntimeType != "static" && in.Start.Program == "" {
+		errs = append(errs, errors.New("start.program is required for non-static runtime"))
+	}
+	if in.Start.Program != "" {
+		if strings.ContainsRune(in.Start.Program, 0) {
+			errs = append(errs, errors.New("start.program contains a NUL byte"))
+		}
+		for _, arg := range in.Start.Args {
+			if strings.ContainsRune(arg, 0) {
+				errs = append(errs, errors.New("start.args contains a NUL byte"))
+				break
+			}
+		}
+	}
+
+	for _, e := range in.Env {
+		if !envWireNameRE.MatchString(e.Name) {
+			errs = append(errs, fmt.Errorf("env var name %q must match ^[A-Za-z_][A-Za-z0-9_]*$", e.Name))
+		}
+		if strings.ContainsRune(e.Value, 0) {
+			errs = append(errs, fmt.Errorf("env var %q value contains a NUL byte", e.Name))
+		}
+	}
+
+	return errors.Join(errs...)
 }

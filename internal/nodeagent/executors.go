@@ -28,6 +28,9 @@ import (
 // something that looks similar. A capability claim the node cannot honor is
 // worse than an honest gap, because the operator acts on it.
 
+// gitCandidates lists candidate paths for git, in preference order.
+var gitCandidates = []string{"/usr/bin/git", "/usr/local/bin/git"}
+
 // systemdBinary is resolved at startup. The candidate list is fixed and is not
 // derived from PATH — see resolveProgram for why.
 var systemdCandidates = []string{"/usr/bin/systemctl", "/bin/systemctl", "/usr/sbin/systemctl"}
@@ -59,6 +62,16 @@ type Executors struct {
 	// logDir is the nginx log root site.logs.tail is confined to. Defaults to
 	// nginxLogRoot; overridable in tests via ExecutorOptions.LogDir.
 	logDir string
+	// gitPath is the resolved git binary, empty when absent.
+	gitPath string
+	// gitAvailable reports whether git is installed on this node.
+	gitAvailable bool
+	// appsRootDir is the base directory for app releases. Defaults to
+	// /var/www/jawaker; overridable for tests.
+	appsRootDir string
+	// systemdDir is the directory for systemd unit files. Defaults to
+	// /etc/systemd/system; overridable for tests.
+	systemdDir string
 }
 
 // ExecutorOptions configures detection.
@@ -80,6 +93,12 @@ type ExecutorOptions struct {
 	// SitesEnabledDir overrides the nginx sites-enabled directory for
 	// web.config.apply, for tests.
 	SitesEnabledDir string
+	// GitPath overrides git binary detection, for tests.
+	GitPath string
+	// AppsRootDir overrides the base directory for app releases, for tests.
+	AppsRootDir string
+	// SystemdDir overrides the systemd unit directory, for tests.
+	SystemdDir string
 }
 
 // NewExecutors detects what this node can do.
@@ -92,16 +111,41 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 	if logDir == "" {
 		logDir = "/var/log/nginx"
 	}
+	appsRoot := opts.AppsRootDir
+	if appsRoot == "" {
+		appsRoot = "/var/www/jawaker"
+	}
+	systemdDir := opts.SystemdDir
+	if systemdDir == "" {
+		systemdDir = "/etc/systemd/system"
+	}
 	e := &Executors{
 		agentVersion:  opts.AgentVersion,
 		now:           now,
 		workloadCount: opts.WorkloadCount,
 		logDir:        logDir,
+		appsRootDir:   appsRoot,
+		systemdDir:    systemdDir,
 	}
 	// Web-server detection happens here, BEFORE the systemd branch, because a
 	// host may well have nginx and no systemd. Detecting it after the early
 	// returns would make the web capability silently depend on an unrelated one.
 	e.webServer = detectWebServer(opts.NginxPath, opts.StagingDir, opts.SitesEnabledDir)
+
+	// Git detection, same reasoning: a host without systemd may still have git,
+	// and the fields below must be set regardless of which early return fires.
+	gitPath := opts.GitPath
+	if gitPath == "" {
+		var found bool
+		gitPath, found = resolveProgram(gitCandidates...)
+		if found {
+			e.gitPath = gitPath
+			e.gitAvailable = true
+		}
+	} else {
+		e.gitPath = gitPath
+		e.gitAvailable = true
+	}
 
 	path := opts.SystemctlPath
 	if path == "" {
