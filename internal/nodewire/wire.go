@@ -92,6 +92,17 @@ const (
 	// reloads again, so an invalid candidate can never replace the active
 	// known-good configuration (Phase 3 gate, IMPLEMENTATION_PLAN.md L87).
 	OpWebConfigApply Operation = "web.config.apply" //nolint:gosec // G101: an operation wire name, not a credential
+	// OpAppDeploy fetches a Git revision, builds it, writes a managed systemd
+	// service unit, switches the atomic symlink to the new release directory, and
+	// verifies the application is healthy. On any failure after the symlink
+	// already existed the previous release is restored.
+	//
+	// It is the first operation whose build step runs a user-configured program
+	// on the node. The program must come from the per-runtime allowlist the agent
+	// detects at startup; an unrecognized program name is refused before any
+	// process starts. Arguments are passed as an argv slice, never interpreted by
+	// a shell.
+	OpAppDeploy Operation = "app.deploy" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
