@@ -103,6 +103,9 @@ type Handler struct {
 	SiteWorker *jobs.Worker
 	// AppWorker is the background jobs worker executing application deployments.
 	AppWorker *jobs.Worker
+	// DatabaseWorker is the background jobs worker executing managed database
+	// provisioning, dumps, restores, and deletes.
+	DatabaseWorker *jobs.Worker
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -409,6 +412,17 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: app worker: %w", appWorkerErr)
 		}
 		out.AppWorker = appWorker
+
+		dbWorker, dbWorkerErr := NewDatabaseWorker(DatabaseWorkerOptions{
+			Pool:       opts.DB,
+			Databases:  out.Databases,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger.With("component", "database-worker"),
+		})
+		if dbWorkerErr != nil {
+			return nil, fmt.Errorf("controller: database worker: %w", dbWorkerErr)
+		}
+		out.DatabaseWorker = dbWorker
 
 		jobHandlers, jobErr := NewJobHandlers(JobHandlerOptions{
 			Pool:   opts.DB,

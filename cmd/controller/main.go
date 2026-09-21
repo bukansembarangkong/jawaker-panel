@@ -153,6 +153,16 @@ func run() error {
 		}()
 	}
 
+	// The database background worker executes enqueued database.* jobs.
+	if assembled.DatabaseWorker != nil {
+		worker := assembled.DatabaseWorker
+		go func() {
+			if err := worker.Run(ctx); err != nil {
+				logger.Error("database worker stopped with an error", "error", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
