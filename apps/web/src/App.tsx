@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
+import { BackupsPage } from './pages/BackupsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
 import { SecurityPage } from './pages/SecurityPage';
@@ -28,7 +29,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -36,6 +37,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/sites') return 'sites';
   if (window.location.hash === '#/apps') return 'apps';
   if (window.location.hash === '#/databases') return 'databases';
+  if (window.location.hash === '#/backups') return 'backups';
   return 'dashboard';
 }
 
@@ -197,6 +199,19 @@ export default function App() {
                 Databases
               </a>
             </li>
+            <li>
+              <a
+                href="#/backups"
+                aria-current={route === 'backups' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'backups'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Backups
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -211,6 +226,8 @@ export default function App() {
             <AppsPage />
           ) : route === 'databases' ? (
             <DatabasesPage />
+          ) : route === 'backups' ? (
+            <BackupsPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

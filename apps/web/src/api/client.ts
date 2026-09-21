@@ -716,6 +716,95 @@ export const api = {
       `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/restore`,
       { method: 'POST', body: { dump_path: dumpPath } },
     ),
+
+  // --- Backups (Phase 6) -------------------------------------------------------
+
+  listBackupPlans: (projectId: string): Promise<BackupPlanPage> =>
+    request<BackupPlanPage>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-plans`,
+    ),
+
+  createBackupPlan: (
+    projectId: string,
+    input: CreateBackupPlanInput,
+  ): Promise<{ plan: BackupPlan }> =>
+    request<{ plan: BackupPlan }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-plans`,
+      { method: 'POST', body: input },
+    ),
+
+  updateBackupPlan: (
+    projectId: string,
+    id: string,
+    input: UpdateBackupPlanInput,
+  ): Promise<{ plan: BackupPlan }> =>
+    request<{ plan: BackupPlan }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-plans/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: input },
+    ),
+
+  deleteBackupPlan: (
+    projectId: string,
+    id: string,
+  ): Promise<{ status: string; plan_id: string }> =>
+    request<{ status: string; plan_id: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-plans/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  triggerBackupRun: (
+    projectId: string,
+    planId: string,
+  ): Promise<{ run_id: string; job_id: string; status: string }> =>
+    request<{ run_id: string; job_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-plans/${encodeURIComponent(planId)}/run`,
+      { method: 'POST' },
+    ),
+
+  listBackupRuns: (
+    projectId: string,
+    planId?: string,
+  ): Promise<BackupRunPage> =>
+    request<BackupRunPage>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-runs${planId ? `?plan_id=${encodeURIComponent(planId)}` : ''}`,
+    ),
+
+  verifyBackupRun: (
+    projectId: string,
+    runId: string,
+  ): Promise<{ run_id: string; job_id: string; status: string }> =>
+    request<{ run_id: string; job_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-runs/${encodeURIComponent(runId)}/verify`,
+      { method: 'POST' },
+    ),
+
+  restoreBackupRun: (
+    projectId: string,
+    runId: string,
+  ): Promise<{ run_id: string; job_id: string; status: string }> =>
+    request<{ run_id: string; job_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-runs/${encodeURIComponent(runId)}/restore`,
+      { method: 'POST' },
+    ),
+
+  deleteBackupRun: (
+    projectId: string,
+    runId: string,
+  ): Promise<{ run_id: string; job_id: string; status: string }> =>
+    request<{ run_id: string; job_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-runs/${encodeURIComponent(runId)}`,
+      { method: 'DELETE' },
+    ),
+
+  createBackupLink: (
+    projectId: string,
+    runId: string,
+    ttlSeconds?: number,
+  ): Promise<BackupLinkCreated> =>
+    request<BackupLinkCreated>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/backup-runs/${encodeURIComponent(runId)}/links`,
+      { method: 'POST', body: ttlSeconds ? { ttl_seconds: ttlSeconds } : {} },
+    ),
 };
 
 // --- Domain types (mirrors API response shapes) --------------------------------
@@ -975,4 +1064,84 @@ export interface DatabaseMetrics {
   slow_queries_last_5m: number;
   top_slow_queries?: SlowQuery[];
   observed_at: string;
+}
+
+// --- Backups (Phase 6) ---------------------------------------------------------
+
+export interface BackupPlan {
+  id: string;
+  project_id: string;
+  server_id: string;
+  name: string;
+  slug: string;
+  scope_type: 'project' | 'site' | 'database' | string;
+  scope_id?: string;
+  destination_type: 'local' | 's3' | string;
+  schedule_cron: string;
+  next_run_at?: string;
+  enabled: boolean;
+  retention_count: number;
+  retention_days: number;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  delete_after?: string;
+}
+
+export interface BackupPlanPage {
+  plans: BackupPlan[];
+  total: number;
+}
+
+export interface CreateBackupPlanInput {
+  server_id: string;
+  name: string;
+  slug: string;
+  scope_type: string;
+  scope_id?: string;
+  destination_type: string;
+  destination_config?: Record<string, unknown>;
+  schedule_cron?: string;
+  retention_count?: number;
+  retention_days?: number;
+}
+
+export interface UpdateBackupPlanInput {
+  name?: string;
+  schedule_cron?: string;
+  enabled?: boolean;
+  retention_count?: number;
+  retention_days?: number;
+}
+
+export interface BackupRun {
+  id: string;
+  plan_id?: string;
+  project_id: string;
+  server_id: string;
+  trigger: string;
+  state: string;
+  archive_path: string;
+  archive_size: number;
+  sha256: string;
+  verification: string;
+  job_id?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  failed_reason?: string;
+}
+
+export interface BackupRunPage {
+  runs: BackupRun[];
+  total: number;
+}
+
+/** Returned once at link creation. The token is never retrievable again. */
+export interface BackupLinkCreated {
+  token: string;
+  link_id: string;
+  expires_at: string;
+  single_use: boolean;
+  request_id: string;
 }
