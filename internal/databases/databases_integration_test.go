@@ -328,7 +328,7 @@ func TestDatabaseBackupLifecycle(t *testing.T) {
 	}
 	done, err := f.store.UpdateBackupState(ctx, UpdateBackupStateParams{
 		ID: b.ID, State: BackupCompleted,
-		DumpPath: "/var/lib/jawaker/db-dumps/" + db.ID + ".dump",
+		DumpPath:  "/var/lib/jawaker/db-dumps/" + db.ID + ".dump",
 		SizeBytes: 1024, SHA256: "abc123",
 	})
 	if err != nil {
