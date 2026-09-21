@@ -143,6 +143,16 @@ func run() error {
 		}()
 	}
 
+	// The app background worker executes enqueued app.deploy jobs.
+	if assembled.AppWorker != nil {
+		worker := assembled.AppWorker
+		go func() {
+			if err := worker.Run(ctx); err != nil {
+				logger.Error("app worker stopped with an error", "error", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
