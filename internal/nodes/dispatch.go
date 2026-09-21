@@ -523,6 +523,111 @@ func (d *Dispatcher) DeployApp(ctx context.Context, serverID, requestID string, 
 	return out, nil
 }
 
+// ManageDatabase creates or drops a database or user on an enrolled node.
+func (d *Dispatcher) ManageDatabase(ctx context.Context, serverID, requestID string, in nodewire.DatabaseManageInput) (nodewire.DatabaseManageResult, error) {
+	var out nodewire.DatabaseManageResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid database manage input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpDatabaseManage,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode database manage result: %w", err)
+	}
+	return out, nil
+}
+
+// DumpDatabase triggers an export of a managed database to a node-local dump artifact.
+func (d *Dispatcher) DumpDatabase(ctx context.Context, serverID, requestID string, in nodewire.DatabaseDumpInput) (nodewire.DatabaseDumpResult, error) {
+	var out nodewire.DatabaseDumpResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid database dump input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpDatabaseDump,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode database dump result: %w", err)
+	}
+	return out, nil
+}
+
+// RestoreDatabase restores a managed database from a node-local dump artifact.
+func (d *Dispatcher) RestoreDatabase(ctx context.Context, serverID, requestID string, in nodewire.DatabaseRestoreInput) (nodewire.DatabaseRestoreResult, error) {
+	var out nodewire.DatabaseRestoreResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid database restore input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpDatabaseRestore,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode database restore result: %w", err)
+	}
+	return out, nil
+}
+
+// GetDatabaseMetrics queries point-in-time metrics from a node's database engine.
+func (d *Dispatcher) GetDatabaseMetrics(ctx context.Context, serverID, requestID string, in nodewire.DatabaseMetricsInput) (nodewire.DatabaseMetricsResult, error) {
+	var out nodewire.DatabaseMetricsResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid database metrics input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpDatabaseMetrics,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode database metrics result: %w", err)
+	}
+	return out, nil
+}
+
+// UpgradeDatabase triggers a major version engine upgrade with a pre-dump backup gate.
+func (d *Dispatcher) UpgradeDatabase(ctx context.Context, serverID, requestID string, in nodewire.DatabaseUpgradeInput) (nodewire.DatabaseUpgradeResult, error) {
+	var out nodewire.DatabaseUpgradeResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid database upgrade input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpDatabaseUpgrade,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode database upgrade result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.
