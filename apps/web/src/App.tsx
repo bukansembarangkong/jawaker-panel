@@ -4,6 +4,7 @@ import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
 import { DashboardPage } from './pages/DashboardPage';
+import { DatabasesPage } from './pages/DatabasesPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { ServersPage } from './pages/ServersPage';
 import { SitesPage } from './pages/SitesPage';
@@ -27,13 +28,14 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
   if (window.location.hash === '#/servers') return 'servers';
   if (window.location.hash === '#/sites') return 'sites';
   if (window.location.hash === '#/apps') return 'apps';
+  if (window.location.hash === '#/databases') return 'databases';
   return 'dashboard';
 }
 
@@ -182,6 +184,19 @@ export default function App() {
                 Apps
               </a>
             </li>
+            <li>
+              <a
+                href="#/databases"
+                aria-current={route === 'databases' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'databases'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Databases
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -194,6 +209,8 @@ export default function App() {
             <SitesPage />
           ) : route === 'apps' ? (
             <AppsPage />
+          ) : route === 'databases' ? (
+            <DatabasesPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

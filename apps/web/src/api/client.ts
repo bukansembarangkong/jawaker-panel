@@ -598,6 +598,124 @@ export const api = {
       `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/webhook-tokens/${encodeURIComponent(tokenId)}`,
       { method: 'DELETE' },
     ),
+
+  // --- Databases (Phase 5) ----------------------------------------------------
+
+  listDatabases: (projectId: string): Promise<DatabasePage> =>
+    request<DatabasePage>(`/api/v1/projects/${encodeURIComponent(projectId)}/databases`),
+
+  createDatabase: (
+    projectId: string,
+    input: {
+      server_id: string;
+      slug: string;
+      name: string;
+      engine: string;
+      engine_version: string;
+      db_name: string;
+    },
+  ): Promise<{ database: ManagedDatabase }> =>
+    request<{ database: ManagedDatabase }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases`,
+      { method: 'POST', body: input },
+    ),
+
+  getDatabase: (projectId: string, id: string): Promise<{ database: ManagedDatabase }> =>
+    request<{ database: ManagedDatabase }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}`,
+    ),
+
+  updateDatabase: (
+    projectId: string,
+    id: string,
+    input: { name?: string; engine_version?: string },
+  ): Promise<{ database: ManagedDatabase }> =>
+    request<{ database: ManagedDatabase }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: input },
+    ),
+
+  deleteDatabase: (
+    projectId: string,
+    id: string,
+  ): Promise<{ status: string; database_id: string; delete_after?: string }> =>
+    request<{ status: string; database_id: string; delete_after?: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  getConnectionString: (
+    projectId: string,
+    id: string,
+    user?: string,
+  ): Promise<{ connection_string: string; username: string; engine: string; db_name: string }> => {
+    const q = user ? `?user=${encodeURIComponent(user)}` : '';
+    return request<{ connection_string: string; username: string; engine: string; db_name: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/connection-string${q}`,
+    );
+  },
+
+  listDatabaseUsers: (projectId: string, id: string): Promise<{ users: DatabaseUser[] }> =>
+    request<{ users: DatabaseUser[] }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/users`,
+    ),
+
+  createDatabaseUser: (
+    projectId: string,
+    id: string,
+    input: { username: string; privileges?: string[] },
+  ): Promise<{ user: DatabaseUser }> =>
+    request<{ user: DatabaseUser }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/users`,
+      { method: 'POST', body: input },
+    ),
+
+  revokeDatabaseUser: (
+    projectId: string,
+    id: string,
+    username: string,
+  ): Promise<{ revoked: boolean; username: string }> =>
+    request<{ revoked: boolean; username: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/users/${encodeURIComponent(username)}`,
+      { method: 'DELETE' },
+    ),
+
+  rotateDatabaseUserPassword: (
+    projectId: string,
+    id: string,
+    username: string,
+  ): Promise<void> =>
+    request<void>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/users/${encodeURIComponent(username)}/rotate-password`,
+      { method: 'POST' },
+    ),
+
+  getDatabaseMetrics: (
+    projectId: string,
+    id: string,
+  ): Promise<{ metrics: DatabaseMetrics }> =>
+    request<{ metrics: DatabaseMetrics }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/metrics`,
+    ),
+
+  dumpDatabase: (
+    projectId: string,
+    id: string,
+  ): Promise<{ backup_id: string; job_id: string; status: string }> =>
+    request<{ backup_id: string; job_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/dump`,
+      { method: 'POST' },
+    ),
+
+  restoreDatabase: (
+    projectId: string,
+    id: string,
+    dumpPath: string,
+  ): Promise<{ job_id: string; database_id: string; status: string }> =>
+    request<{ job_id: string; database_id: string; status: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/restore`,
+      { method: 'POST', body: { dump_path: dumpPath } },
+    ),
 };
 
 // --- Domain types (mirrors API response shapes) --------------------------------
@@ -807,4 +925,54 @@ export interface WebhookToken {
   state: string;
   created_at: string;
   last_used_at: string | null;
+}
+
+// --- Databases (Phase 5) ----------------------------------------------------
+
+export interface ManagedDatabase {
+  id: string;
+  project_id: string;
+  server_id: string;
+  slug: string;
+  name: string;
+  /** postgresql | mariadb */
+  engine: 'postgresql' | 'mariadb' | string;
+  engine_version: string;
+  db_name: string;
+  /** active | suspended | pending_delete | deleted */
+  state: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  delete_after?: string;
+  deleted_at?: string;
+}
+
+export interface DatabasePage {
+  databases: ManagedDatabase[];
+  total: number;
+}
+
+export interface DatabaseUser {
+  id: string;
+  database_id: string;
+  username: string;
+  secret_ref: string;
+  privileges: string[];
+  created_at: string;
+}
+
+export interface SlowQuery {
+  query: string;
+  calls: number;
+  total_time_ms: number;
+  mean_time_ms: number;
+}
+
+export interface DatabaseMetrics {
+  connections: number;
+  active_queries: number;
+  slow_queries_last_5m: number;
+  top_slow_queries?: SlowQuery[];
+  observed_at: string;
 }
