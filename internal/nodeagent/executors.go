@@ -72,6 +72,16 @@ type Executors struct {
 	// systemdDir is the directory for systemd unit files. Defaults to
 	// /etc/systemd/system; overridable for tests.
 	systemdDir string
+	// pgAvailable reports whether PostgreSQL client binaries were detected.
+	pgAvailable bool
+	// mariaAvailable reports whether MariaDB/MySQL client binaries were detected.
+	mariaAvailable bool
+	// dbDumpDir is the path-confined root for database dump artifacts.
+	// Defaults to /var/lib/jawaker/db-dumps; overridable for tests.
+	dbDumpDir string
+	// cmdRunner executes subprocesses. Defaults to runCommand; tests replace it
+	// to assert the argv a database executor would spawn without a real engine.
+	cmdRunner func(context.Context, CommandSpec) (CommandResult, error)
 }
 
 // ExecutorOptions configures detection.
@@ -99,6 +109,12 @@ type ExecutorOptions struct {
 	AppsRootDir string
 	// SystemdDir overrides the systemd unit directory, for tests.
 	SystemdDir string
+	// PgAvailable overrides PostgreSQL detection, for tests.
+	PgAvailable bool
+	// MariaAvailable overrides MariaDB detection, for tests.
+	MariaAvailable bool
+	// DBDumpDir overrides the database dump directory, for tests.
+	DBDumpDir string
 }
 
 // NewExecutors detects what this node can do.
@@ -126,6 +142,7 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 		logDir:        logDir,
 		appsRootDir:   appsRoot,
 		systemdDir:    systemdDir,
+		cmdRunner:     runCommand,
 	}
 	// Web-server detection happens here, BEFORE the systemd branch, because a
 	// host may well have nginx and no systemd. Detecting it after the early
@@ -145,6 +162,27 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 	} else {
 		e.gitPath = gitPath
 		e.gitAvailable = true
+	}
+
+	dbDumpDir := opts.DBDumpDir
+	if dbDumpDir == "" {
+		dbDumpDir = "/var/lib/jawaker/db-dumps"
+	}
+	e.dbDumpDir = dbDumpDir
+
+	// PostgreSQL detection: createdb is the lightest sentinel — present on any
+	// host with the postgresql-client package. If the test override is set, use it.
+	if opts.PgAvailable {
+		e.pgAvailable = true
+	} else if _, found := resolveProgram("/usr/bin/createdb", "/usr/local/bin/createdb"); found {
+		e.pgAvailable = true
+	}
+
+	// MariaDB/MySQL detection: mariadb client binary is the sentinel.
+	if opts.MariaAvailable {
+		e.mariaAvailable = true
+	} else if _, found := resolveProgram("/usr/bin/mariadb", "/usr/bin/mysql", "/usr/local/bin/mariadb"); found {
+		e.mariaAvailable = true
 	}
 
 	path := opts.SystemctlPath
