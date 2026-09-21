@@ -13,7 +13,8 @@ import (
 )
 
 // fakeExecutors builds an Executors instance with mock command runner and
-// test directories.
+// test directories. pg and maria are set AFTER construction to override
+// ambient binary detection on CI runners that have postgresql-client installed.
 func fakeExecutors(t *testing.T, pg, maria bool) (*Executors, *[]CommandSpec) {
 	t.Helper()
 	var recorded []CommandSpec
@@ -26,6 +27,10 @@ func fakeExecutors(t *testing.T, pg, maria bool) (*Executors, *[]CommandSpec) {
 		DBDumpDir:      dumpDir,
 		Now:            func() time.Time { return time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC) },
 	})
+	// Override detection: ambient binaries on CI (e.g. postgresql-client on ubuntu)
+	// must not pollute the test expectations.
+	e.pgAvailable = pg
+	e.mariaAvailable = maria
 	e.cmdRunner = func(_ context.Context, spec CommandSpec) (CommandResult, error) {
 		recorded = append(recorded, spec)
 		return CommandResult{Stdout: "", ExitCode: 0}, nil
@@ -63,8 +68,8 @@ func TestDatabaseManageEngineUnavailable(t *testing.T) {
 		t.Fatal("expected error when PG not available")
 	}
 	var nwErr *nodewire.Error
-	if !errors.As(err, &nwErr) || nwErr.Code != nodewire.CodeUnsupportedOperation {
-		t.Errorf("got %v, want CodeUnsupportedOperation", err)
+	if !errors.As(err, &nwErr) || nwErr.Code != nodewire.CodeNotAvailable {
+		t.Errorf("got %v, want CodeNotAvailable", err)
 	}
 }
 
@@ -132,32 +137,60 @@ func TestDatabaseUpgradeDumpsBeforeUpgrade(t *testing.T) {
 	e, recorded := fakeExecutors(t, true, true)
 	ctx := context.Background()
 
-	// Create real pre-dump file in the temp dump dir so the stat passes.
-	preDump := filepath.Join(e.dbDumpDir, "valid-pre.dump")
-	if err := os.WriteFile(preDump, []byte("fake-dump"), 0600); err != nil {
-		t.Fatalf("create temp dump: %v", err)
+	// Gate 4: empty pre_dump_path must be rejected with CodeInvalidInput
+	// before any engine binary runs.
+	if !supportedOS() {
+		// On non-Linux the OS gate fires first (CodeNotAvailable); still no commands run.
+		_, err := e.UpgradeDatabase(ctx, nodewire.DatabaseUpgradeInput{
+			Engine:      "mariadb",
+			FromVersion: "10.11",
+			ToVersion:   "11.4",
+			SocketPath:  "/var/run/mysqld/mysqld.sock",
+		})
+		var nwErr *nodewire.Error
+		if !errors.As(err, &nwErr) || nwErr.Code != nodewire.CodeNotAvailable {
+			t.Fatalf("got %v, want CodeNotAvailable on non-Linux", err)
+		}
+		if len(*recorded) != 0 {
+			t.Fatal("no command may run when upgrade is gated")
+		}
+		return
 	}
 
-	res, err := e.UpgradeDatabase(ctx, nodewire.DatabaseUpgradeInput{
+	// Linux: missing pre_dump_path must yield CodeInvalidInput, no commands run.
+	_, err := e.UpgradeDatabase(ctx, nodewire.DatabaseUpgradeInput{
+		Engine:      "mariadb",
+		FromVersion: "10.11",
+		ToVersion:   "11.4",
+		SocketPath:  "/var/run/mysqld/mysqld.sock",
+	})
+	var nwErr *nodewire.Error
+	if !errors.As(err, &nwErr) || nwErr.Code != nodewire.CodeInvalidInput {
+		t.Fatalf("got %v, want CodeInvalidInput for empty pre_dump_path", err)
+	}
+	if len(*recorded) != 0 {
+		t.Fatal("no command may run without a pre-upgrade dump")
+	}
+
+	// With a real pre-dump file present, validation passes; the run then
+	// reaches require() which fails with CodeUnsupportedOperation when the
+	// upgrade binary is absent (normal on CI runners).
+	preDump := filepath.Join(e.dbDumpDir, "valid-pre.dump")
+	if wErr := os.WriteFile(preDump, []byte("fake-dump"), 0600); wErr != nil {
+		t.Fatalf("create temp dump: %v", wErr)
+	}
+	if _, uErr := e.UpgradeDatabase(ctx, nodewire.DatabaseUpgradeInput{
 		Engine:      "mariadb",
 		FromVersion: "10.11",
 		ToVersion:   "11.4",
 		PreDumpPath: preDump,
 		SocketPath:  "/var/run/mysqld/mysqld.sock",
-	})
-	// On Windows, require() will fail because the binary doesn't exist.
-	// That's expected: the important assertion is that the preDump validation passed!
-	if err != nil {
-		var nwErr *nodewire.Error
-		if errors.As(err, &nwErr) && nwErr.Code == nodewire.CodeUnsupportedOperation {
-			// Binary not present on host — expected on non-Linux.
-			return
+	}); uErr != nil {
+		var gateErr *nodewire.Error
+		if errors.As(uErr, &gateErr) && gateErr.Code != nodewire.CodeUnsupportedOperation {
+			t.Errorf("unexpected error past pre-dump gate: %v", uErr)
 		}
 	}
-	if !res.OK {
-		t.Logf("upgrade result: %+v", res)
-	}
-	_ = recorded
 }
 
 func TestSocketDirHelper(t *testing.T) {
