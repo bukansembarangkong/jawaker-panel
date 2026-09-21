@@ -18,7 +18,10 @@
 package controller
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -101,6 +104,10 @@ func (h *AppHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/deployments/{dep_id}/redeploy", h.handleRedeploy)
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/releases", h.handleListReleases)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/rollback", h.handleRollback)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/webhook-tokens", h.handleCreateWebhookToken)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/webhook-tokens", h.handleListWebhookTokens)
+	mux.HandleFunc("DELETE /api/v1/projects/{project_id}/apps/{id}/webhook-tokens/{token_id}", h.handleRevokeWebhookToken)
+	mux.HandleFunc("POST /api/v1/webhooks/git/{token}", h.handleGitWebhook)
 }
 
 // --- CRUD -------------------------------------------------------------------
@@ -762,6 +769,269 @@ func (h *AppHandlers) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 
 			h.startDeployment(w, r, app, apps.TriggerManual, dep.GitRef, *dep.CommitSHA, nil)
 		})).ServeHTTP(w, r)
+}
+
+// --- Webhook Tokens ----------------------------------------------------------
+
+// handleCreateWebhookToken generates a fresh git webhook token for an app.
+// The plaintext token is returned ONCE; only its SHA-256 hash is stored.
+func (h *AppHandlers) handleCreateWebhookToken(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.create", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			rawBytes := make([]byte, 32)
+			if _, err := rand.Read(rawBytes); err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			rawToken := "jw_hook_" + hex.EncodeToString(rawBytes)
+			tokenHash := apps.HashWebhookToken(rawToken)
+			wt, err := h.apps.CreateWebhookToken(r.Context(), id, tokenHash)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "app.webhook_token.create",
+				ResourceType: "app",
+				ResourceID:   id,
+				Result:       audit.ResultSuccess,
+				Context:      map[string]any{"token_id": wt.ID, "project_id": projectID},
+			})
+			writeJSONResponse(w, http.StatusCreated, map[string]any{
+				// rawToken is shown ONCE. Do not log it.
+				"token": rawToken,
+				"webhook_token": map[string]any{
+					"id":           wt.ID,
+					"app_id":       wt.AppID,
+					"state":        wt.State,
+					"created_at":   wt.CreatedAt,
+					"last_used_at": wt.LastUsedAt,
+				},
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleListWebhookTokens returns all webhook tokens for an app (active and revoked).
+// Plaintext tokens are not recoverable and never returned.
+func (h *AppHandlers) handleListWebhookTokens(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			tokens, err := h.apps.ListWebhookTokens(r.Context(), id)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			out := make([]map[string]any, 0, len(tokens))
+			for _, wt := range tokens {
+				out = append(out, map[string]any{
+					"id":           wt.ID,
+					"app_id":       wt.AppID,
+					"state":        wt.State,
+					"created_at":   wt.CreatedAt,
+					"last_used_at": wt.LastUsedAt,
+				})
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"webhook_tokens": out,
+				"request_id":     httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleRevokeWebhookToken revokes a single webhook token.
+func (h *AppHandlers) handleRevokeWebhookToken(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	tokenID := r.PathValue("token_id")
+	authsession.RequirePermission(h.now, "deployment.create", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			if err := h.apps.RevokeWebhookToken(r.Context(), id, tokenID); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "app.webhook_token.revoke",
+				ResourceType: "app",
+				ResourceID:   id,
+				Result:       audit.ResultSuccess,
+				Context:      map[string]any{"token_id": tokenID, "project_id": projectID},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"revoked":    true,
+				"token_id":   tokenID,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// gitWebhookPayload is the union of GitHub push event, GitLab push event, and
+// the generic JAWAKER payload. Only the fields we need are extracted.
+type gitWebhookPayload struct {
+	// GitHub/GitLab push: "after" is the head commit SHA; "0000..." means delete.
+	After string `json:"after"`
+	// GitHub/GitLab: "ref" is the full git reference (e.g. refs/heads/main).
+	Ref string `json:"ref"`
+	// Generic JAWAKER payload: direct SHA and ref.
+	CommitSHA string `json:"commit_sha"`
+	GitRef    string `json:"git_ref"`
+}
+
+// handleGitWebhook is a PUBLIC endpoint (no session required) that receives a
+// git push event from GitHub/GitLab/Gitea and triggers an app deployment.
+//
+// Gate 4: the idempotency_key = "webhook:<token_id>:<commit_sha>" ensures that a
+// duplicate push event for the same SHA cannot start a second deployment.
+func (h *AppHandlers) handleGitWebhook(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	reqID := httpserver.RequestIDFromRequest(r)
+
+	// Resolve token → app. Returns ErrNotFound for revoked/missing tokens.
+	wt, err := h.apps.GetWebhookTokenByHash(r.Context(), apps.HashWebhookToken(token))
+	if err != nil {
+		httpserver.WriteError(w, r, apierr.NotFound("Webhook token not found or revoked."))
+		return
+	}
+	app, err := h.apps.GetApp(r.Context(), wt.AppID)
+	if err != nil || !app.Usable() {
+		httpserver.WriteError(w, r, apierr.Conflict("Application is not active.", map[string]any{"app_id": wt.AppID}))
+		return
+	}
+
+	// Parse payload — accept empty body gracefully.
+	var payload gitWebhookPayload
+	if r.ContentLength > 0 {
+		if err := decodeJSONStrict(r, &payload); err != nil {
+			httpserver.WriteError(w, r, err)
+			return
+		}
+	}
+
+	// Resolve commit SHA: prefer "after" (GitHub/GitLab) then "commit_sha" (generic).
+	commitSHA := strings.TrimSpace(payload.After)
+	// "after" = 40 zeros means branch-delete event — not a deployable push.
+	if commitSHA == "" || commitSHA == "0000000000000000000000000000000000000000" {
+		commitSHA = strings.TrimSpace(payload.CommitSHA)
+	}
+	if !commitSHAPattern.MatchString(commitSHA) {
+		httpserver.WriteError(w, r, apierr.InvalidRequest(
+			"A valid commit SHA (7..40 lowercase hex) is required in the webhook payload.",
+			map[string]any{"field": "after (or commit_sha)"}))
+		return
+	}
+
+	// Resolve git ref: strip "refs/heads/" prefix from standard git push payloads.
+	gitRef := strings.TrimPrefix(strings.TrimSpace(payload.Ref), "refs/heads/")
+	if gitRef == "" {
+		gitRef = strings.TrimSpace(payload.GitRef)
+	}
+	if gitRef == "" {
+		gitRef = app.GitRefDefault
+	}
+	if gitRef == "" {
+		gitRef = "main"
+	}
+
+	// Idempotency key: same token + same SHA == same logical push. Gate 4.
+	idempotencyKey := fmt.Sprintf("webhook:%s:%s", wt.ID, commitSHA)
+
+	dep, depErr := h.apps.CreateDeployment(r.Context(), apps.CreateDeploymentParams{
+		AppID:          app.ID,
+		ProjectID:      app.ProjectID,
+		ServerID:       app.ServerID,
+		Trigger:        apps.TriggerWebhook,
+		CommitSHA:      &commitSHA,
+		GitRef:         gitRef,
+		IdempotencyKey: &idempotencyKey,
+	})
+	if depErr != nil {
+		httpserver.WriteError(w, r, appErr(depErr))
+		return
+	}
+
+	job, jobErr := jobs.Enqueue(r.Context(), h.pool, jobs.Requested{
+		Type:             JobTypeAppDeploy,
+		ServerID:         app.ServerID,
+		ProjectID:        app.ProjectID,
+		IdempotencyKey:   dep.ID,
+		IdempotencyScope: "app.deploy:" + app.ID,
+		RequestedByType:  "system",
+		RequestedByID:    wt.ID,
+		RequestID:        reqID,
+		Payload: map[string]any{
+			"app_id":        app.ID,
+			"deployment_id": dep.ID,
+			"git_ref":       gitRef,
+			"commit_sha":    commitSHA,
+		},
+		Steps: []jobs.StepPlan{
+			{Name: "fetch"},
+			{Name: "build"},
+			{Name: "activate"},
+			{Name: "health"},
+		},
+		LockKeys: []string{"app:" + app.ID},
+	})
+	if jobErr != nil {
+		_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
+			State:        apps.DeployFailed,
+			ErrorCode:    "job_enqueue_failed",
+			ErrorSummary: jobErr.Error(),
+		})
+		httpserver.WriteError(w, r, apierr.Internal(jobErr))
+		return
+	}
+
+	_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
+		State: apps.DeployQueued,
+		JobID: &job.ID,
+	})
+	// Touch token last_used_at — best-effort; don't fail the response.
+	_ = h.apps.TouchWebhookToken(r.Context(), wt.ID)
+
+	h.recordAudit(r, audit.Event{
+		ActorType:    audit.ActorSystem,
+		ActorID:      wt.ID,
+		Action:       "deployment.webhook",
+		ResourceType: "app",
+		ResourceID:   app.ID,
+		Result:       audit.ResultSuccess,
+		Context: map[string]any{
+			"deployment_id": dep.ID,
+			"job_id":        job.ID,
+			"git_ref":       gitRef,
+			"commit_sha":    commitSHA,
+		},
+	})
+
+	writeJSONResponse(w, http.StatusAccepted, map[string]any{
+		"deployment_id": dep.ID,
+		"job": map[string]any{
+			"id":    job.ID,
+			"state": job.State,
+		},
+		"request_id": reqID,
+	})
 }
 
 // JobTypeAppDeploy is the job type enqueued when an application is deployed.

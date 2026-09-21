@@ -554,8 +554,17 @@ func TestWebhookTokenLifecycle(t *testing.T) {
 		t.Fatalf("TouchWebhookToken: %v", err)
 	}
 
-	// Revoke
-	if err := f.store.RevokeWebhookToken(ctx, wt.ID); err != nil {
+	// List tokens before revoke: 1 token, active
+	list, err := f.store.ListWebhookTokens(ctx, app.ID)
+	if err != nil {
+		t.Fatalf("ListWebhookTokens: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("len(list) = %d, want 1", len(list))
+	}
+
+	// Revoke (scoped to app for tenant isolation)
+	if err := f.store.RevokeWebhookToken(ctx, app.ID, wt.ID); err != nil {
 		t.Fatalf("RevokeWebhookToken: %v", err)
 	}
 
@@ -563,6 +572,15 @@ func TestWebhookTokenLifecycle(t *testing.T) {
 	_, notFoundErr := f.store.GetWebhookTokenByHash(ctx, hash)
 	if !errors.Is(notFoundErr, ErrNotFound) {
 		t.Errorf("revoked token err = %v, want ErrNotFound", notFoundErr)
+	}
+
+	// List after revoke: still 1 token, but state is revoked
+	listAfter, err := f.store.ListWebhookTokens(ctx, app.ID)
+	if err != nil {
+		t.Fatalf("ListWebhookTokens after revoke: %v", err)
+	}
+	if len(listAfter) != 1 || listAfter[0].State != "revoked" {
+		t.Errorf("listAfter = %+v, want 1 revoked token", listAfter)
 	}
 }
 
