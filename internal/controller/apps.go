@@ -96,6 +96,11 @@ func (h *AppHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/env", h.handleSetEnvVar)
 	mux.HandleFunc("DELETE /api/v1/projects/{project_id}/apps/{id}/env/{name}", h.handleDeleteEnvVar)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/deploy", h.handleDeployApp)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/deployments", h.handleListDeployments)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/deployments/{dep_id}", h.handleGetDeployment)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/deployments/{dep_id}/redeploy", h.handleRedeploy)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/releases", h.handleListReleases)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/rollback", h.handleRollback)
 }
 
 // --- CRUD -------------------------------------------------------------------
@@ -437,11 +442,101 @@ type deployAppRequest struct {
 	IdempotencyKey *string `json:"idempotency_key,omitempty"`
 }
 
+// startDeployment enqueues an asynchronous app.deploy job and writes a 202 response.
+// Shared by handleDeployApp, handleRollback, and handleRedeploy.
+func (h *AppHandlers) startDeployment(
+	w http.ResponseWriter,
+	r *http.Request,
+	app apps.App,
+	trigger, gitRef, commitSHA string,
+	idempotencyKey *string,
+) {
+	reqID := httpserver.RequestIDFromRequest(r)
+
+	// Step 1: Create deployment record in queued state.
+	// Fails with ErrConflictActive if another deploy is already active.
+	dep, depErr := h.apps.CreateDeployment(r.Context(), apps.CreateDeploymentParams{
+		AppID:          app.ID,
+		ProjectID:      app.ProjectID,
+		ServerID:       app.ServerID,
+		Trigger:        trigger,
+		CommitSHA:      &commitSHA,
+		GitRef:         gitRef,
+		RequestedBy:    principalUserID(r),
+		IdempotencyKey: idempotencyKey,
+	})
+	if depErr != nil {
+		httpserver.WriteError(w, r, appErr(depErr))
+		return
+	}
+
+	// Step 2: Enqueue the app.deploy job.
+	job, jobErr := jobs.Enqueue(r.Context(), h.pool, jobs.Requested{
+		Type:             JobTypeAppDeploy,
+		ServerID:         app.ServerID,
+		ProjectID:        app.ProjectID,
+		IdempotencyKey:   dep.ID,
+		IdempotencyScope: "app.deploy:" + app.ID,
+		RequestedByType:  "user",
+		RequestedByID:    principalUserID(r),
+		RequestID:        reqID,
+		Payload: map[string]any{
+			"app_id":        app.ID,
+			"deployment_id": dep.ID,
+			"git_ref":       gitRef,
+			"commit_sha":    commitSHA,
+		},
+		Steps: []jobs.StepPlan{
+			{Name: "fetch"},
+			{Name: "build"},
+			{Name: "activate"},
+			{Name: "health"},
+		},
+		LockKeys: []string{"app:" + app.ID},
+	})
+	if jobErr != nil {
+		// Job enqueue failed: mark deployment failed so it does not block future deploys.
+		_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
+			State:        apps.DeployFailed,
+			ErrorCode:    "job_enqueue_failed",
+			ErrorSummary: jobErr.Error(),
+		})
+		httpserver.WriteError(w, r, apierr.Internal(jobErr))
+		return
+	}
+
+	// Attach job_id to the deployment record.
+	_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
+		State: apps.DeployQueued,
+		JobID: &job.ID,
+	})
+
+	h.recordAudit(r, audit.Event{
+		ActorType:    audit.ActorUser,
+		ActorID:      principalUserID(r),
+		Action:       "deployment." + trigger,
+		ResourceType: "app",
+		ResourceID:   app.ID,
+		Result:       audit.ResultSuccess,
+		Context: map[string]any{
+			"deployment_id": dep.ID,
+			"job_id":        job.ID,
+			"git_ref":       gitRef,
+			"commit_sha":    commitSHA,
+		},
+	})
+
+	writeJSONResponse(w, http.StatusAccepted, map[string]any{
+		"deployment_id": dep.ID,
+		"job": map[string]any{
+			"id":    job.ID,
+			"state": job.State,
+		},
+		"request_id": reqID,
+	})
+}
+
 // handleDeployApp triggers a manual deployment for an application.
-//
-// Asynchronous pipeline: creates a deployment record in 'queued' state, enqueues
-// an app.deploy job, and returns 202 Accepted with {deployment_id, job: {id, state}}.
-// Gate 4: concurrent active deploys for the same app return 409 Conflict.
 func (h *AppHandlers) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("project_id")
 	id := r.PathValue("id")
@@ -476,11 +571,6 @@ func (h *AppHandlers) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 				gitRef = "main"
 			}
 
-			// commit_sha is REQUIRED: the node executor fetches the exact
-			// commit (git fetch origin <sha>), and the spec requires
-			// exact-commit redeploy. A ref-only deploy would need a
-			// resolution step that does not exist yet — refuse honestly
-			// rather than send a placeholder SHA that cannot fetch.
 			commitSHA := ""
 			if req.CommitSHA != nil {
 				commitSHA = strings.TrimSpace(*req.CommitSHA)
@@ -492,88 +582,185 @@ func (h *AppHandlers) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			reqID := httpserver.RequestIDFromRequest(r)
+			h.startDeployment(w, r, app, apps.TriggerManual, gitRef, commitSHA, req.IdempotencyKey)
+		})).ServeHTTP(w, r)
+}
 
-			// Step 1: Create deployment record in queued state.
-			// Fails with ErrConflictActive if another deploy is already active.
-			dep, depErr := h.apps.CreateDeployment(r.Context(), apps.CreateDeploymentParams{
-				AppID:          app.ID,
-				ProjectID:      app.ProjectID,
-				ServerID:       app.ServerID,
-				Trigger:        apps.TriggerManual,
-				CommitSHA:      &commitSHA,
-				GitRef:         gitRef,
-				RequestedBy:    principalUserID(r),
-				IdempotencyKey: req.IdempotencyKey,
-			})
-			if depErr != nil {
-				httpserver.WriteError(w, r, appErr(depErr))
+// handleListDeployments returns a pageable list of deployment attempts for an app.
+func (h *AppHandlers) handleListDeployments(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
 				return
 			}
-
-			// Step 2: Enqueue the app.deploy job.
-			job, jobErr := jobs.Enqueue(r.Context(), h.pool, jobs.Requested{
-				Type:             JobTypeAppDeploy,
-				ServerID:         app.ServerID,
-				ProjectID:        app.ProjectID,
-				IdempotencyKey:   dep.ID,
-				IdempotencyScope: "app.deploy:" + app.ID,
-				RequestedByType:  "user",
-				RequestedByID:    principalUserID(r),
-				RequestID:        reqID,
-				Payload: map[string]any{
-					"app_id":        app.ID,
-					"deployment_id": dep.ID,
-					"git_ref":       gitRef,
-					"commit_sha":    commitSHA,
-				},
-				Steps: []jobs.StepPlan{
-					{Name: "fetch"},
-					{Name: "build"},
-					{Name: "activate"},
-					{Name: "health"},
-				},
-				LockKeys: []string{"app:" + app.ID},
+			limit, offset, apiErr := parsePagination(r)
+			if apiErr != nil {
+				httpserver.WriteError(w, r, apiErr)
+				return
+			}
+			depList, total, err := h.apps.ListDeployments(r.Context(), id, limit, offset)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"deployments": deploymentResponses(depList),
+				"total":       total,
+				"limit":       limit,
+				"offset":      offset,
+				"has_more":    offset+len(depList) < total,
+				"request_id":  httpserver.RequestIDFromRequest(r),
 			})
-			if jobErr != nil {
-				// Job enqueue failed: mark deployment failed so it does not block future deploys.
-				_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
-					State:        apps.DeployFailed,
-					ErrorCode:    "job_enqueue_failed",
-					ErrorSummary: jobErr.Error(),
+		})).ServeHTTP(w, r)
+}
+
+// handleGetDeployment returns a single deployment attempt record.
+func (h *AppHandlers) handleGetDeployment(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	depID := r.PathValue("dep_id")
+	authsession.RequirePermission(h.now, "deployment.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			dep, err := h.apps.GetDeploymentInApp(r.Context(), id, depID)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"deployment": deploymentResponse(dep),
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleListReleases returns historical releases for an app.
+func (h *AppHandlers) handleListReleases(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.apps.GetAppInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			releases, err := h.apps.ListReleases(r.Context(), id, 20)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			out := make([]map[string]any, 0, len(releases))
+			for _, rel := range releases {
+				out = append(out, map[string]any{
+					"id":            rel.ID,
+					"app_id":        rel.AppID,
+					"deployment_id": rel.DeploymentID,
+					"release_path":  rel.ReleasePath,
+					"commit_sha":    rel.CommitSHA,
+					"is_current":    rel.IsCurrent,
+					"health_state":  rel.HealthState,
+					"created_at":    rel.CreatedAt,
 				})
-				httpserver.WriteError(w, r, apierr.Internal(jobErr))
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"releases":   out,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleRollback initiates a rollback deployment to the previously active release.
+// Gate: finds the most recent release where is_current = false and enqueues an
+// app.deploy job using that exact commit SHA.
+func (h *AppHandlers) handleRollback(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.rollback", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			app, err := h.apps.GetAppInProject(r.Context(), projectID, id)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			if !app.Usable() {
+				httpserver.WriteError(w, r, apierr.Conflict("Application is not active and cannot accept deployments.", map[string]any{
+					"app_id": app.ID,
+					"state":  app.State,
+				}))
 				return
 			}
 
-			// Attach job_id to the deployment record.
-			_, _ = h.apps.UpdateDeploymentState(r.Context(), dep.ID, apps.UpdateDeploymentStateParams{
-				State: apps.DeployQueued,
-				JobID: &job.ID,
-			})
+			// Find previous releases. The list is sorted newest first.
+			releases, err := h.apps.ListReleases(r.Context(), id, 5)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
 
-			h.recordAudit(r, audit.Event{
-				ActorType:    audit.ActorUser,
-				ActorID:      principalUserID(r),
-				Action:       "deployment.create",
-				ResourceType: "app",
-				ResourceID:   app.ID,
-				Result:       audit.ResultSuccess,
-				Context: map[string]any{
-					"deployment_id": dep.ID,
-					"job_id":        job.ID,
-					"git_ref":       gitRef,
-				},
-			})
+			// Find the first release that is NOT current.
+			var targetRelease *apps.Release
+			for _, rel := range releases {
+				if !rel.IsCurrent {
+					prev := rel
+					targetRelease = &prev
+					break
+				}
+			}
+			if targetRelease == nil {
+				httpserver.WriteError(w, r, apierr.Conflict(
+					"No previous release available to roll back to.",
+					map[string]any{"app_id": app.ID}))
+				return
+			}
 
-			writeJSONResponse(w, http.StatusAccepted, map[string]any{
-				"deployment_id": dep.ID,
-				"job": map[string]any{
-					"id":    job.ID,
-					"state": job.State,
-				},
-				"request_id": reqID,
-			})
+			gitRef := app.GitRefDefault
+			if strings.TrimSpace(gitRef) == "" {
+				gitRef = "main"
+			}
+
+			h.startDeployment(w, r, app, apps.TriggerRollback, gitRef, targetRelease.CommitSHA, nil)
+		})).ServeHTTP(w, r)
+}
+
+// handleRedeploy triggers an exact-commit redeployment from a past deployment record.
+func (h *AppHandlers) handleRedeploy(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	depID := r.PathValue("dep_id")
+	authsession.RequirePermission(h.now, "deployment.create", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			app, err := h.apps.GetAppInProject(r.Context(), projectID, id)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			if !app.Usable() {
+				httpserver.WriteError(w, r, apierr.Conflict("Application is not active and cannot accept deployments.", map[string]any{
+					"app_id": app.ID,
+					"state":  app.State,
+				}))
+				return
+			}
+
+			dep, err := h.apps.GetDeploymentInApp(r.Context(), id, depID)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			if dep.CommitSHA == nil || *dep.CommitSHA == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(
+					"The target deployment does not record an exact commit SHA.",
+					map[string]any{"deployment_id": dep.ID}))
+				return
+			}
+
+			h.startDeployment(w, r, app, apps.TriggerManual, dep.GitRef, *dep.CommitSHA, nil)
 		})).ServeHTTP(w, r)
 }
 
@@ -647,6 +834,34 @@ func appResponses(list []apps.App) []map[string]any {
 	out := make([]map[string]any, len(list))
 	for i, a := range list {
 		out[i] = appResponse(a)
+	}
+	return out
+}
+
+func deploymentResponse(d apps.Deployment) map[string]any {
+	out := map[string]any{
+		"id":            d.ID,
+		"app_id":        d.AppID,
+		"project_id":    d.ProjectID,
+		"server_id":     d.ServerID,
+		"trigger":       d.Trigger,
+		"commit_sha":    d.CommitSHA,
+		"git_ref":       d.GitRef,
+		"state":         d.State,
+		"error_code":    d.ErrorCode,
+		"error_summary": d.ErrorSummary,
+		"job_id":        d.JobID,
+		"created_at":    d.CreatedAt,
+		"started_at":    d.StartedAt,
+		"finished_at":   d.FinishedAt,
+	}
+	return out
+}
+
+func deploymentResponses(list []apps.Deployment) []map[string]any {
+	out := make([]map[string]any, len(list))
+	for i, d := range list {
+		out[i] = deploymentResponse(d)
 	}
 	return out
 }

@@ -431,3 +431,279 @@ func TestAppEnvVarMaskingNeverReturnsSecretRef(t *testing.T) {
 	}
 	_ = ctx
 }
+
+// --- PR-D: deployment history, releases, rollback, redeploy ----------------
+
+// appFixture creates a server, project, and app in one call. Returns serverID, projectID, appID.
+// addrSuffix must be unique per test to avoid address conflicts in the servers table.
+func appFixture(t *testing.T, h *harness, slugSuffix, addrSuffix string) (serverID, projectID, appID string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO servers (name, address, status) VALUES ($1, $2, 'active') RETURNING id`,
+		"hist-host-"+slugSuffix, "127.0.0.1:"+addrSuffix,
+	).Scan(&serverID); err != nil {
+		t.Fatalf("insert server: %v", err)
+	}
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO projects (slug, name, state) VALUES ($1, $2, 'active') RETURNING id`,
+		"proj-"+slugSuffix, "Proj "+slugSuffix,
+	).Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	appBody, _ := json.Marshal(map[string]any{
+		"slug":          slugSuffix + "-app",
+		"name":          slugSuffix + " App",
+		"runtime_type":  "node",
+		"git_repo_url":  "https://github.com/example/" + slugSuffix + ".git",
+		"start_program": "node",
+		"start_args":    []string{"index.js"},
+		"server_id":     serverID,
+	})
+	resp := h.post(t, "/api/v1/projects/"+projectID+"/apps", string(appBody))
+	if resp.StatusCode != http.StatusCreated {
+		var errBody map[string]any
+		decodeBody(t, resp, &errBody)
+		t.Fatalf("create app = %d; body = %v", resp.StatusCode, errBody)
+	}
+	var created struct {
+		App struct {
+			ID string `json:"id"`
+		} `json:"app"`
+	}
+	decodeBody(t, resp, &created)
+	appID = created.App.ID
+	return
+}
+
+// TestDeploymentHistoryListAndGet proves GET .../deployments and GET .../deployments/{dep_id}.
+func TestDeploymentHistoryListAndGet(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "hist", "9449")
+
+	// Trigger deploy.
+	h.elevate(t)
+	depResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/deploy",
+		`{"commit_sha":"abc1234","git_ref":"main"}`)
+	if depResp.StatusCode != http.StatusAccepted {
+		var errBody map[string]any
+		decodeBody(t, depResp, &errBody)
+		t.Fatalf("POST deploy = %d; body = %v", depResp.StatusCode, errBody)
+	}
+	var depBody struct {
+		DeploymentID string `json:"deployment_id"`
+	}
+	decodeBody(t, depResp, &depBody)
+
+	// LIST deployments.
+	listResp := h.do("GET", "/api/v1/projects/"+projectID+"/apps/"+appID+"/deployments", "", nil)
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET deployments = %d, want 200", listResp.StatusCode)
+	}
+	var listBody struct {
+		Deployments []struct {
+			ID        string `json:"id"`
+			AppID     string `json:"app_id"`
+			CommitSHA any    `json:"commit_sha"`
+		} `json:"deployments"`
+		Total int `json:"total"`
+	}
+	decodeBody(t, listResp, &listBody)
+	if listBody.Total < 1 {
+		t.Errorf("deployments.total = %d, want ≥ 1", listBody.Total)
+	}
+	found := false
+	for _, d := range listBody.Deployments {
+		if d.ID == depBody.DeploymentID {
+			found = true
+			if d.AppID != appID {
+				t.Errorf("deployment.app_id = %q, want %q", d.AppID, appID)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("created deployment %q not found in list", depBody.DeploymentID)
+	}
+
+	// GET single deployment.
+	getResp := h.do("GET", "/api/v1/projects/"+projectID+"/apps/"+appID+"/deployments/"+depBody.DeploymentID, "", nil)
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET deployment = %d, want 200", getResp.StatusCode)
+	}
+	var single struct {
+		Deployment struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"deployment"`
+	}
+	decodeBody(t, getResp, &single)
+	if single.Deployment.ID != depBody.DeploymentID {
+		t.Errorf("deployment.id = %q, want %q", single.Deployment.ID, depBody.DeploymentID)
+	}
+}
+
+// TestReleaseListIsEmptyWithoutWorker proves GET .../releases returns an empty
+// list when no worker has created release records (worker never runs in integration tests).
+func TestReleaseListIsEmptyWithoutWorker(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "rel-empty", "9450")
+
+	// Trigger a deploy so deployment row exists.
+	h.elevate(t)
+	depResp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/deploy",
+		`{"commit_sha":"abc1234","git_ref":"main"}`)
+	if depResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST deploy = %d", depResp.StatusCode)
+	}
+
+	// Releases list — empty because worker never ran.
+	listResp := h.do("GET", "/api/v1/projects/"+projectID+"/apps/"+appID+"/releases", "", nil)
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET releases = %d, want 200", listResp.StatusCode)
+	}
+	var body struct {
+		Releases []any `json:"releases"`
+	}
+	decodeBody(t, listResp, &body)
+	if len(body.Releases) != 0 {
+		t.Errorf("releases len = %d, want 0", len(body.Releases))
+	}
+}
+
+// TestRollbackFailsWithNoRelease proves POST .../rollback returns 409 when
+// there is no previous release to roll back to.
+func TestRollbackFailsWithNoRelease(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+
+	_, projectID, appID := appFixture(t, h, "rb-empty", "9451")
+
+	h.elevate(t)
+	resp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/rollback", "")
+	if resp.StatusCode != http.StatusConflict {
+		var errBody map[string]any
+		decodeBody(t, resp, &errBody)
+		t.Errorf("rollback without release = %d, want 409; body = %v", resp.StatusCode, errBody)
+	}
+}
+
+// TestRollbackSucceedsWithSeededRelease proves POST .../rollback returns 202
+// when a non-current release exists (seeded directly into DB as worker would do).
+func TestRollbackSucceedsWithSeededRelease(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+	ctx := context.Background()
+
+	_, projectID, appID := appFixture(t, h, "rb-ok", "9452")
+
+	// Seed a deployment row so foreign-key constraint is satisfied.
+	var serverID string
+	if err := h.pool.QueryRow(ctx, `SELECT server_id FROM apps WHERE id = $1`, appID).Scan(&serverID); err != nil {
+		t.Fatalf("get server_id: %v", err)
+	}
+	var depID string
+	if err := h.pool.QueryRow(ctx,
+		`INSERT INTO app_deployments (app_id, project_id, server_id, trigger, state, commit_sha, git_ref)
+		 VALUES ($1, $2, $3, 'manual', 'succeeded', 'abc1234', 'main') RETURNING id`,
+		appID, projectID, serverID,
+	).Scan(&depID); err != nil {
+		t.Fatalf("insert deployment: %v", err)
+	}
+
+	// Seed two releases: one current (newest), one previous (not current).
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO app_releases (app_id, deployment_id, release_path, commit_sha, is_current)
+		 VALUES ($1, $2, '/releases/old', 'abc1234', false),
+		        ($1, $2, '/releases/new', 'def5678', true)`,
+		appID, depID,
+	); err != nil {
+		t.Fatalf("insert releases: %v", err)
+	}
+
+	h.elevate(t)
+	resp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/rollback", "")
+	if resp.StatusCode != http.StatusAccepted {
+		var errBody map[string]any
+		decodeBody(t, resp, &errBody)
+		t.Fatalf("rollback = %d, want 202; body = %v", resp.StatusCode, errBody)
+	}
+	var body struct {
+		DeploymentID string `json:"deployment_id"`
+		Job          struct {
+			State string `json:"state"`
+		} `json:"job"`
+	}
+	decodeBody(t, resp, &body)
+	if body.DeploymentID == "" {
+		t.Error("rollback: deployment_id is empty")
+	}
+	if body.Job.State != "queued" {
+		t.Errorf("rollback: job.state = %q, want queued", body.Job.State)
+	}
+}
+
+// TestRedeployFromPastDeployment proves POST .../deployments/{dep_id}/redeploy
+// creates a new deployment using the exact commit SHA of the source deployment.
+func TestRedeployFromPastDeployment(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bootstrapOwner(t)
+	ctx := context.Background()
+
+	_, projectID, appID := appFixture(t, h, "redeploy", "9453")
+
+	// Trigger a first deploy (creates deployment row with abc1234).
+	h.elevate(t)
+	first := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/deploy",
+		`{"commit_sha":"abc1234","git_ref":"main"}`)
+	if first.StatusCode != http.StatusAccepted {
+		t.Fatalf("first deploy = %d", first.StatusCode)
+	}
+	var firstBody struct {
+		DeploymentID string `json:"deployment_id"`
+	}
+	decodeBody(t, first, &firstBody)
+
+	// Move the first deployment to 'succeeded' so the app is no longer locked.
+	if _, err := h.pool.Exec(ctx,
+		`UPDATE app_deployments SET state='succeeded', finished_at=NOW() WHERE id=$1`, firstBody.DeploymentID,
+	); err != nil {
+		t.Fatalf("update deployment state: %v", err)
+	}
+
+	// Redeploy from the first deployment.
+	h.elevate(t)
+	resp := h.post(t, "/api/v1/projects/"+projectID+"/apps/"+appID+"/deployments/"+firstBody.DeploymentID+"/redeploy", "")
+	if resp.StatusCode != http.StatusAccepted {
+		var errBody map[string]any
+		decodeBody(t, resp, &errBody)
+		t.Fatalf("redeploy = %d, want 202; body = %v", resp.StatusCode, errBody)
+	}
+	var body struct {
+		DeploymentID string `json:"deployment_id"`
+		Job          struct {
+			State string `json:"state"`
+		} `json:"job"`
+	}
+	decodeBody(t, resp, &body)
+	if body.DeploymentID == firstBody.DeploymentID {
+		t.Error("redeploy must create a NEW deployment record, not return the original")
+	}
+	if body.Job.State != "queued" {
+		t.Errorf("redeploy: job.state = %q, want queued", body.Job.State)
+	}
+
+	// Confirm new deployment has same commit SHA.
+	var sha string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT commit_sha FROM app_deployments WHERE id = $1`, body.DeploymentID,
+	).Scan(&sha); err != nil {
+		t.Fatalf("query new deployment: %v", err)
+	}
+	if sha != "abc1234" {
+		t.Errorf("new deployment commit_sha = %q, want abc1234", sha)
+	}
+}
