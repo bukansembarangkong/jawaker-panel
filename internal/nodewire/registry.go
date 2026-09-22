@@ -41,7 +41,7 @@ var Operations = map[Operation]Descriptor{
 		Operation:   OpNodeHeartbeat,
 		Permission:  "server.read",
 		InputSchema: "{observed_at, uptime_seconds, load1_milli, mem_total_bytes, mem_used_bytes, workload_count}",
-		Validation:  "all counters must be non-negative and used ≤ total; a violation is refused rather than clamped",
+		Validation:  "all counters non-negative used ≤ total; violation refused clamped",
 		OSSupport:   []string{"linux"},
 		Scope: Scope{
 			FilesystemRead: []string{"/proc/loadavg", "/proc/meminfo", "/proc/uptime"},
@@ -49,6 +49,22 @@ var Operations = map[Operation]Descriptor{
 		},
 		Timeout:     10 * time.Second,
 		AuditAction: "node.heartbeat.received",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 3},
+		Mutating:    false,
+	},
+
+	OpNodeMetrics: {
+		Operation:   OpNodeMetrics,
+		Permission:  "monitoring.read",
+		InputSchema: "{}",
+		Validation:  "percentages finite in [0,100]; load1 finite; observed_at set",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/proc/stat", "/proc/meminfo", "/proc/loadavg"},
+			Network:        "none",
+		},
+		Timeout:     10 * time.Second,
+		AuditAction: "node.metrics.sampled",
 		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 3},
 		Mutating:    false,
 	},

@@ -179,6 +179,10 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpDatabaseMetrics] = true
 		served[nodewire.OpDatabaseUpgrade] = true
 	}
+	// node.metrics reads host-level counters. Gate is Linux only.
+	if supportedOS() {
+		served[nodewire.OpNodeMetrics] = true
+	}
 	// file.* operations require tar and Linux. Same honest-advertisement rule:
 	// a node without tar must not offer a backup that always fails.
 	if e.tarPath != "" && supportedOS() {
@@ -417,6 +421,17 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 
 	case nodewire.OpNodeHeartbeat:
 		result, err := a.exec.Heartbeat(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpNodeMetrics:
+		in, err := nodewire.DecodeInput[nodewire.NodeMetricsInput](req)
+		if err != nil {
+			return nil, err
+		}
+		result, err := a.exec.HostMetrics(ctx, in)
 		if err != nil {
 			return nil, err
 		}

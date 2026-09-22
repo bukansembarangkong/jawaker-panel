@@ -607,6 +607,29 @@ func (d *Dispatcher) GetDatabaseMetrics(ctx context.Context, serverID, requestID
 	return out, nil
 }
 
+// NodeMetrics samples host-level CPU, memory, disk and load from a node. The
+// controller polls it on a fixed cadence (Phase 7 observability); results are
+// stored as metric_samples rows for trend evaluation and alerting.
+func (d *Dispatcher) NodeMetrics(ctx context.Context, serverID, requestID string) (nodewire.NodeMetricsResult, error) {
+	var out nodewire.NodeMetricsResult
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		RequestID: requestID,
+		Operation: nodewire.OpNodeMetrics,
+		Input:     nodewire.NodeMetricsInput{},
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode node metrics result: %w", err)
+	}
+	if err := out.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid node metrics result: %w", err)
+	}
+	return out, nil
+}
+
 // UpgradeDatabase triggers a major version engine upgrade with a pre-dump backup gate.
 func (d *Dispatcher) UpgradeDatabase(ctx context.Context, serverID, requestID string, in nodewire.DatabaseUpgradeInput) (nodewire.DatabaseUpgradeResult, error) {
 	var out nodewire.DatabaseUpgradeResult
