@@ -27,6 +27,11 @@ concurrency:
 
 env:
   GO_VERSION_FILE: go.mod
+  # proxy.golang.org intermittently returns 403 for some module fetches on
+  # hosted runners; ",direct" falls back to the upstream VCS when that happens.
+  # go.sum is still verified either way, so this adds resilience without
+  # weakening supply-chain checks.
+  GOPROXY: https://proxy.golang.org,direct
 
 jobs:
   go:
