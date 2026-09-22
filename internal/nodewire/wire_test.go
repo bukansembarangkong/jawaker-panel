@@ -26,6 +26,7 @@ func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 	want := []Operation{
 		OpNodeCapabilities,
 		OpNodeHeartbeat,
+		OpNodeMetrics,
 		OpServiceInspect,
 		OpServiceRestart,
 		OpWebConfigValidate,

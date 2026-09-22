@@ -62,6 +62,11 @@ const (
 	OpNodeCapabilities Operation = "node.capabilities"
 	// OpNodeHeartbeat reports liveness and coarse resource facts.
 	OpNodeHeartbeat Operation = "node.heartbeat"
+	// OpNodeMetrics samples host-level CPU, memory, disk and load from /proc
+	// and statfs. Unlike the heartbeat's coarse snapshot it is a bounded,
+	// time-stamped sample the controller stores for trend evaluation and
+	// alerting (Phase 7 observability). Read-only.
+	OpNodeMetrics Operation = "node.metrics" //nolint:gosec // G101: an operation wire name, not a credential
 	// OpServiceInspect reports the state of one service unit.
 	OpServiceInspect Operation = "service.inspect"
 	// OpServiceRestart restarts one service unit.
