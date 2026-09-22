@@ -45,14 +45,18 @@ func statfsRootPct() (float64, error) {
 	if err := syscall.Statfs("/", &st); err != nil {
 		return 0, fmt.Errorf("statfs /: %w", err)
 	}
-	total := st.Blocks * uint64(st.Bsize)
+	if st.Bsize <= 0 {
+		return 0, fmt.Errorf("statfs / reports non-positive block size %d", st.Bsize)
+	}
+	bs := uint64(st.Bsize) //nolint:gosec // G115: guarded positive above
+	total := st.Blocks * bs
 	if total == 0 {
 		return 0, fmt.Errorf("statfs / reports zero blocks")
 	}
 	// df semantics: used = total - free, percentage against used + available
 	// so root-reserved blocks are excluded from both sides.
-	free := st.Bfree * uint64(st.Bsize)
-	avail := st.Bavail * uint64(st.Bsize)
+	free := st.Bfree * bs
+	avail := st.Bavail * bs
 	used := total - free
 	denom := used + avail
 	if denom == 0 {
