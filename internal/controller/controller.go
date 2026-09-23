@@ -123,6 +123,9 @@ type Handler struct {
 	BackupWorker *jobs.Worker
 	// BackupScheduler enqueues scheduled backup runs and enforces retention.
 	BackupScheduler *BackupScheduler
+	// ObserveEvaluator runs the metric-rule evaluation, retention pruning, and
+	// report-schedule loop. Nil when the observe store is not available.
+	ObserveEvaluator *observe.Evaluator
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -449,6 +452,11 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: observe handlers: %w", observeErr)
 		}
 		observeRoutes := observeHandlers.Routes
+		out.ObserveEvaluator = observe.NewEvaluator(
+			out.Observe, opts.DB, now,
+			logger.With("component", "observe-evaluator"),
+			observe.EvaluatorConfig{},
+		)
 
 		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
 			Pool:       opts.DB,

@@ -183,6 +183,14 @@ func run() error {
 		}()
 	}
 
+	// The observability evaluator ticks every 30 s: evaluates alert rules,
+	// opens/closes incidents, prunes old metric samples, and fires due report
+	// schedules.
+	if assembled.ObserveEvaluator != nil {
+		ev := assembled.ObserveEvaluator
+		go ev.Run(ctx)
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
