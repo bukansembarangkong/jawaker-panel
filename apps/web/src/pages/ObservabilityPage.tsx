@@ -190,7 +190,7 @@ export function ObservabilityPage() {
             ))}
           </div>
           {incidents.length === 0 ? (
-            <EmptyState title="No incidents" description="No incidents match the current filter." />
+            <EmptyState title="No incidents">No incidents match the current filter.</EmptyState>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -209,7 +209,7 @@ export function ObservabilityPage() {
                     const srv = servers.find((s) => s.id === inc.server_id);
                     return (
                       <tr key={inc.id}>
-                        <td className="px-4 py-3"><StatusBadge state={incidentState(inc)} label={inc.state} /></td>
+                        <td className="px-4 py-3"><StatusBadge state={incidentState(inc)} detail={inc.state} /></td>
                         <td className="px-4 py-3 text-gray-700">{srv?.name ?? inc.server_id.slice(0, 8)}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500">{inc.dedup_key}</td>
                         <td className="px-4 py-3 text-gray-500">{formatTs(inc.opened_at)}</td>
@@ -293,7 +293,7 @@ export function ObservabilityPage() {
           )}
 
           {rules.length === 0 ? (
-            <EmptyState title="No alert rules" description="Create a rule to start monitoring metric thresholds." />
+            <EmptyState title="No alert rules">Create a rule to start monitoring metric thresholds.</EmptyState>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -313,7 +313,7 @@ export function ObservabilityPage() {
                     const srv = servers.find((s) => s.id === rule.server_id);
                     return (
                       <tr key={rule.id}>
-                        <td className="px-4 py-3"><StatusBadge state={ruleState(rule)} label={rule.enabled ? 'enabled' : 'disabled'} /></td>
+                        <td className="px-4 py-3"><StatusBadge state={ruleState(rule)} detail={rule.enabled ? 'enabled' : 'disabled'} /></td>
                         <td className="px-4 py-3 font-medium text-gray-900">{rule.name}</td>
                         <td className="px-4 py-3 text-gray-700">{srv?.name ?? rule.server_id.slice(0, 8)}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-600">
@@ -375,7 +375,7 @@ export function ObservabilityPage() {
           )}
 
           {schedules.length === 0 ? (
-            <EmptyState title="No report schedules" description="Create a schedule to receive periodic summary reports." />
+            <EmptyState title="No report schedules">Create a schedule to receive periodic summary reports.</EmptyState>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
