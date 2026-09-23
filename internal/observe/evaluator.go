@@ -131,9 +131,9 @@ func (ev *Evaluator) evalRule(ctx context.Context, rule AlertRule, now time.Time
 	dedupKey := "rule:" + rule.ID
 
 	if firing {
-		ev.handleFiring(ctx, rule, dedupKey, now, samples[0].Value)
+		ev.handleFiring(ctx, rule, dedupKey, samples[0].Value)
 	} else {
-		ev.handleRecovery(ctx, dedupKey, rule, now)
+		ev.handleRecovery(ctx, dedupKey, rule)
 	}
 }
 
@@ -158,7 +158,7 @@ func allSatisfy(samples []Sample, comparator string, threshold float64) bool {
 	return true
 }
 
-func (ev *Evaluator) handleFiring(ctx context.Context, rule AlertRule, dedupKey string, now time.Time, currentValue float64) {
+func (ev *Evaluator) handleFiring(ctx context.Context, rule AlertRule, dedupKey string, currentValue float64) {
 	incident, created, err := ev.store.OpenIncident(ctx, rule.ID, rule.ServerID, dedupKey)
 	if err != nil {
 		ev.logger.Error("evaluator: open incident", "rule", rule.ID, "error", err)
@@ -171,7 +171,7 @@ func (ev *Evaluator) handleFiring(ctx context.Context, rule AlertRule, dedupKey 
 	}
 }
 
-func (ev *Evaluator) handleRecovery(ctx context.Context, dedupKey string, rule AlertRule, now time.Time) {
+func (ev *Evaluator) handleRecovery(ctx context.Context, dedupKey string, rule AlertRule) {
 	resolvedID, err := ev.store.ResolveOpenByDedup(ctx, dedupKey)
 	if err != nil {
 		ev.logger.Error("evaluator: resolve by dedup", "rule", rule.ID, "error", err)
