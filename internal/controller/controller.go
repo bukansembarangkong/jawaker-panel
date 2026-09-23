@@ -26,6 +26,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
 	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
+	"github.com/bukansembarangkong/jawaker-panel/internal/observe"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
 	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
@@ -102,6 +103,12 @@ type Handler struct {
 	Databases *databases.Store
 	// Backups is the backup plans and runs store.
 	Backups *backups.Store
+	// Observe is the Phase 7 observability store (metric samples, alert rules,
+	// incidents, report schedules).
+	Observe *observe.Store
+	// ObserveRoutesMounted reports whether /api/v1/alert-rules and friends are
+	// registered.
+	ObserveRoutesMounted bool
 	// Projects is the tenant boundary store.
 	Projects *projects.Store
 	// SiteWorker is the background jobs worker executing configuration applies
@@ -427,6 +434,22 @@ func Build(opts Options) (*Handler, error) {
 		}
 		backupRoutes := backupHandlers.Routes
 
+		// Observability (Phase 7): server metric queries, alert-rule CRUD,
+		// incident timeline, and report schedules. The evaluator/retention
+		// worker arrives in PR-D; these endpoints only read and write the
+		// observe store.
+		out.Observe = observe.NewStore(opts.DB, now)
+		observeHandlers, observeErr := NewObserveHandlers(ObserveHandlerOptions{
+			Observe: out.Observe,
+			Logger:  logger,
+			Audit:   opts.DB,
+			Now:     now,
+		})
+		if observeErr != nil {
+			return nil, fmt.Errorf("controller: observe handlers: %w", observeErr)
+		}
+		observeRoutes := observeHandlers.Routes
+
 		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
 			Pool:       opts.DB,
 			Apps:       out.Apps,
@@ -493,6 +516,7 @@ func Build(opts Options) (*Handler, error) {
 			appRoutes(mux)
 			dbRoutes(mux)
 			backupRoutes(mux)
+			observeRoutes(mux)
 			projectRoutes(mux)
 			jobRoutes(mux)
 		}
@@ -500,6 +524,7 @@ func Build(opts Options) (*Handler, error) {
 		out.AppRoutesMounted = true
 		out.DatabaseRoutesMounted = true
 		out.BackupRoutesMounted = true
+		out.ObserveRoutesMounted = true
 		out.ProjectRoutesMounted = true
 		out.JobRoutesMounted = true
 		out.Events = broker
