@@ -1145,3 +1145,147 @@ export interface BackupLinkCreated {
   single_use: boolean;
   request_id: string;
 }
+
+// --- Phase 7: Observability ---------------------------------------------------
+
+export interface MetricSample {
+  server_id: string;
+  metric: string;
+  value: number;
+  observed_at: string;
+}
+
+export interface MetricSamplesPage {
+  server_id: string;
+  metric: string;
+  samples: MetricSample[];
+  request_id: string;
+}
+
+export interface AlertRule {
+  id: string;
+  server_id: string;
+  name: string;
+  metric: string;
+  comparator: 'gt' | 'lt';
+  threshold: number;
+  duration_seconds: number;
+  severity: 'info' | 'warning' | 'critical';
+  enabled: boolean;
+  state: 'active' | 'suspended';
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertRulePage {
+  rules: AlertRule[];
+  total: number;
+  request_id: string;
+}
+
+export interface CreateAlertRuleInput {
+  server_id: string;
+  name: string;
+  metric: string;
+  comparator: 'gt' | 'lt';
+  threshold: number;
+  duration_seconds: number;
+  severity?: 'info' | 'warning' | 'critical';
+}
+
+export interface UpdateAlertRuleInput {
+  name?: string;
+  threshold?: number;
+  duration_seconds?: number;
+  severity?: string;
+  enabled?: boolean;
+  state?: string;
+}
+
+export interface AlertIncident {
+  id: string;
+  rule_id: string;
+  server_id: string;
+  state: 'open' | 'resolved';
+  dedup_key: string;
+  opened_at: string;
+  resolved_at: string | null;
+  notified_at: string | null;
+}
+
+export interface IncidentPage {
+  incidents: AlertIncident[];
+  total: number;
+  request_id: string;
+}
+
+export interface ReportSchedule {
+  id: string;
+  name: string;
+  cadence: 'daily' | 'weekly' | 'monthly';
+  next_run_at: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface SchedulePage {
+  schedules: ReportSchedule[];
+  total: number;
+  request_id: string;
+}
+
+export interface CreateScheduleInput {
+  name: string;
+  cadence: 'daily' | 'weekly' | 'monthly';
+}
+
+// Observe API methods appended to the api object (see bottom of file).
+// They are exported here as standalone functions for tree-shaking friendliness.
+export const observeApi = {
+  getMetrics(serverId: string, metric: string, since?: string): Promise<MetricSamplesPage> {
+    const q = since
+      ? `?metric=${encodeURIComponent(metric)}&since=${encodeURIComponent(since)}`
+      : `?metric=${encodeURIComponent(metric)}`;
+    return request<MetricSamplesPage>(`/api/v1/servers/${encodeURIComponent(serverId)}/metrics${q}`);
+  },
+  listRules(serverId?: string): Promise<AlertRulePage> {
+    const q = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
+    return request<AlertRulePage>(`/api/v1/alert-rules${q}`);
+  },
+  createRule(input: CreateAlertRuleInput): Promise<{ rule: AlertRule; request_id: string }> {
+    return request<{ rule: AlertRule; request_id: string }>('/api/v1/alert-rules', { method: 'POST', body: input });
+  },
+  updateRule(id: string, input: UpdateAlertRuleInput): Promise<{ rule: AlertRule; request_id: string }> {
+    return request<{ rule: AlertRule; request_id: string }>(`/api/v1/alert-rules/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+  deleteRule(id: string): Promise<{ status: string; request_id: string }> {
+    return request<{ status: string; request_id: string }>(`/api/v1/alert-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  listIncidents(serverId?: string, state?: string): Promise<IncidentPage> {
+    const params = new URLSearchParams();
+    if (serverId) params.set('server_id', serverId);
+    if (state) params.set('state', state);
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return request<IncidentPage>(`/api/v1/incidents${q}`);
+  },
+  resolveIncident(id: string): Promise<{ status: string; id: string; request_id: string }> {
+    return request<{ status: string; id: string; request_id: string }>(
+      `/api/v1/incidents/${encodeURIComponent(id)}/resolve`,
+      { method: 'POST', body: {} },
+    );
+  },
+  listSchedules(): Promise<SchedulePage> {
+    return request<SchedulePage>('/api/v1/report-schedules');
+  },
+  createSchedule(input: CreateScheduleInput): Promise<{ schedule: ReportSchedule; request_id: string }> {
+    return request<{ schedule: ReportSchedule; request_id: string }>('/api/v1/report-schedules', { method: 'POST', body: input });
+  },
+  deleteSchedule(id: string): Promise<{ status: string; request_id: string }> {
+    return request<{ status: string; request_id: string }>(`/api/v1/report-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+

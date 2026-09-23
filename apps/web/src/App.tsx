@@ -4,6 +4,7 @@ import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
 import { BackupsPage } from './pages/BackupsPage';
+import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
 import { SecurityPage } from './pages/SecurityPage';
@@ -29,7 +30,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -38,6 +39,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/apps') return 'apps';
   if (window.location.hash === '#/databases') return 'databases';
   if (window.location.hash === '#/backups') return 'backups';
+  if (window.location.hash === '#/observability') return 'observability';
   return 'dashboard';
 }
 
@@ -212,6 +214,19 @@ export default function App() {
                 Backups
               </a>
             </li>
+            <li>
+              <a
+                href="#/observability"
+                aria-current={route === 'observability' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'observability'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Observability
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -228,6 +243,8 @@ export default function App() {
             <DatabasesPage />
           ) : route === 'backups' ? (
             <BackupsPage />
+          ) : route === 'observability' ? (
+            <ObservabilityPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
