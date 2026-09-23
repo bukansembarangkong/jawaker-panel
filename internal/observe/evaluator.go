@@ -79,7 +79,7 @@ func NewEvaluator(store *Store, pool *pgxpool.Pool, now func() time.Time, logger
 	}
 }
 
-// Run blocks until ctx is cancelled, ticking every cfg.Interval.
+// Run blocks until ctx is canceled, ticking every cfg.Interval.
 func (ev *Evaluator) Run(ctx context.Context) {
 	ticker := time.NewTicker(ev.cfg.Interval)
 	defer ticker.Stop()
@@ -167,7 +167,7 @@ func (ev *Evaluator) handleFiring(ctx context.Context, rule AlertRule, dedupKey 
 	// Only notify on first open; subsequent ticks with the same open incident
 	// are suppressed by dedup in notify.Publish.
 	if created || incident.NotifiedAt == nil {
-		ev.publishAlert(ctx, rule, incident.ID, currentValue, now)
+		ev.publishAlert(ctx, rule, incident.ID, currentValue)
 	}
 }
 
@@ -180,10 +180,10 @@ func (ev *Evaluator) handleRecovery(ctx context.Context, dedupKey string, rule A
 	if resolvedID == "" {
 		return // nothing was open
 	}
-	ev.publishRecovery(ctx, rule, resolvedID, now)
+	ev.publishRecovery(ctx, rule, resolvedID)
 }
 
-func (ev *Evaluator) publishAlert(ctx context.Context, rule AlertRule, incidentID string, value float64, now time.Time) {
+func (ev *Evaluator) publishAlert(ctx context.Context, rule AlertRule, incidentID string, value float64) {
 	title := fmt.Sprintf("[%s] %s threshold exceeded", rule.Severity, rule.Name)
 	body := fmt.Sprintf("Metric %s %s %.2f (current %.2f) on server %s for %ds.",
 		rule.Metric, rule.Comparator, rule.Threshold, value, rule.ServerID, rule.DurationSeconds)
@@ -210,7 +210,7 @@ func (ev *Evaluator) publishAlert(ctx context.Context, rule AlertRule, incidentI
 	}
 }
 
-func (ev *Evaluator) publishRecovery(ctx context.Context, rule AlertRule, incidentID string, now time.Time) {
+func (ev *Evaluator) publishRecovery(ctx context.Context, rule AlertRule, incidentID string) {
 	title := fmt.Sprintf("[resolved] %s back to normal", rule.Name)
 	body := fmt.Sprintf("Metric %s on server %s no longer exceeds threshold %.2f.",
 		rule.Metric, rule.ServerID, rule.Threshold)
