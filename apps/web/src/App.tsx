@@ -241,14 +241,18 @@ export default function App() {
                     : 'text-ink-secondary hover:text-ink'
                 }`}
               >
-                DNS & TLS
+                DNS &amp; TLS
               </a>
             </li>
             <li>
               <a
                 href="#/containers"
                 aria-current={route === 'containers' ? 'page' : undefined}
-                className={\lock rounded-md px-3 py-1.5 text-sm \\}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'containers'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
               >
                 Containers
               </a>
