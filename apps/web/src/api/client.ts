@@ -1384,4 +1384,109 @@ export const dnsTlsApi = {
   },
 };
 
+// --- Containers (Phase 9) ---------------------------------------------------
+
+export interface ContainerRegistry {
+  id: string;
+  project_id: string;
+  name: string;
+  host: string;
+  has_credential: boolean;
+  created_at: string;
+  deleted_at?: string;
+}
+
+export interface ContainerStack {
+  id: string;
+  project_id: string;
+  server_id: string;
+  name: string;
+  state: string;
+  created_at: string;
+  deleted_at?: string;
+}
+
+export interface Container {
+  id: string;
+  project_id: string;
+  server_id: string;
+  stack_id?: string;
+  name: string;
+  container_id: string;
+  image_ref: string;
+  state: string;
+  cpu_limit: number;
+  mem_limit_mb: number;
+  privileged: boolean;
+  health: string;
+  started_at?: string;
+  created_at: string;
+  deleted_at?: string;
+}
+
+export interface ContainerVolume {
+  id: string;
+  project_id: string;
+  server_id: string;
+  container_id?: string;
+  name: string;
+  driver: string;
+  mount_point: string;
+  size_bytes?: number;
+  created_at: string;
+  deleted_at?: string;
+}
+
+export interface ContainerLogsResult {
+  container_id: string;
+  name: string;
+  lines: string[];
+  truncated: boolean;
+  observed_at: string;
+  request_id: string;
+}
+
+export const containerApi = {
+  // Registries
+  listRegistries(projectId: string): Promise<{ registries: ContainerRegistry[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-registries`);
+  },
+  createRegistry(projectId: string, input: { name: string; host: string; password?: string }): Promise<{ registry: ContainerRegistry; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-registries`, { method: 'POST', body: input });
+  },
+  deleteRegistry(projectId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-registries/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // Compose stacks
+  listStacks(projectId: string): Promise<{ stacks: ContainerStack[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-stacks`);
+  },
+  createStack(projectId: string, input: { server_id: string; name: string; compose_yaml?: string }): Promise<{ stack: ContainerStack; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-stacks`, { method: 'POST', body: input });
+  },
+  deleteStack(projectId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-stacks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // Containers
+  listContainers(projectId: string, serverId?: string): Promise<{ containers: Container[]; total: number; request_id: string }> {
+    const q = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers${q}`);
+  },
+  getContainer(projectId: string, id: string): Promise<{ container: Container; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/${encodeURIComponent(id)}`);
+  },
+  getContainerLogs(projectId: string, id: string): Promise<ContainerLogsResult> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/${encodeURIComponent(id)}/logs`);
+  },
+  listPrivilegedContainers(projectId: string): Promise<{ containers: Container[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/privileged`);
+  },
+
+  // Volumes
+  listVolumes(projectId: string): Promise<{ volumes: ContainerVolume[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/container-volumes`);
+  },
+};
 
