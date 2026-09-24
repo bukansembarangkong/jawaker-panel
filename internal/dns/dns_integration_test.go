@@ -62,7 +62,6 @@ func setupDB(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-
 // seedProject inserts a minimal project and returns its id.
 func seedProject(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
@@ -289,9 +288,11 @@ func TestOrderStateMachine(t *testing.T) {
 	}
 }
 
-func isNotFound(err error) bool { return err != nil && (err == ErrNotFound || containsErr(err, ErrNotFound)) }
-func isInvalid(err error) bool  { return err != nil && containsErr(err, ErrInvalid) }
-func isState(err error) bool    { return err != nil && containsErr(err, ErrState) }
+func isNotFound(err error) bool {
+	return err != nil && (err == ErrNotFound || containsErr(err, ErrNotFound))
+}
+func isInvalid(err error) bool { return err != nil && containsErr(err, ErrInvalid) }
+func isState(err error) bool   { return err != nil && containsErr(err, ErrState) }
 
 func containsErr(err, target error) bool {
 	for err != nil {

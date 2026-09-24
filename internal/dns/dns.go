@@ -61,7 +61,7 @@ const (
 	OrderProcessing = "processing"
 	OrderValid      = "valid"
 	OrderInvalid    = "invalid"
-	OrderCanceled  = "canceled"
+	OrderCanceled   = "canceled"
 )
 
 // Provider is a DNS provider credential reference.
@@ -112,24 +112,24 @@ type Record struct {
 
 // Order is an ACME cert_orders row.
 type Order struct {
-	ID                  string
-	CertificateID       *string
-	ProjectID           string
-	ProviderID          *string
-	Identifiers         []string
-	DirectoryURL        string
-	State               string
-	OrderURL            *string
-	ChallengeToken      *string
-	ChallengeKeyAuth    *string
-	ChallengeRecordID   *string
-	ChallengePlacedAt   *time.Time
-	ErrorMessage        *string
-	ExpiresAt           *time.Time
-	CompletedAt         *time.Time
-	CreatedBy           *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                string
+	CertificateID     *string
+	ProjectID         string
+	ProviderID        *string
+	Identifiers       []string
+	DirectoryURL      string
+	State             string
+	OrderURL          *string
+	ChallengeToken    *string
+	ChallengeKeyAuth  *string
+	ChallengeRecordID *string
+	ChallengePlacedAt *time.Time
+	ErrorMessage      *string
+	ExpiresAt         *time.Time
+	CompletedAt       *time.Time
+	CreatedBy         *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
