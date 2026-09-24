@@ -18,6 +18,9 @@ import { UsersPage } from './pages/UsersPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { WorkersPage } from './pages/WorkersPage';
 import { FilesPage } from './pages/FilesPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { DRWizardPage } from './pages/DRWizardPage';
+import { CommandPalette } from './components/CommandPalette';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -45,7 +48,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files' | 'settings' | 'dr-wizard';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -70,6 +73,8 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/notifications') return 'notifications';
   if (window.location.hash === '#/workers') return 'workers';
   if (window.location.hash === '#/files') return 'files';
+  if (window.location.hash === '#/settings') return 'settings';
+  if (window.location.hash === '#/dr-wizard') return 'dr-wizard';
   return 'dashboard';
 }
 
@@ -77,11 +82,23 @@ export default function App() {
   const { theme, cycle } = useTheme();
   const { state, version, controllerError, refresh, signedIn, signOut } = useSession();
   const [route, setRoute] = useState<Route>(routeFromHash);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   if (controllerError) {
@@ -452,6 +469,32 @@ export default function App() {
                 Files
               </a>
             </li>
+            <li>
+              <a
+                href="#/settings"
+                aria-current={route === 'settings' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'settings'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Settings
+              </a>
+            </li>
+            <li>
+              <a
+                href="#/dr-wizard"
+                aria-current={route === 'dr-wizard' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'dr-wizard'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                DR Wizard
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -500,6 +543,10 @@ export default function App() {
             <WorkersPage />
           ) : route === 'files' ? (
             <FilesPage />
+          ) : route === 'settings' ? (
+            <SettingsPage />
+          ) : route === 'dr-wizard' ? (
+            <DRWizardPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
@@ -507,8 +554,16 @@ export default function App() {
       </div>
 
       <footer className="px-6 pb-8 text-center text-xs text-ink-muted">
-        UI build {__JAWAKER_VERSION__}
+        UI build {__JAWAKER_VERSION__}{' '}
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="ml-2 rounded border border-border px-1.5 py-0.5 text-xs text-ink-muted hover:text-ink"
+          title="Open command palette (Ctrl+K)"
+        >
+          Ctrl+K
+        </button>
       </footer>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
