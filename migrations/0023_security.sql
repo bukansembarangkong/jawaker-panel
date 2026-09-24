@@ -4,7 +4,7 @@
 -- Hardening check results per server
 CREATE TABLE hardening_checks (
     id              UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    server_id       TEXT        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id       UUID        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     check_name      TEXT        NOT NULL,
     category        TEXT        NOT NULL DEFAULT 'os',
     severity        TEXT        NOT NULL DEFAULT 'info',
@@ -30,7 +30,7 @@ CREATE INDEX hardening_checks_server_idx ON hardening_checks (server_id, observe
 -- SSH posture snapshots
 CREATE TABLE ssh_posture_log (
     id                  UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    server_id           TEXT        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id           UUID        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     permit_root_login   TEXT        NOT NULL DEFAULT 'unknown',
     password_auth       TEXT        NOT NULL DEFAULT 'unknown',
     pubkey_auth         TEXT        NOT NULL DEFAULT 'unknown',
@@ -46,7 +46,7 @@ CREATE INDEX ssh_posture_server_idx ON ssh_posture_log (server_id, observed_at D
 -- Security events (auth failures, intrusion attempts, ban events)
 CREATE TABLE security_events (
     id          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    server_id   TEXT        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id   UUID        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     source      TEXT        NOT NULL DEFAULT 'system',
     kind        TEXT        NOT NULL DEFAULT 'auth_fail',
     remote_ip   TEXT        NOT NULL DEFAULT '',
@@ -65,7 +65,7 @@ CREATE INDEX security_events_ip_idx         ON security_events (server_id, remot
 -- Active ban entries (fail2ban / crowdsec / manual)
 CREATE TABLE ban_entries (
     id          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    server_id   TEXT        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id   UUID        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     ip          TEXT        NOT NULL,
     source      TEXT        NOT NULL DEFAULT 'manual',
     reason      TEXT        NOT NULL DEFAULT '',
@@ -85,7 +85,7 @@ CREATE INDEX ban_entries_server_idx ON ban_entries (server_id, banned_at DESC);
 -- WAF / rate-limit rules
 CREATE TABLE waf_rules (
     id          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    server_id   TEXT        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id   UUID        NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     kind        TEXT        NOT NULL DEFAULT 'rate_limit',
     pattern     TEXT        NOT NULL,
     action      TEXT        NOT NULL DEFAULT 'block',
