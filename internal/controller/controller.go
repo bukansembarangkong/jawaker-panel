@@ -791,6 +791,9 @@ func Build(opts Options) (*Handler, error) {
 		}
 		automationRoutes := automationHandlers.Routes
 
+		terminalHandlers := NewTerminalHandlers(now)
+		terminalRoutes := terminalHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -819,6 +822,7 @@ func Build(opts Options) (*Handler, error) {
 			notifyRoutes(mux)
 			quotaRoutes(mux)
 			automationRoutes(mux)
+			terminalRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
