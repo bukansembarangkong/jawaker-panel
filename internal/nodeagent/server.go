@@ -207,6 +207,7 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpSecHardeningScan] = true
 		served[nodewire.OpSecSSHPosture] = true
 		served[nodewire.OpSecBanList] = true
+		served[nodewire.OpUpdateNodeAgent] = true
 	}
 	return served
 }
@@ -778,6 +779,20 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.SecBanList(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpUpdateNodeAgent:
+		in, err := nodewire.DecodeInput[nodewire.UpdateNodeAgentInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.UpdateNodeAgent(ctx, in)
 		if err != nil {
 			return nil, err
 		}
