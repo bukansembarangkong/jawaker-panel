@@ -326,7 +326,7 @@ function CreateAppForm({ project, onCreated, onCancel, onElevationRequired }: Cr
 
 // --- App Detail -------------------------------------------------------------
 
-type AppTab = 'deploy' | 'env' | 'webhooks';
+type AppTab = 'deploy' | 'env' | 'webhooks' | 'previews';
 
 interface AppDetailProps {
   app: App;
@@ -384,6 +384,7 @@ function AppDetail({ app, project, onBack, onDeleted, onElevationRequired }: App
         <button className={tabClass('deploy')} onClick={() => setTab('deploy')}>Deployments</button>
         <button className={tabClass('env')} onClick={() => setTab('env')}>Env Vars</button>
         <button className={tabClass('webhooks')} onClick={() => setTab('webhooks')}>Webhooks</button>
+        <button className={tabClass('previews')} onClick={() => setTab('previews')}>PR Previews</button>
       </nav>
       {tab === 'deploy' && (
         <DeployTab app={app} project={project} onElevationRequired={onElevationRequired} />
@@ -393,6 +394,9 @@ function AppDetail({ app, project, onBack, onDeleted, onElevationRequired }: App
       )}
       {tab === 'webhooks' && (
         <WebhooksTab app={app} project={project} onElevationRequired={onElevationRequired} />
+      )}
+      {tab === 'previews' && (
+        <PreviewsTab app={app} project={project} onElevationRequired={onElevationRequired} />
       )}
     </section>
   );
@@ -931,3 +935,192 @@ function WebhooksTab({
     </div>
   );
 }
+
+// --- Previews Tab (PRD §11.6) ------------------------------------------------
+
+interface PreviewsTabProps {
+  app: App;
+  project: Project;
+  onElevationRequired: (action: () => Promise<void>) => void;
+}
+
+interface PreviewItem {
+  id: string;
+  app_id: string;
+  branch: string;
+  pr_number?: number;
+  preview_url: string;
+  status: string;
+  created_at: string;
+}
+
+function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
+  const [previews, setPreviews] = useState<PreviewItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [branch, setBranch] = useState('');
+  const [prNumber, setPrNumber] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPreviews = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.listPreviews(project.id, app.id);
+      setPreviews(res.previews || []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load preview environments');
+    } finally {
+      setLoading(false);
+    }
+  }, [project.id, app.id]);
+
+  useEffect(() => {
+    void loadPreviews();
+  }, [loadPreviews]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!branch.trim()) return;
+    setCreating(true);
+    setError(null);
+    const run = async () => {
+      try {
+        await primeCsrf();
+        const pr = prNumber ? parseInt(prNumber, 10) : undefined;
+        await api.createPreview(project.id, app.id, { branch: branch.trim(), pr_number: pr });
+        setBranch('');
+        setPrNumber('');
+        await loadPreviews();
+      } catch (err: unknown) {
+        if (isStepUpRequired(err)) {
+          onElevationRequired(run);
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'Failed to create preview');
+      } finally {
+        setCreating(false);
+      }
+    };
+    await run();
+  };
+
+  const handleTeardown = async (previewId: string) => {
+    if (!window.confirm('Tear down this ephemeral preview environment?')) return;
+    const run = async () => {
+      try {
+        await primeCsrf();
+        await api.deletePreview(project.id, app.id, previewId);
+        await loadPreviews();
+      } catch (err: unknown) {
+        if (isStepUpRequired(err)) {
+          onElevationRequired(run);
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'Failed to tear down preview');
+      }
+    };
+    await run();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-line bg-surface p-4 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">PR & Branch Preview Environments (PRD §11.6)</h3>
+          <p className="text-xs text-ink-muted mt-1">
+            Deploy ephemeral branch-isolated testing environments with dedicated routing and automatic teardown.
+          </p>
+        </div>
+
+        {error && <ErrorNote message={error} onDismiss={() => setError(null)} />}
+
+        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="Git Branch">
+            <input
+              type="text"
+              required
+              placeholder="feat/preview-test"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Pull Request # (Optional)">
+            <input
+              type="number"
+              placeholder="42"
+              value={prNumber}
+              onChange={(e) => setPrNumber(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={creating || !branch.trim()}
+              className={`${primaryButtonClass} w-full`}
+            >
+              {creating ? 'Spawning Preview…' : 'Deploy Preview'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="space-y-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+          Active Preview Environments ({previews.length})
+        </h4>
+
+        {loading ? (
+          <p className="text-xs text-ink-muted">Loading previews…</p>
+        ) : previews.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-muted">
+            No active ephemeral preview environments. Deploy a branch above to create one.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {previews.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between rounded-lg border border-line bg-surface p-3 text-sm"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-ink bg-canvas px-2 py-0.5 rounded border border-line">
+                      {p.branch}
+                    </span>
+                    {p.pr_number && (
+                      <span className="text-xs text-primary font-medium">PR #{p.pr_number}</span>
+                    )}
+                    <span className="text-xs text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                      {p.status}
+                    </span>
+                  </div>
+                  <div>
+                    <a
+                      href={p.preview_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline font-mono"
+                    >
+                      {p.preview_url} ↗
+                    </a>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleTeardown(p.id)}
+                  className="text-xs px-2.5 py-1 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition font-medium"
+                >
+                  Teardown
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
