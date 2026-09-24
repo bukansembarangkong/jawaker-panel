@@ -332,6 +332,28 @@ func (s *Store) ListExpiring(ctx context.Context, window time.Duration) ([]Certi
 	return out, nil
 }
 
+// MarkExpiring transitions an active certificate to the 'expiring' state.
+func (s *Store) MarkExpiring(ctx context.Context, id string) (Certificate, error) {
+	if strings.TrimSpace(id) == "" {
+		return Certificate{}, fmt.Errorf("%w: id is required", ErrInvalid)
+	}
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE certificates
+		   SET state = 'expiring'
+		 WHERE id = $1
+		   AND state = 'active'
+		   AND deleted_at IS NULL
+		RETURNING %s`, certColumns), id)
+	cert, err := scanCert(row)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Certificate{}, fmt.Errorf("%w: cannot mark expiring", ErrState)
+		}
+		return Certificate{}, err
+	}
+	return cert, nil
+}
+
 // Revoke marks a certificate as revoked. It does NOT automatically unbind it:
 // unbinding and deploying a replacement is an operator decision, and revoking a
 // certificate that is serving should be visible as an alert, not a silent outage.
