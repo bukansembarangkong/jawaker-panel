@@ -157,7 +157,7 @@ export function ContainersPage() {
   if (stepUpPending && stepUpAction) {
     return (
       <StepUpPrompt
-        onSuccess={async () => {
+        onElevated={async () => {
           setStepUpPending(false);
           await stepUpAction();
           setStepUpAction(null);
