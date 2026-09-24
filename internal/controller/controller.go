@@ -35,6 +35,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
 	"github.com/bukansembarangkong/jawaker-panel/internal/observe"
 	"github.com/bukansembarangkong/jawaker-panel/internal/password"
+	"github.com/bukansembarangkong/jawaker-panel/internal/plugins"
 	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
@@ -157,6 +158,10 @@ type Handler struct {
 	Copilot *copilot.Store
 	// CopilotRoutesMounted reports whether the Phase 15 copilot routes are registered.
 	CopilotRoutesMounted bool
+	// Plugins is the Phase 16 plugin SDK store (registry, permissions, lifecycle, quarantine).
+	Plugins *plugins.Store
+	// PluginRoutesMounted reports whether the Phase 16 plugin SDK routes are registered.
+	PluginRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -682,6 +687,20 @@ func Build(opts Options) (*Handler, error) {
 		}
 		copilotRoutes := copilotHandlers.Routes
 
+		// Plugin SDK (Phase 16): registry, permissions, lifecycle, quarantine.
+		out.Plugins = plugins.New(opts.DB, now)
+		pluginHandlers, pluginErr := NewPluginHandlers(PluginHandlerOptions{
+			Plugins: out.Plugins,
+			Pool:    opts.DB,
+			Logger:  logger,
+			Audit:   opts.DB,
+			Now:     now,
+		})
+		if pluginErr != nil {
+			return nil, fmt.Errorf("controller: plugin handlers: %w", pluginErr)
+		}
+		pluginRoutes := pluginHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -703,6 +722,7 @@ func Build(opts Options) (*Handler, error) {
 			mailRoutes(mux)
 			haRoutes(mux)
 			copilotRoutes(mux)
+			pluginRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -719,6 +739,7 @@ func Build(opts Options) (*Handler, error) {
 		out.MailRoutesMounted = true
 		out.HARoutesMounted = true
 		out.CopilotRoutesMounted = true
+		out.PluginRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
