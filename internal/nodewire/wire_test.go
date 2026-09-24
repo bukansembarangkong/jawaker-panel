@@ -49,6 +49,8 @@ func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 		OpSecHardeningScan,
 		OpSecSSHPosture,
 		OpSecBanList,
+		OpSecBanAdd,
+		OpSecBanRemove,
 		OpUpdateNodeAgent,
 	}
 	if len(Operations) != len(want) {

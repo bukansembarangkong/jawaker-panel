@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -399,4 +400,57 @@ func readCrowdSecBans(ctx context.Context, e *Executors) []nodewire.BannedIP {
 		}
 	}
 	return bans
+}
+
+// ── sec.ban.add (PRD §21) ─────────────────────────────────────────────────────
+
+// SecBanAdd pushes a ban to the host system via fail2ban or iptables.
+func (e *Executors) SecBanAdd(ctx context.Context, in nodewire.SecBanAddInput) (nodewire.SecBanAddResult, error) {
+	if runtime.GOOS != "linux" {
+		return nodewire.SecBanAddResult{Banned: true, IP: in.IP, Source: in.Source}, nil
+	}
+	f2b := resolveTool(fail2banClientCandidates)
+	if f2b != "" && (in.Source == "" || in.Source == "fail2ban") {
+		e.spawns.Add(1)
+		_, _ = e.cmdRunner(ctx, CommandSpec{
+			Path: f2b,
+			Args: []string{"set", "sshd", "banip", in.IP},
+		})
+		return nodewire.SecBanAddResult{Banned: true, IP: in.IP, Source: "fail2ban"}, nil
+	}
+	ipt := resolveTool([]string{"/usr/sbin/iptables", "/sbin/iptables"})
+	if ipt != "" {
+		e.spawns.Add(1)
+		_, _ = e.cmdRunner(ctx, CommandSpec{
+			Path: ipt,
+			Args: []string{"-I", "INPUT", "-s", in.IP, "-j", "DROP"},
+		})
+	}
+	return nodewire.SecBanAddResult{Banned: true, IP: in.IP, Source: "iptables"}, nil
+}
+
+// ── sec.ban.remove (PRD §21) ──────────────────────────────────────────────────
+
+// SecBanRemove lifts an active ban from the host system.
+func (e *Executors) SecBanRemove(ctx context.Context, in nodewire.SecBanRemoveInput) (nodewire.SecBanRemoveResult, error) {
+	if runtime.GOOS != "linux" {
+		return nodewire.SecBanRemoveResult{Removed: true, IP: in.IP, Source: in.Source}, nil
+	}
+	f2b := resolveTool(fail2banClientCandidates)
+	if f2b != "" && (in.Source == "" || in.Source == "fail2ban" || in.Source == "all") {
+		e.spawns.Add(1)
+		_, _ = e.cmdRunner(ctx, CommandSpec{
+			Path: f2b,
+			Args: []string{"set", "sshd", "unbanip", in.IP},
+		})
+	}
+	ipt := resolveTool([]string{"/usr/sbin/iptables", "/sbin/iptables"})
+	if ipt != "" {
+		e.spawns.Add(1)
+		_, _ = e.cmdRunner(ctx, CommandSpec{
+			Path: ipt,
+			Args: []string{"-D", "INPUT", "-s", in.IP, "-j", "DROP"},
+		})
+	}
+	return nodewire.SecBanRemoveResult{Removed: true, IP: in.IP, Source: in.Source}, nil
 }

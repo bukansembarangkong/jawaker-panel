@@ -877,6 +877,48 @@ func (d *Dispatcher) SecBanList(ctx context.Context, serverID, requestID string,
 	return out, nil
 }
 
+// SecBanAdd pushes a ban to fail2ban/crowdsec/iptables on the node (PRD §21).
+func (d *Dispatcher) SecBanAdd(ctx context.Context, serverID, requestID string, in nodewire.SecBanAddInput) (nodewire.SecBanAddResult, error) {
+	var out nodewire.SecBanAddResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid sec ban add input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecBanAdd,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec ban add result: %w", err)
+	}
+	return out, nil
+}
+
+// SecBanRemove lifts an active ban from fail2ban/crowdsec/iptables on the node (PRD §21).
+func (d *Dispatcher) SecBanRemove(ctx context.Context, serverID, requestID string, in nodewire.SecBanRemoveInput) (nodewire.SecBanRemoveResult, error) {
+	var out nodewire.SecBanRemoveResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid sec ban remove input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecBanRemove,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec ban remove result: %w", err)
+	}
+	return out, nil
+}
+
 // UpdateNodeAgent instructs the node agent to download and atomically replace
 // its own binary. The artifact URL must be a verified github.com release URL.
 func (d *Dispatcher) UpdateNodeAgent(ctx context.Context, serverID, requestID string, in nodewire.UpdateNodeAgentInput) (nodewire.UpdateNodeAgentResult, error) {

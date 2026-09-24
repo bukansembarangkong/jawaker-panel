@@ -291,6 +291,20 @@ func (h *SecurityCenterHandlers) handleCreateBan(w http.ResponseWriter, r *http.
 				httpserver.WriteError(w, r, apierr.Internal(err))
 				return
 			}
+			// Push ban to node agent (fail2ban/crowdsec/iptables) — best-effort,
+			// DB record is the source of truth even if push fails.
+			if h.dispatcher != nil {
+				requestID := httpserver.RequestIDFromRequest(r)
+				src := req.Source
+				if src == "" {
+					src = "iptables"
+				}
+				_, _ = h.dispatcher.SecBanAdd(r.Context(), serverID, requestID, nodewire.SecBanAddInput{
+					IP:     req.IP,
+					Source: src,
+					Reason: req.Reason,
+				})
+			}
 			h.recordSecAudit(r, audit.Event{Action: "security.ban.create", ResourceID: ban.ID})
 			writeJSONResponse(w, http.StatusCreated, map[string]any{
 				"ban":        ban,
@@ -306,6 +320,12 @@ func (h *SecurityCenterHandlers) handleRemoveBan(w http.ResponseWriter, r *http.
 	stepUp := true
 	authsession.RequirePermission(h.now, "security.manage", rbac.ServerScope(serverID), stepUp,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Fetch IP+source before removing so we can push to node agent.
+			var ip, source string
+			_ = h.pool.QueryRow(r.Context(), `
+				SELECT ip, source FROM bans WHERE id = $1 AND server_id = $2
+			`, id, serverID).Scan(&ip, &source)
+
 			if err := h.store.RemoveBan(r.Context(), id); err != nil {
 				if errors.Is(err, security.ErrNotFound) {
 					httpserver.WriteError(w, r, apierr.NotFound("ban not found"))
@@ -313,6 +333,14 @@ func (h *SecurityCenterHandlers) handleRemoveBan(w http.ResponseWriter, r *http.
 				}
 				httpserver.WriteError(w, r, apierr.Internal(err))
 				return
+			}
+			// Push unban to node agent — best-effort.
+			if h.dispatcher != nil && ip != "" {
+				requestID := httpserver.RequestIDFromRequest(r)
+				_, _ = h.dispatcher.SecBanRemove(r.Context(), serverID, requestID, nodewire.SecBanRemoveInput{
+					IP:     ip,
+					Source: source,
+				})
 			}
 			h.recordSecAudit(r, audit.Event{Action: "security.ban.remove", ResourceID: id})
 			writeJSONResponse(w, http.StatusOK, map[string]any{

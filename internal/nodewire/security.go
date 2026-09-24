@@ -3,6 +3,7 @@ package nodewire
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -107,4 +108,54 @@ type SecBanListResult struct {
 	Total      int        `json:"total"`
 	ObservedAt time.Time  `json:"observed_at"`
 	RequestID  string     `json:"request_id"`
+}
+
+// ── sec.ban.add ───────────────────────────────────────────────────────────────
+
+// SecBanAddInput is the input for sec.ban.add (PRD §21).
+type SecBanAddInput struct {
+	IP     string `json:"ip"`
+	Source string `json:"source"` // fail2ban | crowdsec | iptables
+	Reason string `json:"reason,omitempty"`
+}
+
+func (in SecBanAddInput) Validate() error {
+	if strings.TrimSpace(in.IP) == "" {
+		return errors.New("nodewire: ip is required")
+	}
+	switch in.Source {
+	case "fail2ban", "crowdsec", "iptables", "":
+	default:
+		return errors.New("nodewire: source must be fail2ban, crowdsec, or iptables")
+	}
+	return nil
+}
+
+// SecBanAddResult is the result of sec.ban.add.
+type SecBanAddResult struct {
+	Banned bool   `json:"banned"`
+	IP     string `json:"ip"`
+	Source string `json:"source"`
+}
+
+// ── sec.ban.remove ────────────────────────────────────────────────────────────
+
+// SecBanRemoveInput is the input for sec.ban.remove (PRD §21).
+type SecBanRemoveInput struct {
+	IP     string `json:"ip"`
+	Source string `json:"source"` // fail2ban | crowdsec | iptables | all
+}
+
+func (in SecBanRemoveInput) Validate() error {
+	if strings.TrimSpace(in.IP) == "" {
+		return errors.New("nodewire: ip is required")
+	}
+	return nil
+}
+
+// SecBanRemoveResult is the result of sec.ban.remove.
+type SecBanRemoveResult struct {
+	Removed bool   `json:"removed"`
+	IP      string `json:"ip"`
+	Source  string `json:"source"`
 }
