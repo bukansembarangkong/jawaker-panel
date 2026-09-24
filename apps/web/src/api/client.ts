@@ -1759,3 +1759,110 @@ export const securityCenterApi = {
     return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/waf-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
+
+// ── Phase 12: Update platform ──────────────────────────────────────────────────
+
+export interface UpdateRelease {
+  id: string;
+  channel: string;
+  version: string;
+  tag: string;
+  notes: string;
+  artifact_url: string;
+  checksum_url: string;
+  signature_url: string;
+  published_at: string;
+  discovered_at: string;
+  compatible: boolean | null;
+}
+
+export interface UpdateJob {
+  id: string;
+  release_id: string;
+  snapshot_id: string | null;
+  state: string;
+  triggered_by: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string;
+  created_at: string;
+}
+
+export interface UpdateSnapshot {
+  id: string;
+  release_id: string;
+  state: string;
+  manifest: Record<string, unknown>;
+  snapshot_at: string | null;
+  notes: string;
+  created_at: string;
+}
+
+export interface CanaryEntry {
+  id: string;
+  job_id: string;
+  server_id: string;
+  state: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string;
+}
+
+export interface ModuleUpdate {
+  id: string;
+  module_name: string;
+  current_ver: string;
+  latest_ver: string | null;
+  state: string;
+  last_checked: string | null;
+  updated_at: string | null;
+  created_at: string;
+}
+
+export const updatesApi = {
+  // Releases
+  listReleases(channel?: string): Promise<{ releases: UpdateRelease[]; total: number; request_id: string }> {
+    const q = channel ? `?channel=${encodeURIComponent(channel)}` : '';
+    return request(`/api/v1/updates/releases${q}`);
+  },
+  syncRelease(input: Omit<UpdateRelease, 'id' | 'discovered_at' | 'compatible'>): Promise<{ release: UpdateRelease; request_id: string }> {
+    return request('/api/v1/updates/releases/sync', { method: 'POST', body: input });
+  },
+
+  // Preflight
+  runPreflight(releaseId: string): Promise<{ release_id: string; compatible: boolean; request_id: string }> {
+    return request(`/api/v1/updates/releases/${encodeURIComponent(releaseId)}/preflight`, { method: 'POST', body: {} });
+  },
+
+  // Jobs
+  listJobs(): Promise<{ jobs: UpdateJob[]; total: number; request_id: string }> {
+    return request('/api/v1/updates/jobs');
+  },
+  getJob(id: string): Promise<{ job: UpdateJob; request_id: string }> {
+    return request(`/api/v1/updates/jobs/${encodeURIComponent(id)}`);
+  },
+  applyUpdate(releaseId: string): Promise<{ job: UpdateJob; request_id: string }> {
+    return request('/api/v1/updates/apply', { method: 'POST', body: { release_id: releaseId } });
+  },
+
+  // Snapshots
+  getSnapshot(id: string): Promise<{ snapshot: UpdateSnapshot; request_id: string }> {
+    return request(`/api/v1/updates/snapshots/${encodeURIComponent(id)}`);
+  },
+
+  // Canary
+  listCanary(jobId: string): Promise<{ entries: CanaryEntry[]; total: number; request_id: string }> {
+    return request(`/api/v1/updates/jobs/${encodeURIComponent(jobId)}/canary`);
+  },
+  applyCanary(jobId: string, serverId: string, expectedSha256: string): Promise<{ result: unknown; request_id: string }> {
+    return request(`/api/v1/updates/jobs/${encodeURIComponent(jobId)}/canary/${encodeURIComponent(serverId)}/apply`, {
+      method: 'POST',
+      body: { expected_sha256: expectedSha256 },
+    });
+  },
+
+  // Modules
+  listModules(): Promise<{ modules: ModuleUpdate[]; total: number; request_id: string }> {
+    return request('/api/v1/updates/modules');
+  },
+};
