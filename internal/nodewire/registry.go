@@ -480,6 +480,73 @@ var Operations = map[Operation]Descriptor{
 			"NOT removed on failure (the caller decides retention).",
 		Mutating: true,
 	},
+
+	// --- container operations --------------------------------------------------
+	//
+	// All three operations invoke 'docker' as a subprocess. The binary is
+	// resolved once at agent startup from a fixed path list (not PATH), and
+	// operations are refused when docker is absent — the capability report and
+	// the refusal must agree. Container names are validated against a strict
+	// pattern before they reach the CLI so they cannot inject flags or paths.
+
+	OpContainerList: {
+		Operation:   OpContainerList,
+		Permission:  "container.read",
+		InputSchema: "{project_id?: string} — optional filter; empty means all JAWAKER-managed containers",
+		Validation:  "project_id, when present, must be a non-empty UUID; no field contains a NUL byte",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			// docker ps reads container metadata from the daemon socket; it does
+			// not read arbitrary host files.
+			FilesystemRead: []string{"/var/run/docker.sock"},
+			Network:        "unix domain socket to local docker daemon only",
+		},
+		Timeout:     30 * time.Second,
+		AuditAction: "container.list",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpContainerInspect: {
+		Operation:  OpContainerInspect,
+		Permission: "container.read",
+		InputSchema: "{name: string} — name must match ^[a-zA-Z0-9][a-zA-Z0-9_.\\-]{0,254}$; " +
+			"it is passed as a single argv element to 'docker inspect'",
+		Validation: "name must satisfy ValidContainerName; it must match the envelope target; " +
+			"no NUL byte; length 1..255",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/var/run/docker.sock"},
+			Network:        "unix domain socket to local docker daemon only",
+		},
+		Timeout:     30 * time.Second,
+		AuditAction: "container.inspect",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpContainerLogs: {
+		Operation:  OpContainerLogs,
+		Permission: "container.read",
+		InputSchema: "{name: string, lines?: int, redact_patterns?: []string} — " +
+			"name must satisfy ValidContainerName; lines max 1000; " +
+			"redact_patterns are applied server-side before the tail is returned",
+		Validation: "name must satisfy ValidContainerName; lines in [0,1000]; " +
+			"redact_patterns must compile as Go regexps; no NUL byte in any field",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			// docker logs reads from the daemon; no host filesystem path is
+			// opened by this operation.
+			FilesystemRead: []string{"/var/run/docker.sock"},
+			Network:        "unix domain socket to local docker daemon only",
+		},
+		Timeout:     60 * time.Second,
+		AuditAction: "container.logs.tail",
+		// Idempotent: reading the tail again returns the same (or more recent)
+		// lines. Retrying on transient daemon unavailability is safe.
+		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating: false,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for

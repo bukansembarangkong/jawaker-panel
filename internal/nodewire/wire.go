@@ -153,6 +153,23 @@ const (
 	// absolute paths or ".." members out of the destination (tar refuses them
 	// by default; the archive path itself is confined before tar runs).
 	OpFileRestore Operation = "file.restore" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpContainerList reports the containers running on this node, filtered
+	// to those belonging to the requested project. It invokes 'docker ps'
+	// with a fixed argument vector; no shell is involved.
+	OpContainerList Operation = "container.list" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpContainerInspect reports the full state of one container identified
+	// by its name. The name must match the container.name-safe pattern so it
+	// cannot be used to inject arguments into the docker CLI.
+	OpContainerInspect Operation = "container.inspect" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpContainerLogs returns a bounded, redacted tail of one container's
+	// stdout/stderr. Secret values from the container's environment are
+	// stripped before the tail leaves the agent; the gate is enforced at the
+	// agent, not the caller, because the agent is the only party with access
+	// to the raw log stream.
+	OpContainerLogs Operation = "container.logs" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not

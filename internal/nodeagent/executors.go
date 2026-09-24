@@ -84,6 +84,10 @@ type Executors struct {
 	backupDir string
 	// tarPath is the resolved tar binary, empty when absent.
 	tarPath string
+	// dockerPath is the resolved docker binary, empty when absent.
+	dockerPath string
+	// dockerAvailable reports whether docker was detected on this node.
+	dockerAvailable bool
 	// cmdRunner executes subprocesses. Defaults to runCommand; tests replace it
 	// to assert the argv a database executor would spawn without a real engine.
 	cmdRunner func(context.Context, CommandSpec) (CommandResult, error)
@@ -124,6 +128,8 @@ type ExecutorOptions struct {
 	BackupDir string
 	// TarPath overrides tar binary detection, for tests.
 	TarPath string
+	// DockerPath overrides docker binary detection, for tests.
+	DockerPath string
 }
 
 // NewExecutors detects what this node can do.
@@ -190,6 +196,17 @@ func NewExecutors(opts ExecutorOptions) *Executors {
 		e.tarPath = opts.TarPath
 	} else if tarBin, ok := resolveProgram("/usr/bin/tar", "/bin/tar"); ok {
 		e.tarPath = tarBin
+	}
+
+	// Docker detection: the docker CLI binary is the sentinel. A host without
+	// docker must not advertise container operations — the capability report and
+	// the refusal must agree (honest-advertisement rule).
+	if opts.DockerPath != "" {
+		e.dockerPath = opts.DockerPath
+		e.dockerAvailable = true
+	} else if dockerBin, ok := resolveProgram(dockerCandidates...); ok {
+		e.dockerPath = dockerBin
+		e.dockerAvailable = true
 	}
 
 	// PostgreSQL detection: createdb is the lightest sentinel — present on any
@@ -328,6 +345,30 @@ func (e *Executors) Capabilities() (nodewire.CapabilitiesResult, error) {
 	// certification claim: this build has not been tested against any specific
 	// distribution, and the capability report says so rather than implying a
 	// support matrix.
+
+	// docker: advertised only when the binary is present. The same
+	// honest-advertisement rule as systemd: a host without docker must not offer
+	// container operations that always fail.
+	if e.dockerAvailable {
+		caps = append(caps, nodewire.Capability{
+			Kind:  "container",
+			Name:  "docker",
+			State: nodewire.CapabilityAvailable,
+			Detail: map[string]any{
+				"binary": e.dockerPath,
+			},
+		})
+	} else {
+		caps = append(caps, nodewire.Capability{
+			Kind:  "container",
+			Name:  "docker",
+			State: nodewire.CapabilityUnsupported,
+			Detail: map[string]any{
+				"reason": "docker is not installed on this host",
+			},
+		})
+	}
+
 	return nodewire.CapabilitiesResult{
 		OSFamily:     osFamily,
 		OSVersion:    osVersion,
