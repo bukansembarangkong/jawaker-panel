@@ -177,7 +177,7 @@ func hardenOSChecks() []nodewire.HardeningFinding {
 // parseSshdConfig reads /etc/ssh/sshd_config and returns key→value pairs (lowercase keys).
 func parseSshdConfig(path string) map[string]string {
 	out := map[string]string{}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the hardcoded sshd_config constant, not user input
 	if err != nil {
 		return out
 	}
