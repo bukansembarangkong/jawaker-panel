@@ -1288,4 +1288,100 @@ export const observeApi = {
   },
 };
 
+export interface DNSProvider {
+  id: string;
+  project_id: string;
+  name: string;
+  provider: string;
+  state: string;
+  created_at: string;
+}
+
+export interface DNSZone {
+  id: string;
+  project_id: string;
+  provider_id: string;
+  name: string;
+  state: string;
+  created_at: string;
+}
+
+export interface DNSRecord {
+  id: string;
+  zone_id: string;
+  name: string;
+  type: string;
+  content: string;
+  ttl: number;
+  state: string;
+  created_at: string;
+}
+
+export interface Certificate {
+  id: string;
+  project_id: string;
+  issued_at: string;
+  not_after: string;
+  identifiers: string[];
+  issuer: string;
+  state: string;
+  created_at: string;
+}
+
+export interface CertOrder {
+  id: string;
+  project_id: string;
+  state: string;
+  identifiers: string[];
+  created_at: string;
+}
+
+export const dnsTlsApi = {
+  listProviders(projectId: string): Promise<{ providers: DNSProvider[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-providers`);
+  },
+  createProvider(projectId: string, input: { name: string; provider: string; token: string }): Promise<{ provider: DNSProvider; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-providers`, { method: 'POST', body: input });
+  },
+  deleteProvider(projectId: string, id: string): Promise<{ status: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  listZones(projectId: string): Promise<{ zones: DNSZone[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones`);
+  },
+  createZone(projectId: string, input: { provider_id: string; name: string }): Promise<{ zone: DNSZone; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones`, { method: 'POST', body: input });
+  },
+  deleteZone(projectId: string, id: string): Promise<{ status: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  listRecords(projectId: string, zoneId: string): Promise<{ records: DNSRecord[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones/${encodeURIComponent(zoneId)}/records`);
+  },
+  createRecord(projectId: string, zoneId: string, input: { name: string; type: string; content: string; ttl: number }): Promise<{ record: DNSRecord; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones/${encodeURIComponent(zoneId)}/records`, { method: 'POST', body: input });
+  },
+  deleteRecord(projectId: string, zoneId: string, id: string): Promise<{ status: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/dns-zones/${encodeURIComponent(zoneId)}/records/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  listCertificates(projectId: string): Promise<{ certificates: Certificate[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/certificates`);
+  },
+  importCertificate(projectId: string, input: { chain_pem: string; private_key_pem: string }): Promise<{ certificate: Certificate; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/certificates/import`, { method: 'POST', body: input });
+  },
+  revokeCertificate(projectId: string, id: string, reason: string): Promise<{ certificate: Certificate; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/certificates/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: { reason } });
+  },
+  listOrders(projectId: string): Promise<{ orders: CertOrder[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/cert-orders`);
+  },
+  createOrder(projectId: string, input: { identifiers: string[] }): Promise<{ order: CertOrder; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/cert-orders`, { method: 'POST', body: input });
+  },
+  cancelOrder(projectId: string, id: string): Promise<{ order: CertOrder; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/cert-orders/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
+  },
+};
+
 
