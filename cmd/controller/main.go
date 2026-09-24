@@ -25,6 +25,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/db"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db/migrate"
 	"github.com/bukansembarangkong/jawaker-panel/internal/logging"
+	"github.com/bukansembarangkong/jawaker-panel/internal/notify"
 	"github.com/bukansembarangkong/jawaker-panel/internal/version"
 	"github.com/bukansembarangkong/jawaker-panel/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -189,6 +190,30 @@ func run() error {
 	if assembled.ObserveEvaluator != nil {
 		ev := assembled.ObserveEvaluator
 		go ev.Run(ctx)
+	}
+
+	// The notification delivery loop drains the pending email and Telegram
+	// channel deliveries. It runs only when a database pool is available;
+	// without a pool there are no deliveries to drain.
+	if pool != nil {
+		senders := map[string]notify.Sender{
+			notify.ChannelEmail:    notify.SMTPSender(),
+			notify.ChannelTelegram: notify.TelegramSender(nil),
+		}
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, err := notify.DeliverOnce(ctx, pool, senders, notify.ClaimOptions{}); err != nil {
+						logger.Warn("notification delivery loop error", "error", err)
+					}
+				}
+			}
+		}()
 	}
 
 	srv := &http.Server{

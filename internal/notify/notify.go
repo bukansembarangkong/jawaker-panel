@@ -355,25 +355,26 @@ func recentlyNotified(ctx context.Context, tx pgx.Tx, dedupKey string, recipient
 
 // Delivery is one recorded notification.
 type Delivery struct {
-	ID          string
-	Event       string
-	Severity    string
-	ChannelID   string
-	Channel     string
-	RecipientID string
-	Title       string
-	Body        string
-	Payload     map[string]any
-	DedupKey    string
-	State       string
-	Attempts    int
-	MaxAttempts int
-	LastError   string
-	JobID       string
-	RequestID   string
-	CreatedAt   time.Time
-	DeliveredAt *time.Time
-	ReadAt      *time.Time
+	ID            string
+	Event         string
+	Severity      string
+	ChannelID     string
+	Channel       string
+	ChannelConfig map[string]any // channel-level config (smtp_host, bot_token, etc.), never nil
+	RecipientID   string
+	Title         string
+	Body          string
+	Payload       map[string]any
+	DedupKey      string
+	State         string
+	Attempts      int
+	MaxAttempts   int
+	LastError     string
+	JobID         string
+	RequestID     string
+	CreatedAt     time.Time
+	DeliveredAt   *time.Time
+	ReadAt        *time.Time
 }
 
 // Inbox returns a user's delivered notifications, newest first, with read state.
@@ -416,6 +417,7 @@ func GetDelivery(ctx context.Context, pool *pgxpool.Pool, id string) (Delivery, 
 
 const selectDelivery = `
 	SELECT d.id::text, d.event, d.severity, d.channel_id::text, c.type,
+	       COALESCE(c.config, '{}'::jsonb),
 	       COALESCE(d.recipient_id::text, ''), d.payload, COALESCE(d.dedup_key, ''),
 	       d.state, d.attempt_count, d.max_attempts, COALESCE(d.last_error, ''),
 	       COALESCE(d.job_id::text, ''), COALESCE(d.request_id, ''),
@@ -431,7 +433,9 @@ type rowScanner interface {
 func scanDelivery(row rowScanner) (Delivery, error) {
 	var d Delivery
 	var payload []byte
+	var config []byte
 	err := row.Scan(&d.ID, &d.Event, &d.Severity, &d.ChannelID, &d.Channel,
+		&config,
 		&d.RecipientID, &payload, &d.DedupKey,
 		&d.State, &d.Attempts, &d.MaxAttempts, &d.LastError,
 		&d.JobID, &d.RequestID,
@@ -441,6 +445,12 @@ func scanDelivery(row rowScanner) (Delivery, error) {
 	}
 	if err != nil {
 		return Delivery{}, fmt.Errorf("notify: scan delivery: %w", err)
+	}
+	if len(config) > 0 {
+		_ = json.Unmarshal(config, &d.ChannelConfig)
+	}
+	if d.ChannelConfig == nil {
+		d.ChannelConfig = map[string]any{}
 	}
 	if len(payload) > 0 {
 		if err := json.Unmarshal(payload, &d.Payload); err != nil {
