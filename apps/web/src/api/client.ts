@@ -1631,3 +1631,131 @@ export const networkApi = {
     return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/apply-log`);
   },
 };
+
+// ─── Phase 11 — Security Center API ───────────────────────────────────────────
+
+export interface HardeningCheck {
+  id: string;
+  server_id: string;
+  check_name: string;
+  category: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string;
+  remediation: string;
+  observed_at: string;
+  created_at: string;
+}
+
+export interface HardeningFinding {
+  check_name: string;
+  category: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string;
+  remediation: string;
+}
+
+export interface SSHPosture {
+  permit_root_login: string;
+  password_auth: string;
+  pubkey_auth: string;
+  port: number;
+  protocol_versions: string;
+  active_sessions: number;
+  auth_failures_1h: number;
+  observed_at: string;
+}
+
+export interface SecurityEvent {
+  id: string;
+  server_id: string;
+  source: string;
+  kind: string;
+  remote_ip: string;
+  country: string;
+  service: string;
+  raw_line: string;
+  observed_at: string;
+}
+
+export interface BanEntry {
+  id: string;
+  server_id: string;
+  ip: string;
+  source: string;
+  reason: string;
+  expires_at?: string;
+  banned_at: string;
+  unbanned_at?: string;
+  state: string;
+  created_at: string;
+}
+
+export interface LiveBan {
+  ip: string;
+  source: string;
+  jail?: string;
+  banned_at?: string;
+  expires_at?: string;
+}
+
+export interface WAFRule {
+  id: string;
+  server_id: string;
+  kind: string;
+  pattern: string;
+  action: string;
+  enabled: boolean;
+  priority: number;
+  description: string;
+  created_at: string;
+}
+
+export const securityCenterApi = {
+  // Hardening
+  listChecks(serverId: string): Promise<{ checks: HardeningCheck[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/hardening`);
+  },
+  triggerScan(serverId: string, categories?: string[]): Promise<{ findings: HardeningFinding[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/hardening/scan`, { method: 'POST', body: { categories } });
+  },
+
+  // SSH posture
+  getSSHPosture(serverId: string): Promise<{ posture: SSHPosture; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/ssh-posture`);
+  },
+
+  // Events
+  listEvents(serverId: string): Promise<{ events: SecurityEvent[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/events`);
+  },
+
+  // Bans
+  listBans(serverId: string): Promise<{ bans: BanEntry[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/bans`);
+  },
+  createBan(serverId: string, input: { ip: string; reason?: string; source?: string }): Promise<{ ban: BanEntry; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/bans`, { method: 'POST', body: input });
+  },
+  removeBan(serverId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/bans/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  getLiveBans(serverId: string, source?: string): Promise<{ bans: LiveBan[]; total: number; observed_at: string; request_id: string }> {
+    const q = source ? `?source=${encodeURIComponent(source)}` : '';
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/bans/live${q}`);
+  },
+
+  // WAF rules
+  listWAFRules(serverId: string): Promise<{ rules: WAFRule[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/waf-rules`);
+  },
+  createWAFRule(serverId: string, input: { kind?: string; pattern: string; action?: string; enabled?: boolean; priority?: number; description?: string }): Promise<{ rule: WAFRule; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/waf-rules`, { method: 'POST', body: input });
+  },
+  deleteWAFRule(serverId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/waf-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
