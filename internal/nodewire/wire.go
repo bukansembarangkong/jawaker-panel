@@ -201,6 +201,11 @@ const (
 	// The source adapter is selected by the Source field; both are read-only.
 	OpSecBanList Operation = "sec.ban.list"
 
+	// OpSecBanAdd applies a ban to fail2ban or crowdsec on the node (PRD §21).
+	OpSecBanAdd Operation = "sec.ban.add"
+	// OpSecBanRemove lifts an active ban from the node (PRD §21).
+	OpSecBanRemove Operation = "sec.ban.remove"
+
 	// OpUpdateNodeAgent downloads a signed node-agent binary from the given URL,
 	// verifies its SHA-256 checksum, and atomically replaces the running agent.
 	// The agent restarts itself after the swap; it does NOT restart the host.

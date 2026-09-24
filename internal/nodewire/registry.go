@@ -669,6 +669,40 @@ var Operations = map[Operation]Descriptor{
 		Mutating:    false,
 	},
 
+	OpSecBanAdd: {
+		Operation:   OpSecBanAdd,
+		Permission:  "security.manage",
+		InputSchema: "{ip: string, source?: \"fail2ban\"|\"crowdsec\"|\"iptables\", reason?: string}",
+		Validation:  "ip must be non-empty; source defaults to iptables if absent",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			Services: []string{"fail2ban", "iptables"},
+			Network:  "none",
+		},
+		Timeout:     20 * time.Second,
+		AuditAction: "sec.ban.add",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Rollback:    "sec.ban.remove: call sec.ban.remove with same ip to unban",
+		Mutating:    true,
+	},
+
+	OpSecBanRemove: {
+		Operation:   OpSecBanRemove,
+		Permission:  "security.manage",
+		InputSchema: "{ip: string, source?: \"fail2ban\"|\"crowdsec\"|\"iptables\"|\"all\"}",
+		Validation:  "ip must be non-empty",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			Services: []string{"fail2ban", "iptables"},
+			Network:  "none",
+		},
+		Timeout:     20 * time.Second,
+		AuditAction: "sec.ban.remove",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Rollback:    "sec.ban.add: re-ban the ip if unban was unintentional",
+		Mutating:    true,
+	},
+
 	OpUpdateNodeAgent: {
 		Operation:  OpUpdateNodeAgent,
 		Permission: "updates.manage",
