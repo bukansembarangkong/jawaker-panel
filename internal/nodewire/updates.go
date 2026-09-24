@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 )
 
@@ -51,22 +50,4 @@ type UpdateNodeAgentResult struct {
 	BinaryPath string `json:"binary_path"`
 	// RequestID echoes the call request ID.
 	RequestID string `json:"request_id"`
-}
-
-// verifyChecksumReader reads from r, computes SHA-256, compares to expected.
-// Returns ErrChecksumMismatch if the digest does not match.
-var ErrChecksumMismatch = errors.New("update: SHA-256 checksum mismatch — artifact may be tampered")
-
-func verifyChecksumReader(r io.Reader, expectedHex string) ([]byte, error) {
-	h := sha256.New()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	h.Write(data)
-	got := fmt.Sprintf("%x", h.Sum(nil))
-	if got != expectedHex {
-		return nil, fmt.Errorf("%w: got %s, want %s", ErrChecksumMismatch, got, expectedHex)
-	}
-	return data, nil
 }
