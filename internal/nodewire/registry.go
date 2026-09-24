@@ -547,7 +547,71 @@ var Operations = map[Operation]Descriptor{
 		Retry:    RetryPolicy{Idempotent: true, MaxAttempts: 2},
 		Mutating: false,
 	},
+
+	// --- networking operations -------------------------------------------------
+	//
+	// All three operations are read-only: they inspect system state and return
+	// it; none write any file or change any running configuration.
+	// net.firewall.list and net.port.inventory read kernel state via
+	// iptables-save and ss respectively. net.diag spawns one known diagnostic
+	// binary (ping or traceroute) with a validated argv; no shell is used.
+
+	OpNetFirewallList: {
+		Operation:   OpNetFirewallList,
+		Permission:  "firewall.read",
+		InputSchema: "{table?: \"filter\"|\"nat\"|\"mangle\"} — empty table means filter",
+		Validation:  "table must be one of filter, nat, mangle, or empty",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			// iptables-save reads kernel netfilter tables via the kernel API;
+			// /proc/net is the standard procfs path for network state.
+			FilesystemRead: []string{"/proc/net"},
+			Network:        "none",
+		},
+		Timeout:     15 * time.Second,
+		AuditAction: "net.firewall.read",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpNetPortInventory: {
+		Operation:   OpNetPortInventory,
+		Permission:  "network.read",
+		InputSchema: "{protocol?: \"tcp\"|\"udp\"} — empty means both",
+		Validation:  "protocol must be tcp, udp, or empty",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			// ss (socket statistics) reads from /proc/net/tcp, /proc/net/udp,
+			// and /proc/<pid>/fd to resolve owning processes.
+			FilesystemRead: []string{"/proc/net", "/proc"},
+			Network:        "none",
+		},
+		Timeout:     15 * time.Second,
+		AuditAction: "net.port.inventory",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpNetDiag: {
+		Operation:   OpNetDiag,
+		Permission:  "network.read",
+		InputSchema: "{target: string, mode: \"ping\"|\"trace\"} — target validated to IP/hostname charset",
+		Validation: "target must match [a-zA-Z0-9.:-]{1,253} (no spaces, no shell metacharacters); " +
+			"mode must be ping or trace; the target is passed as a single argv element to the " +
+			"selected tool; no shell interpretation",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			// ping and traceroute open raw sockets; no filesystem writes occur.
+			FilesystemRead: []string{"/usr/bin/ping", "/usr/sbin/traceroute", "/usr/bin/traceroute"},
+			Network:        "outbound-icmp-udp-diagnostic-only",
+		},
+		Timeout:     30 * time.Second,
+		AuditAction: "net.diag",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Mutating:    false,
+	},
 }
+
 
 // Lookup returns the descriptor for an operation. The second result is false for
 // any name not in the registry, which is what makes an unknown operation
