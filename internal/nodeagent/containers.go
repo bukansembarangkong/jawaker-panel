@@ -179,7 +179,7 @@ func (e *Executors) InspectContainer(ctx context.Context, name string) (nodewire
 // dockerInspectJSON is the subset of 'docker inspect' JSON we consume.
 // Docker returns an array; we take element [0].
 type dockerInspectJSON struct {
-	Id     string `json:"Id"`
+	ID     string `json:"Id"` //nolint:tagliatelle // docker's JSON uses "Id" not "ID"
 	Name   string `json:"Name"`
 	Config struct {
 		Image  string            `json:"Image"`
@@ -264,7 +264,7 @@ func parseDockerInspectOutput(out string, now time.Time) (nodewire.ContainerInsp
 	name := strings.TrimPrefix(raw.Name, "/")
 	return nodewire.ContainerInspectResult{
 		Name:       name,
-		ID:         raw.Id,
+		ID:         raw.ID,
 		Image:      raw.Config.Image,
 		State:      state,
 		Privileged: raw.HostConfig.Privileged,
