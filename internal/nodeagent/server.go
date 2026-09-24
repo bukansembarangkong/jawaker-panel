@@ -189,6 +189,13 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpFileArchive] = true
 		served[nodewire.OpFileRestore] = true
 	}
+	// container.* operations require docker and Linux. The capability report
+	// and this gate read the same field so they cannot disagree.
+	if e.dockerAvailable && supportedOS() {
+		served[nodewire.OpContainerList] = true
+		served[nodewire.OpContainerInspect] = true
+		served[nodewire.OpContainerLogs] = true
+	}
 	return served
 }
 
@@ -636,6 +643,45 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.RestoreFiles(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpContainerList:
+		in, err := nodewire.DecodeInput[nodewire.ContainerListInput](req)
+		if err != nil {
+			return nil, err
+		}
+		result, err := a.exec.ListContainers(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpContainerInspect:
+		in, err := nodewire.DecodeInput[nodewire.ContainerInspectInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.InspectContainer(ctx, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpContainerLogs:
+		in, err := nodewire.DecodeInput[nodewire.ContainerLogsInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.ContainerLogs(ctx, in)
 		if err != nil {
 			return nil, err
 		}
