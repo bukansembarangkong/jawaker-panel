@@ -88,6 +88,11 @@ func (h *SecurityCenterHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/servers/{server_id}/security/waf-rules", h.handleListWAFRules)
 	mux.HandleFunc("POST /api/v1/servers/{server_id}/security/waf-rules", h.handleCreateWAFRule)
 	mux.HandleFunc("DELETE /api/v1/servers/{server_id}/security/waf-rules/{id}", h.handleDeleteWAFRule)
+
+	// Under Attack Mode (PRD §21.4)
+	mux.HandleFunc("GET /api/v1/servers/{server_id}/security/attack-mode", h.handleGetAttackMode)
+	mux.HandleFunc("POST /api/v1/servers/{server_id}/security/attack-mode", h.handleEnableAttackMode)
+	mux.HandleFunc("DELETE /api/v1/servers/{server_id}/security/attack-mode", h.handleDisableAttackMode)
 }
 
 // ── Audit helpers ──────────────────────────────────────────────────────────────
@@ -426,6 +431,106 @@ func (h *SecurityCenterHandlers) handleDeleteWAFRule(w http.ResponseWriter, r *h
 			h.recordSecAudit(r, audit.Event{Action: "security.waf_rule.delete", ResourceID: id})
 			writeJSONResponse(w, http.StatusOK, map[string]any{
 				"deleted":    true,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// ── Under Attack Mode Handlers (PRD §21.4) ───────────────────────────────────
+
+type attackModeStatus struct {
+	ServerID            string     `json:"server_id"`
+	Enabled             bool       `json:"enabled"`
+	RateLimitMultiplier float64    `json:"rate_limit_multiplier"`
+	ChallengeSuspicious bool       `json:"challenge_suspicious"`
+	RestrictExpensive   bool       `json:"restrict_expensive"`
+	ActivatedBy         *string    `json:"activated_by,omitempty"`
+	ActivatedAt         *time.Time `json:"activated_at,omitempty"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+func (h *SecurityCenterHandlers) handleGetAttackMode(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("server_id")
+	authsession.RequirePermission(h.now, "server.manage", rbac.ServerScope(serverID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var st attackModeStatus
+			err := h.pool.QueryRow(r.Context(), `
+				SELECT server_id, enabled, rate_limit_multiplier, challenge_suspicious,
+				       restrict_expensive, activated_by, activated_at, updated_at
+				FROM server_attack_mode WHERE server_id = $1
+			`, serverID).Scan(&st.ServerID, &st.Enabled, &st.RateLimitMultiplier,
+				&st.ChallengeSuspicious, &st.RestrictExpensive, &st.ActivatedBy,
+				&st.ActivatedAt, &st.UpdatedAt)
+			if err != nil {
+				// Default not active if no row exists yet
+				st = attackModeStatus{
+					ServerID:            serverID,
+					Enabled:             false,
+					RateLimitMultiplier: 5.0,
+					ChallengeSuspicious: true,
+					RestrictExpensive:   true,
+					UpdatedAt:           h.now(),
+				}
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"attack_mode": st,
+				"request_id":  httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+func (h *SecurityCenterHandlers) handleEnableAttackMode(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("server_id")
+	authsession.RequirePermission(h.now, "server.manage", rbac.ServerScope(serverID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := principalUserID(r)
+			_, err := h.pool.Exec(r.Context(), `
+				INSERT INTO server_attack_mode (server_id, enabled, activated_by, activated_at, updated_at)
+				VALUES ($1, true, $2, now(), now())
+				ON CONFLICT (server_id) DO UPDATE SET
+					enabled = true,
+					activated_by = EXCLUDED.activated_by,
+					activated_at = now(),
+					updated_at = now()
+			`, serverID, userID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			h.recordSecAudit(r, audit.Event{
+				Action:     "security.attack_mode.enable",
+				ResourceID: serverID,
+				Context:    map[string]any{"server_id": serverID},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"enabled":    true,
+				"server_id":  serverID,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+func (h *SecurityCenterHandlers) handleDisableAttackMode(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("server_id")
+	authsession.RequirePermission(h.now, "server.manage", rbac.ServerScope(serverID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := h.pool.Exec(r.Context(), `
+				UPDATE server_attack_mode
+				SET enabled = false, updated_at = now()
+				WHERE server_id = $1
+			`, serverID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			h.recordSecAudit(r, audit.Event{
+				Action:     "security.attack_mode.disable",
+				ResourceID: serverID,
+				Context:    map[string]any{"server_id": serverID},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"enabled":    false,
+				"server_id":  serverID,
 				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
