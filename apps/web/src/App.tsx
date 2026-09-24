@@ -18,6 +18,7 @@ import { UsersPage } from './pages/UsersPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { WorkersPage } from './pages/WorkersPage';
 import { FilesPage } from './pages/FilesPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DRWizardPage } from './pages/DRWizardPage';
 import { AutomationPage } from './pages/AutomationPage';
@@ -49,7 +50,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files' | 'settings' | 'dr-wizard' | 'automation';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files' | 'settings' | 'dr-wizard' | 'automation' | 'audit-log';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -77,6 +78,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/settings') return 'settings';
   if (window.location.hash === '#/dr-wizard') return 'dr-wizard';
   if (window.location.hash === '#/automation') return 'automation';
+  if (window.location.hash === '#/audit-log') return 'audit-log';
   return 'dashboard';
 }
 
@@ -510,6 +512,19 @@ export default function App() {
                 Automation
               </a>
             </li>
+            <li>
+              <a
+                href="#/audit-log"
+                aria-current={route === 'audit-log' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'audit-log'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Audit Log
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -564,6 +579,8 @@ export default function App() {
             <DRWizardPage />
           ) : route === 'automation' ? (
             <AutomationPage />
+          ) : route === 'audit-log' ? (
+            <AuditLogPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
