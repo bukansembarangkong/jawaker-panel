@@ -200,6 +200,13 @@ const (
 	// OpSecBanList reads the current ban list from fail2ban or crowdsec.
 	// The source adapter is selected by the Source field; both are read-only.
 	OpSecBanList Operation = "sec.ban.list"
+
+	// OpUpdateNodeAgent downloads a signed node-agent binary from the given URL,
+	// verifies its SHA-256 checksum, and atomically replaces the running agent.
+	// The agent restarts itself after the swap; it does NOT restart the host.
+	// The binary source URL must be the artifact URL from a verified release;
+	// the controller never hands an arbitrary URL to this operation.
+	OpUpdateNodeAgent Operation = "update.node.agent" //nolint:gosec // G101: operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
