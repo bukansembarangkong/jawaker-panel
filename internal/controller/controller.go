@@ -174,6 +174,8 @@ type Handler struct {
 	HardeningRoutesMounted bool
 	// UserRoutesMounted reports whether the /api/v1/users routes are registered.
 	UserRoutesMounted bool
+	// NotifyRoutesMounted reports whether the /api/v1/notifications routes are registered.
+	NotifyRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -752,6 +754,17 @@ func Build(opts Options) (*Handler, error) {
 		}
 		userRoutes := userHandlers.Routes
 
+		notifyHandlers, notifyErr := NewNotifyHandlers(NotifyHandlerOptions{
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if notifyErr != nil {
+			return nil, fmt.Errorf("controller: notify handlers: %w", notifyErr)
+		}
+		notifyRoutes := notifyHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -777,6 +790,7 @@ func Build(opts Options) (*Handler, error) {
 			hardeningRoutes(mux)
 			tokenRoutes(mux)
 			userRoutes(mux)
+			notifyRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -797,6 +811,7 @@ func Build(opts Options) (*Handler, error) {
 		out.HardeningRoutesMounted = true
 		out.TokenRoutesMounted = true
 		out.UserRoutesMounted = true
+		out.NotifyRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true

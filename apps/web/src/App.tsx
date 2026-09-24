@@ -15,6 +15,7 @@ import { PluginsPage } from './pages/PluginsPage';
 import { HardeningPage } from './pages/HardeningPage';
 import { APITokensPage } from './pages/APITokensPage';
 import { UsersPage } from './pages/UsersPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -42,7 +43,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -64,6 +65,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/hardening') return 'hardening';
   if (window.location.hash === '#/api-tokens') return 'api-tokens';
   if (window.location.hash === '#/users') return 'users';
+  if (window.location.hash === '#/notifications') return 'notifications';
   return 'dashboard';
 }
 
@@ -407,6 +409,19 @@ export default function App() {
                 Users
               </a>
             </li>
+            <li>
+              <a
+                href="#/notifications"
+                aria-current={route === 'notifications' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'notifications'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Notifications
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -449,6 +464,8 @@ export default function App() {
             <APITokensPage />
           ) : route === 'users' ? (
             <UsersPage />
+          ) : route === 'notifications' ? (
+            <NotificationsPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
