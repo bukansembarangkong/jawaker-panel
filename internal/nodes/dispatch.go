@@ -693,6 +693,67 @@ func (d *Dispatcher) RestoreFiles(ctx context.Context, serverID, requestID strin
 	return out, nil
 }
 
+// ListContainers lists containers on a node, optionally filtered by project.
+func (d *Dispatcher) ListContainers(ctx context.Context, serverID, requestID string, in nodewire.ContainerListInput) (nodewire.ContainerListResult, error) {
+	var out nodewire.ContainerListResult
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpContainerList,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode container list result: %w", err)
+	}
+	return out, nil
+}
+
+// InspectContainer returns the full state of one container on a node.
+func (d *Dispatcher) InspectContainer(ctx context.Context, serverID, requestID, name string) (nodewire.ContainerInspectResult, error) {
+	var out nodewire.ContainerInspectResult
+	if !nodewire.ValidContainerName(name) {
+		return out, fmt.Errorf("nodes: container name %q is not safe to pass to the docker CLI", name)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpContainerInspect,
+		RequestID: requestID,
+		Target:    name,
+		Input:     nodewire.ContainerInspectInput{Name: name},
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode container inspect result: %w", err)
+	}
+	return out, nil
+}
+
+// ContainerLogs returns a bounded, redacted log tail for one container.
+func (d *Dispatcher) ContainerLogs(ctx context.Context, serverID, requestID string, in nodewire.ContainerLogsInput) (nodewire.ContainerLogsResult, error) {
+	var out nodewire.ContainerLogsResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid container logs input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpContainerLogs,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode container logs result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.
