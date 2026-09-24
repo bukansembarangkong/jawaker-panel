@@ -12,6 +12,7 @@ import { MailPage } from './pages/MailPage';
 import { HAPage } from './pages/HAPage';
 import { CopilotPage } from './pages/CopilotPage';
 import { PluginsPage } from './pages/PluginsPage';
+import { HardeningPage } from './pages/HardeningPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -39,7 +40,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -58,6 +59,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/ha') return 'ha';
   if (window.location.hash === '#/copilot') return 'copilot';
   if (window.location.hash === '#/plugins') return 'plugins';
+  if (window.location.hash === '#/hardening') return 'hardening';
   return 'dashboard';
 }
 
@@ -362,6 +364,19 @@ export default function App() {
                 Plugins
               </a>
             </li>
+            <li>
+              <a
+                href="#/hardening"
+                aria-current={route === 'hardening' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'hardening'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Hardening
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -398,6 +413,8 @@ export default function App() {
             <CopilotPage />
           ) : route === 'plugins' ? (
             <PluginsPage />
+          ) : route === 'hardening' ? (
+            <HardeningPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

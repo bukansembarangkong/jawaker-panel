@@ -2237,3 +2237,58 @@ export const pluginsApi = {
     return request(`/api/v1/plugins/${encodeURIComponent(id)}/quarantine`, { method: 'POST', body: { reason } });
   },
 };
+
+// ── Production Hardening (Phase 17) ──────────────────────────────────────────
+
+export interface HealthCheck {
+  id: string;
+  check_name: string;
+  status: string;
+  message: string;
+  details: Record<string, unknown>;
+  duration_ms: number;
+  checked_at: string;
+}
+
+export interface UpgradeRecord {
+  id: string;
+  migration_name: string;
+  from_version: string;
+  to_version: string;
+  applied_by: string;
+  status: string;
+  duration_ms: number;
+  applied_at: string;
+}
+
+export interface RunbookEvent {
+  id: string;
+  runbook_name: string;
+  event_type: string;
+  outcome: string;
+  performed_by: string;
+  notes: string;
+  duration_min: number;
+  occurred_at: string;
+}
+
+export const hardeningApi = {
+  listChecks(): Promise<{ overall: string; checks: HealthCheck[]; total: number; request_id: string }> {
+    return request('/api/v1/health/checks');
+  },
+  runChecks(): Promise<{ overall: string; results: HealthCheck[]; request_id: string }> {
+    return request('/api/v1/health/checks', { method: 'POST', body: {} });
+  },
+  listUpgrades(): Promise<{ upgrades: UpgradeRecord[]; total: number; request_id: string }> {
+    return request('/api/v1/health/upgrades');
+  },
+  listRunbooks(): Promise<{ events: RunbookEvent[]; total: number; request_id: string }> {
+    return request('/api/v1/health/runbooks');
+  },
+  recordRunbook(runbookName: string, eventType: string, outcome: string, notes: string, durationMin: number): Promise<{ event: RunbookEvent; request_id: string }> {
+    return request('/api/v1/health/runbooks', {
+      method: 'POST',
+      body: { runbook_name: runbookName, event_type: eventType, outcome, notes, duration_min: durationMin },
+    });
+  },
+};
