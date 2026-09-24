@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ErrorNote, secondaryButtonClass } from '../components/ui';
-import type { ApiError } from '../api/client';
+import { api, type ApiError, type ResourceBudget } from '../api/client';
 import { useTheme, type Theme } from '../theme/useTheme';
 
 type Tab = 'general' | 'security' | 'sessions' | 'audit';
@@ -9,6 +9,11 @@ export function SettingsPage() {
   const [tab, setTab] = useState<Tab>('general');
   const [_error] = useState<ApiError | Error | null>(null);
   const { theme, setTheme } = useTheme();
+  const [profile, setProfile] = useState<ResourceBudget | null>(null);
+
+  useEffect(() => {
+    api.getResourceProfile().then((r) => setProfile(r.budget)).catch(() => null);
+  }, []);
 
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 ${
@@ -88,6 +93,25 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+          {profile && (
+            <div className="space-y-3 pt-2">
+              <h2 className="text-base font-medium text-ink">Adaptive Resource Profile (PRD §31)</h2>
+              <div className="rounded-lg border border-border bg-surface p-4 text-xs space-y-2">
+                <div className="flex justify-between items-center pb-2 border-b border-border">
+                  <span className="text-ink-secondary">Capacity Profile:</span>
+                  <span className="font-semibold uppercase tracking-wider text-accent">{profile.profile}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-ink-secondary">
+                  <div>CPU Cores: <span className="font-mono text-ink">{profile.cpus}</span></div>
+                  <div>RAM Detected: <span className="font-mono text-ink">{profile.total_ram_mb} MB</span></div>
+                  <div>Worker Concurrency: <span className="font-mono text-ink">{profile.worker_concurrency}</span></div>
+                  <div>Job Concurrency: <span className="font-mono text-ink">{profile.job_concurrency}</span></div>
+                  <div>Metrics Interval: <span className="font-mono text-ink">{profile.metrics_interval_seconds}s</span></div>
+                  <div>Log Retention: <span className="font-mono text-ink">{profile.log_retention_days} days</span></div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

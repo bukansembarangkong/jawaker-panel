@@ -286,9 +286,22 @@ export interface ElevateResult {
   ttl_seconds: number;
 }
 
+export interface ResourceBudget {
+  profile: 'tiny' | 'small' | 'medium' | 'large';
+  cpus: number;
+  total_ram_mb: number;
+  worker_concurrency: number;
+  job_concurrency: number;
+  metrics_interval_seconds: number;
+  log_retention_days: number;
+  analytics_enabled: boolean;
+}
+
 export const api = {
   getVersion: (): Promise<VersionInfo> => request<VersionInfo>('/api/v1/version'),
   getHealth: (): Promise<HealthInfo> => request<HealthInfo>('/healthz'),
+  getResourceProfile: (): Promise<{ budget: ResourceBudget; request_id: string }> =>
+    request<{ budget: ResourceBudget; request_id: string }>('/api/v1/system/resource-profile'),
 
   bootstrapStatus: (): Promise<{ requires_bootstrap: boolean }> =>
     request<{ requires_bootstrap: boolean }>('/api/v1/auth/bootstrap'),
