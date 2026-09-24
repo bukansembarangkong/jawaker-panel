@@ -5,6 +5,7 @@ import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
 import { BackupsPage } from './pages/BackupsPage';
 import { ContainersPage } from './pages/ContainersPage';
+import { NetworkPage } from './pages/NetworkPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -32,7 +33,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -44,6 +45,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/observability') return 'observability';
   if (window.location.hash === '#/dnstls') return 'dnstls';
   if (window.location.hash === '#/containers') return 'containers';
+  if (window.location.hash === '#/networking') return 'networking';
   return 'dashboard';
 }
 
@@ -257,6 +259,19 @@ export default function App() {
                 Containers
               </a>
             </li>
+            <li>
+              <a
+                href="#/networking"
+                aria-current={route === 'networking' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'networking'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Networking
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -279,6 +294,8 @@ export default function App() {
             <DNSTLSPage />
           ) : route === 'containers' ? (
             <ContainersPage />
+          ) : route === 'networking' ? (
+            <NetworkPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
