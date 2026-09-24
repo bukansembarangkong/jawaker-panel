@@ -19,8 +19,10 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
 	"github.com/bukansembarangkong/jawaker-panel/internal/backups"
+	"github.com/bukansembarangkong/jawaker-panel/internal/certs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/databases"
+	"github.com/bukansembarangkong/jawaker-panel/internal/dns"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
@@ -111,6 +113,12 @@ type Handler struct {
 	ObserveRoutesMounted bool
 	// Projects is the tenant boundary store.
 	Projects *projects.Store
+	// DNS is the Phase 8 DNS provider/zone/record store.
+	DNS *dns.Store
+	// Certs is the Phase 8 certificate inventory store (extended with import).
+	Certs *certs.Store
+	// DNSRoutesMounted reports whether the Phase 8 DNS and TLS routes are registered.
+	DNSRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -514,6 +522,21 @@ func Build(opts Options) (*Handler, error) {
 		jobRoutes := jobHandlers.Routes
 
 		authRoutes := handlers.Routes
+		out.DNS = dns.NewStore(opts.DB, now)
+		out.Certs = certs.NewStore(opts.DB, out.Secrets, now)
+		dnsTLSHandlers, dnsTLSErr := NewDNSTLSHandlers(DNSTLSHandlerOptions{
+			DNS:     out.DNS,
+			Certs:   out.Certs,
+			Secrets: out.Secrets,
+			Pool:    opts.DB,
+			Logger:  logger,
+			Audit:   opts.DB,
+			Now:     now,
+		})
+		if dnsTLSErr != nil {
+			return nil, fmt.Errorf("controller: dns+tls handlers: %w", dnsTLSErr)
+		}
+		dnsTLSRoutes := dnsTLSHandlers.Routes
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -527,6 +550,7 @@ func Build(opts Options) (*Handler, error) {
 			observeRoutes(mux)
 			projectRoutes(mux)
 			jobRoutes(mux)
+			dnsTLSRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -535,6 +559,7 @@ func Build(opts Options) (*Handler, error) {
 		out.ObserveRoutesMounted = true
 		out.ProjectRoutesMounted = true
 		out.JobRoutesMounted = true
+		out.DNSRoutesMounted = true
 		out.Events = broker
 		out.EventStreamMounted = true
 		out.NodeRoutesMounted = nodeRoutes != nil
