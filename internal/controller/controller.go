@@ -25,6 +25,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/databases"
 	"github.com/bukansembarangkong/jawaker-panel/internal/dns"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
+	"github.com/bukansembarangkong/jawaker-panel/internal/ha"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
 	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
@@ -147,6 +148,10 @@ type Handler struct {
 	Mail *mail.Store
 	// MailRoutesMounted reports whether the Phase 13 mail platform routes are registered.
 	MailRoutesMounted bool
+	// HA is the Phase 14 high-availability store (server pools, drain, quorum, failover events/drills).
+	HA *ha.Store
+	// HARoutesMounted reports whether the Phase 14 HA routes are registered.
+	HARoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -644,6 +649,20 @@ func Build(opts Options) (*Handler, error) {
 		}
 		mailRoutes := mailHandlers.Routes
 
+		// HA platform (Phase 14): server pools, drain, quorum, failover events/drills.
+		out.HA = ha.New(opts.DB, now)
+		haHandlers, haErr := NewHAHandlers(HAHandlerOptions{
+			HA:     out.HA,
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if haErr != nil {
+			return nil, fmt.Errorf("controller: ha handlers: %w", haErr)
+		}
+		haRoutes := haHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -663,6 +682,7 @@ func Build(opts Options) (*Handler, error) {
 			securityRoutes(mux)
 			updatesRoutes(mux)
 			mailRoutes(mux)
+			haRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -677,6 +697,7 @@ func Build(opts Options) (*Handler, error) {
 		out.SecurityRoutesMounted = true
 		out.UpdatesRoutesMounted = true
 		out.MailRoutesMounted = true
+		out.HARoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
