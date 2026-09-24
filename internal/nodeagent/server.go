@@ -195,6 +195,7 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpContainerList] = true
 		served[nodewire.OpContainerInspect] = true
 		served[nodewire.OpContainerLogs] = true
+		served[nodewire.OpContainerLifecycle] = true
 	}
 	// net.* operations require Linux. iptables-save and ss are detected at
 	// dispatch time (not startup) because they may be installed after the
@@ -697,6 +698,20 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.ContainerLogs(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpContainerLifecycle:
+		in, err := nodewire.DecodeInput[nodewire.ContainerLifecycleInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.LifecycleContainer(ctx, in)
 		if err != nil {
 			return nil, err
 		}

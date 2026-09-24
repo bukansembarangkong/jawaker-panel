@@ -548,6 +548,24 @@ var Operations = map[Operation]Descriptor{
 		Mutating: false,
 	},
 
+	OpContainerLifecycle: {
+		Operation:   OpContainerLifecycle,
+		Permission:  "container.manage",
+		InputSchema: "{name: string, action: \"start\"|\"stop\"|\"restart\"}",
+		Validation: "name must satisfy ValidContainerName; action must be one of start, stop, restart; " +
+			"no NUL byte in any field",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			Services: []string{"docker"},
+			Network:  "unix domain socket to local docker daemon only",
+		},
+		Timeout:     60 * time.Second,
+		AuditAction: "container.lifecycle",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Rollback:    "container state can be transitioned via inverse lifecycle action (e.g. stop->start)",
+		Mutating:    true,
+	},
+
 	// --- networking operations -------------------------------------------------
 	//
 	// All three operations are read-only: they inspect system state and return

@@ -86,6 +86,9 @@ func (h *ContainerHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/containers", h.handleListContainers)
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/containers/{id}", h.handleGetContainer)
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/containers/{id}/logs", h.handleContainerLogs)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/containers/{id}/start", h.handleContainerStart)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/containers/{id}/stop", h.handleContainerStop)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/containers/{id}/restart", h.handleContainerRestart)
 
 	// Volumes (read-only inventory)
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/container-volumes", h.handleListVolumes)
@@ -404,6 +407,73 @@ func (h *ContainerHandlers) handleContainerLogs(w http.ResponseWriter, r *http.R
 				"lines":        result.Lines,
 				"truncated":    result.Truncated,
 				"observed_at":  result.ObservedAt,
+				"request_id":   reqID,
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleContainerStart calls docker start on the container via the node.
+func (h *ContainerHandlers) handleContainerStart(w http.ResponseWriter, r *http.Request) {
+	h.handleContainerLifecycle(w, r, "start")
+}
+
+// handleContainerStop calls docker stop on the container via the node.
+func (h *ContainerHandlers) handleContainerStop(w http.ResponseWriter, r *http.Request) {
+	h.handleContainerLifecycle(w, r, "stop")
+}
+
+// handleContainerRestart calls docker restart on the container via the node.
+func (h *ContainerHandlers) handleContainerRestart(w http.ResponseWriter, r *http.Request) {
+	h.handleContainerLifecycle(w, r, "restart")
+}
+
+// handleContainerLifecycle is the shared handler for start/stop/restart.
+func (h *ContainerHandlers) handleContainerLifecycle(w http.ResponseWriter, r *http.Request, action string) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "container.manage", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if h.dispatcher == nil {
+				httpserver.WriteError(w, r, apierr.ServiceUnavailable("Node dispatcher is not available on this controller."))
+				return
+			}
+			c, err := h.containers.GetContainer(r.Context(), id)
+			if err != nil {
+				httpserver.WriteError(w, r, containerErr(err))
+				return
+			}
+			if c.ProjectID != projectID {
+				httpserver.WriteError(w, r, apierr.NotFound("The requested container does not exist."))
+				return
+			}
+			if !nodewire.ValidContainerName(c.Name) {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("Container name is not safe to pass to the docker CLI.", nil))
+				return
+			}
+
+			reqID := httpserver.RequestIDFromRequest(r)
+			result, lcErr := h.dispatcher.ContainerLifecycle(r.Context(), c.ServerID, reqID, nodewire.ContainerLifecycleInput{
+				Name:   c.Name,
+				Action: action,
+			})
+			if lcErr != nil {
+				httpserver.WriteError(w, r, apierr.Internal(lcErr))
+				return
+			}
+
+			h.recordAudit(r, audit.Event{
+				Action:       "container." + action,
+				ResourceType: "container",
+				ResourceID:   id,
+				Result:       audit.ResultSuccess,
+				Context:      map[string]any{"project_id": projectID, "name": c.Name},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"container_id": id,
+				"name":         c.Name,
+				"action":       result.Action,
+				"success":      result.Success,
+				"message":      result.Message,
 				"request_id":   reqID,
 			})
 		})).ServeHTTP(w, r)

@@ -1521,6 +1521,15 @@ export const containerApi = {
   listPrivilegedContainers(projectId: string): Promise<{ containers: Container[]; total: number; request_id: string }> {
     return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/privileged`);
   },
+  startContainer(projectId: string, id: string): Promise<{ container_id: string; name: string; action: string; success: boolean; message?: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/${encodeURIComponent(id)}/start`, { method: 'POST' });
+  },
+  stopContainer(projectId: string, id: string): Promise<{ container_id: string; name: string; action: string; success: boolean; message?: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/${encodeURIComponent(id)}/stop`, { method: 'POST' });
+  },
+  restartContainer(projectId: string, id: string): Promise<{ container_id: string; name: string; action: string; success: boolean; message?: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/containers/${encodeURIComponent(id)}/restart`, { method: 'POST' });
+  },
 
   // Volumes
   listVolumes(projectId: string): Promise<{ volumes: ContainerVolume[]; total: number; request_id: string }> {

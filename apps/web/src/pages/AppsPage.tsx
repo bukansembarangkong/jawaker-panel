@@ -960,7 +960,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
   const [branch, setBranch] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   const loadPreviews = useCallback(async () => {
     setLoading(true);
@@ -968,7 +968,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
       const res = await api.listPreviews(project.id, app.id);
       setPreviews(res.previews || []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load preview environments');
+      setError(toError(e));
     } finally {
       setLoading(false);
     }
@@ -996,7 +996,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
           onElevationRequired(run);
           return;
         }
-        setError(err instanceof Error ? err.message : 'Failed to create preview');
+        setError(toError(err));
       } finally {
         setCreating(false);
       }
@@ -1016,7 +1016,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
           onElevationRequired(run);
           return;
         }
-        setError(err instanceof Error ? err.message : 'Failed to tear down preview');
+        setError(toError(err));
       }
     };
     await run();
@@ -1032,7 +1032,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
           </p>
         </div>
 
-        {error && <ErrorNote message={error} onDismiss={() => setError(null)} />}
+        {error && <ErrorNote error={error} onRetry={() => setError(null)} />}
 
         <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Git Branch">

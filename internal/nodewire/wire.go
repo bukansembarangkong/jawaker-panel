@@ -171,6 +171,9 @@ const (
 	// to the raw log stream.
 	OpContainerLogs Operation = "container.logs" //nolint:gosec // G101: an operation wire name, not a credential
 
+	// OpContainerLifecycle controls container state: start, stop, restart.
+	OpContainerLifecycle Operation = "container.lifecycle" //nolint:gosec // G101: an operation wire name, not a credential
+
 	// OpNetFirewallList reads the current iptables/nftables ruleset from the
 	// node and returns it as a structured chain/rule list. It is read-only:
 	// no process is spawned that changes state, and the output path is

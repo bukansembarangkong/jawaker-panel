@@ -754,6 +754,27 @@ func (d *Dispatcher) ContainerLogs(ctx context.Context, serverID, requestID stri
 	return out, nil
 }
 
+// ContainerLifecycle executes start, stop, or restart on a container.
+func (d *Dispatcher) ContainerLifecycle(ctx context.Context, serverID, requestID string, in nodewire.ContainerLifecycleInput) (nodewire.ContainerLifecycleResult, error) {
+	var out nodewire.ContainerLifecycleResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid container lifecycle input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpContainerLifecycle,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode container lifecycle result: %w", err)
+	}
+	return out, nil
+}
+
 // NetFirewallList reads the iptables ruleset from a node.
 func (d *Dispatcher) NetFirewallList(ctx context.Context, serverID, requestID string, in nodewire.NetFirewallListInput) (nodewire.NetFirewallListResult, error) {
 	var out nodewire.NetFirewallListResult

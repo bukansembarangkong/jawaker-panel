@@ -355,6 +355,51 @@ func (e *Executors) ContainerLogs(ctx context.Context, in nodewire.ContainerLogs
 	}, nil
 }
 
+// --- container.lifecycle ------------------------------------------------------
+
+// LifecycleContainer executes docker start, stop, or restart on a container.
+func (e *Executors) LifecycleContainer(ctx context.Context, in nodewire.ContainerLifecycleInput) (nodewire.ContainerLifecycleResult, error) {
+	if !supportedOS() {
+		return nodewire.ContainerLifecycleResult{Name: in.Name, Action: in.Action}, notAvailable("container management is supported on Linux only")
+	}
+	if e.dockerPath == "" {
+		return nodewire.ContainerLifecycleResult{Name: in.Name, Action: in.Action}, notAvailable("docker is not installed on this host")
+	}
+
+	var args []string
+	switch in.Action {
+	case "start":
+		args = []string{"start", in.Name}
+	case "stop":
+		args = []string{"stop", "-t", "10", in.Name}
+	case "restart":
+		args = []string{"restart", "-t", "10", in.Name}
+	default:
+		return nodewire.ContainerLifecycleResult{Name: in.Name, Action: in.Action}, fmt.Errorf("invalid container action: %s", in.Action)
+	}
+
+	e.spawns.Add(1)
+	res, err := e.cmdRunner(ctx, CommandSpec{
+		Path: e.dockerPath,
+		Args: args,
+	})
+	if err != nil {
+		return nodewire.ContainerLifecycleResult{
+			Name:    in.Name,
+			Action:  in.Action,
+			Success: false,
+			Message: strings.TrimSpace(res.Stderr),
+		}, classifyDockerError(err)
+	}
+
+	return nodewire.ContainerLifecycleResult{
+		Name:    in.Name,
+		Action:  in.Action,
+		Success: true,
+		Message: strings.TrimSpace(res.Stdout),
+	}, nil
+}
+
 // --- helpers ------------------------------------------------------------------
 
 // classifyDockerError maps a failed docker command onto a wire error code.
