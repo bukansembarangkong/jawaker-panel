@@ -8,6 +8,7 @@ import { ContainersPage } from './pages/ContainersPage';
 import { NetworkPage } from './pages/NetworkPage';
 import { SecurityCenterPage } from './pages/SecurityCenterPage';
 import { UpdatesPage } from './pages/UpdatesPage';
+import { MailPage } from './pages/MailPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -35,7 +36,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -50,6 +51,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/networking') return 'networking';
   if (window.location.hash === '#/security-center') return 'security-center';
   if (window.location.hash === '#/updates') return 'updates';
+  if (window.location.hash === '#/mail') return 'mail';
   return 'dashboard';
 }
 
@@ -302,6 +304,19 @@ export default function App() {
                 Updates
               </a>
             </li>
+            <li>
+              <a
+                href="#/mail"
+                aria-current={route === 'mail' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'mail'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Mail
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -330,6 +345,8 @@ export default function App() {
             <SecurityCenterPage />
           ) : route === 'updates' ? (
             <UpdatesPage />
+          ) : route === 'mail' ? (
+            <MailPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

@@ -1866,3 +1866,95 @@ export const updatesApi = {
     return request('/api/v1/updates/modules');
   },
 };
+
+// ── Mail platform (Phase 13) ───────────────────────────────────────────────────
+
+export interface MailDomain {
+  id: string;
+  project_id: string;
+  server_id: string;
+  domain: string;
+  state: string;
+  spf_ok: boolean;
+  dkim_ok: boolean;
+  dmarc_ok: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MailMailbox {
+  id: string;
+  domain_id: string;
+  local_part: string;
+  state: string;
+  quota_mb: number;
+}
+
+export interface MailAlias {
+  id: string;
+  domain_id: string;
+  local_part: string;
+  destination: string;
+  created_at: string;
+}
+
+export interface MailQueueEntry {
+  id: string;
+  domain_id: string;
+  sender: string;
+  recipients: string;
+  status: string;
+  queued_at: string | null;
+  delivered_at: string | null;
+  error_message: string;
+}
+
+export const mailApi = {
+  listDomains(projectId: string): Promise<{ domains: MailDomain[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains`);
+  },
+  createDomain(projectId: string, serverId: string, domain: string): Promise<{ domain: MailDomain; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains`, {
+      method: 'POST',
+      body: { server_id: serverId, domain },
+    });
+  },
+  getDomain(projectId: string, id: string): Promise<{ domain: MailDomain; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(id)}`);
+  },
+  deleteDomain(projectId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  listMailboxes(projectId: string, domainId: string): Promise<{ mailboxes: MailMailbox[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/mailboxes`);
+  },
+  deleteMailbox(projectId: string, domainId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/mailboxes/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  listAliases(projectId: string, domainId: string): Promise<{ aliases: MailAlias[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/aliases`);
+  },
+  createAlias(projectId: string, domainId: string, localPart: string, destination: string): Promise<{ alias: MailAlias; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/aliases`, {
+      method: 'POST',
+      body: { local_part: localPart, destination },
+    });
+  },
+  deleteAlias(projectId: string, domainId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/aliases/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  listQueueLog(projectId: string, domainId: string, limit = 50): Promise<{ entries: MailQueueEntry[]; total: number; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/mail/domains/${encodeURIComponent(domainId)}/queue-log?limit=${limit}`,
+    );
+  },
+};
