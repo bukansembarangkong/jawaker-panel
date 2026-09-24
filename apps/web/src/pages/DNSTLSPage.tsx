@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   dnsTlsApi,
   type DNSProvider,
@@ -74,6 +74,7 @@ export function DNSTLSPage() {
 
   useEffect(() => {
     void loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, tab]);
 
   useEffect(() => {

@@ -1490,3 +1490,144 @@ export const containerApi = {
   },
 };
 
+// ── Phase 10 — Networking API ─────────────────────────────────────────────────
+
+export interface FirewallRule {
+  id: string;
+  server_id: string;
+  chain: string;
+  priority: number;
+  protocol: string;
+  source_cidr: string;
+  dest_cidr: string;
+  dest_port_min: number;
+  dest_port_max: number;
+  action: string;
+  enabled: boolean;
+  description: string;
+  state: string;
+  created_at: string;
+}
+
+export interface FirewallChain {
+  table: string;
+  chain: string;
+  policy?: string;
+  rules: Array<{ num: number; target: string; protocol: string; source: string; destination: string; options?: string }>;
+}
+
+export interface PortForward {
+  id: string;
+  server_id: string;
+  protocol: string;
+  listen_address: string;
+  listen_port: number;
+  dest_address: string;
+  dest_port: number;
+  enabled: boolean;
+  description: string;
+  state: string;
+  created_at: string;
+}
+
+export interface NetworkZone {
+  id: string;
+  server_id: string;
+  name: string;
+  kind: string;
+  interfaces: string;
+  created_at: string;
+}
+
+export interface ListeningPort {
+  protocol: string;
+  local_address: string;
+  local_port: number;
+  pid?: number;
+  process_name?: string;
+}
+
+export interface WireGuardPeer {
+  id: string;
+  server_id: string;
+  public_key: string;
+  label: string;
+  allowed_ips: string;
+  endpoint: string;
+  persistent_keepalive: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface NetDiagResult {
+  mode: string;
+  target: string;
+  output: string;
+  success: boolean;
+  observed_at: string;
+}
+
+export interface NetworkApplyLog {
+  id: string;
+  server_id: string;
+  applied_by: string;
+  outcome: string;
+  error_message: string;
+  created_at: string;
+}
+
+export const networkApi = {
+  listRules(serverId: string): Promise<{ rules: FirewallRule[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/firewall/rules`);
+  },
+  createRule(serverId: string, input: { chain: string; priority?: number; protocol?: string; source_cidr?: string; dest_cidr?: string; dest_port_min?: number; dest_port_max?: number; action?: string; enabled?: boolean; description?: string }): Promise<{ rule: FirewallRule; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/firewall/rules`, { method: 'POST', body: input });
+  },
+  deleteRule(serverId: string, id: string): Promise<void> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/firewall/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  applyFirewall(serverId: string): Promise<{ log: NetworkApplyLog; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/firewall/apply`, { method: 'POST', body: {} });
+  },
+  getLiveFirewall(serverId: string, table?: string): Promise<{ chains: FirewallChain[]; observed_at: string; request_id: string }> {
+    const q = table ? `?table=${encodeURIComponent(table)}` : '';
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/firewall/live${q}`);
+  },
+  listForwards(serverId: string): Promise<{ forwards: PortForward[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/port-forwards`);
+  },
+  createForward(serverId: string, input: { protocol: string; listen_address?: string; listen_port: number; dest_address: string; dest_port: number; enabled?: boolean; description?: string }): Promise<{ forward: PortForward; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/port-forwards`, { method: 'POST', body: input });
+  },
+  deleteForward(serverId: string, id: string): Promise<void> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/port-forwards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  listZones(serverId: string): Promise<{ zones: NetworkZone[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/zones`);
+  },
+  createZone(serverId: string, input: { name: string; kind?: string; interfaces?: string }): Promise<{ zone: NetworkZone; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/zones`, { method: 'POST', body: input });
+  },
+  deleteZone(serverId: string, id: string): Promise<void> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/zones/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  getPortInventory(serverId: string, protocol?: string): Promise<{ ports: ListeningPort[]; total: number; observed_at: string; request_id: string }> {
+    const q = protocol ? `?protocol=${encodeURIComponent(protocol)}` : '';
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/ports${q}`);
+  },
+  listPeers(serverId: string): Promise<{ peers: WireGuardPeer[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/wireguard/peers`);
+  },
+  createPeer(serverId: string, input: { public_key: string; label?: string; allowed_ips?: string; endpoint?: string; persistent_keepalive?: number; enabled?: boolean }): Promise<{ peer: WireGuardPeer; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/wireguard/peers`, { method: 'POST', body: input });
+  },
+  deletePeer(serverId: string, id: string): Promise<void> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/wireguard/peers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  runDiag(serverId: string, input: { target: string; mode: 'ping' | 'trace' }): Promise<{ result: NetDiagResult; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/diag`, { method: 'POST', body: input });
+  },
+  listApplyLog(serverId: string): Promise<{ logs: NetworkApplyLog[]; total: number; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/network/apply-log`);
+  },
+};
