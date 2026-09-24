@@ -62,7 +62,7 @@ type Registry struct {
 	ProjectID string
 	Name      string
 	Host      string
-	SecretRef string // sealed credential; never exposed over HTTP
+	SecretRef *string // sealed credential; never exposed over HTTP; nil when no credential
 	CreatedAt time.Time
 	DeletedAt *time.Time
 }
