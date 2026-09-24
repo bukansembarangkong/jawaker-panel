@@ -28,6 +28,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
 	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
+	"github.com/bukansembarangkong/jawaker-panel/internal/mail"
 	"github.com/bukansembarangkong/jawaker-panel/internal/network"
 	"github.com/bukansembarangkong/jawaker-panel/internal/nodes"
 	"github.com/bukansembarangkong/jawaker-panel/internal/observe"
@@ -142,6 +143,10 @@ type Handler struct {
 	Updates *updates.Store
 	// UpdatesRoutesMounted reports whether the Phase 12 update platform routes are registered.
 	UpdatesRoutesMounted bool
+	// Mail is the Phase 13 mail platform store (domains, mailboxes, aliases, DKIM, rate limits).
+	Mail *mail.Store
+	// MailRoutesMounted reports whether the Phase 13 mail platform routes are registered.
+	MailRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -625,6 +630,20 @@ func Build(opts Options) (*Handler, error) {
 		}
 		updatesRoutes := updatesHandlers.Routes
 
+		// Mail platform (Phase 13): domains, mailboxes, aliases, DKIM, rate limits, queue log.
+		out.Mail = mail.New(opts.DB)
+		mailHandlers, mailErr := NewMailHandlers(MailHandlerOptions{
+			Mail:   out.Mail,
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if mailErr != nil {
+			return nil, fmt.Errorf("controller: mail handlers: %w", mailErr)
+		}
+		mailRoutes := mailHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -643,6 +662,7 @@ func Build(opts Options) (*Handler, error) {
 			networkRoutes(mux)
 			securityRoutes(mux)
 			updatesRoutes(mux)
+			mailRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -656,6 +676,7 @@ func Build(opts Options) (*Handler, error) {
 		out.NetworkRoutesMounted = true
 		out.SecurityRoutesMounted = true
 		out.UpdatesRoutesMounted = true
+		out.MailRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
