@@ -20,6 +20,7 @@ import { WorkersPage } from './pages/WorkersPage';
 import { FilesPage } from './pages/FilesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DRWizardPage } from './pages/DRWizardPage';
+import { AutomationPage } from './pages/AutomationPage';
 import { CommandPalette } from './components/CommandPalette';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -48,7 +49,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files' | 'settings' | 'dr-wizard';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens' | 'users' | 'notifications' | 'workers' | 'files' | 'settings' | 'dr-wizard' | 'automation';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -75,6 +76,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/files') return 'files';
   if (window.location.hash === '#/settings') return 'settings';
   if (window.location.hash === '#/dr-wizard') return 'dr-wizard';
+  if (window.location.hash === '#/automation') return 'automation';
   return 'dashboard';
 }
 
@@ -495,6 +497,19 @@ export default function App() {
                 DR Wizard
               </a>
             </li>
+            <li>
+              <a
+                href="#/automation"
+                aria-current={route === 'automation' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'automation'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Automation
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -547,6 +562,8 @@ export default function App() {
             <SettingsPage />
           ) : route === 'dr-wizard' ? (
             <DRWizardPage />
+          ) : route === 'automation' ? (
+            <AutomationPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}

@@ -178,6 +178,8 @@ type Handler struct {
 	NotifyRoutesMounted bool
 	// QuotaRoutesMounted reports whether the /api/v1/projects/{id}/quotas routes are registered.
 	QuotaRoutesMounted bool
+	// AutomationRoutesMounted reports whether the automation rules and outbound webhook routes are registered.
+	AutomationRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -778,6 +780,17 @@ func Build(opts Options) (*Handler, error) {
 		}
 		quotaRoutes := quotaHandlers.Routes
 
+		automationHandlers, autoErr := NewAutomationHandlers(AutomationHandlerOptions{
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if autoErr != nil {
+			return nil, fmt.Errorf("controller: automation handlers: %w", autoErr)
+		}
+		automationRoutes := automationHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -805,6 +818,7 @@ func Build(opts Options) (*Handler, error) {
 			userRoutes(mux)
 			notifyRoutes(mux)
 			quotaRoutes(mux)
+			automationRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -827,6 +841,7 @@ func Build(opts Options) (*Handler, error) {
 		out.UserRoutesMounted = true
 		out.NotifyRoutesMounted = true
 		out.QuotaRoutesMounted = true
+		out.AutomationRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
