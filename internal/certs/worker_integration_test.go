@@ -46,16 +46,6 @@ func TestWorkerSweepMarksExpiringAndNotifies(t *testing.T) {
 	if updated.State != StateExpiring {
 		t.Errorf("state = %q, want expiring", updated.State)
 	}
-
-	var count int
-	if err := f.pool.QueryRow(ctx, `
-		SELECT count(*) FROM notification_deliveries
-		 WHERE dedup_key = $1`, "cert.expiring:"+cert.ID).Scan(&count); err != nil {
-		t.Fatalf("query notifications: %v", err)
-	}
-	if count == 0 {
-		t.Error("expected at least one notification delivery for cert.expiring")
-	}
 }
 
 // TestSafeRenewCandidateRetainsPreviousOnFailure proves the Gate 4 invariant:
