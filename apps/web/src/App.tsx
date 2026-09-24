@@ -4,6 +4,7 @@ import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AuthGate } from './pages/AuthGate';
 import { BackupsPage } from './pages/BackupsPage';
+import { ContainersPage } from './pages/ContainersPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -31,7 +32,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -42,6 +43,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/backups') return 'backups';
   if (window.location.hash === '#/observability') return 'observability';
   if (window.location.hash === '#/dnstls') return 'dnstls';
+  if (window.location.hash === '#/containers') return 'containers';
   return 'dashboard';
 }
 
@@ -242,6 +244,15 @@ export default function App() {
                 DNS & TLS
               </a>
             </li>
+            <li>
+              <a
+                href="#/containers"
+                aria-current={route === 'containers' ? 'page' : undefined}
+                className={\lock rounded-md px-3 py-1.5 text-sm \\}
+              >
+                Containers
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -262,6 +273,8 @@ export default function App() {
             <ObservabilityPage />
           ) : route === 'dnstls' ? (
             <DNSTLSPage />
+          ) : route === 'containers' ? (
+            <ContainersPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
