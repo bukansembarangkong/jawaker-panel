@@ -40,6 +40,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/plugins"
 	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
+	"github.com/bukansembarangkong/jawaker-panel/internal/resourceprofile"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
 	"github.com/bukansembarangkong/jawaker-panel/internal/security"
 	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
@@ -827,6 +828,14 @@ func Build(opts Options) (*Handler, error) {
 			automationRoutes(mux)
 			terminalRoutes(mux)
 			auditLogRoutes(mux)
+			// System resource profile (PRD §31)
+			mux.HandleFunc("GET /api/v1/system/resource-profile", func(w http.ResponseWriter, r *http.Request) {
+				budget := resourceprofile.Current()
+				writeJSONResponse(w, http.StatusOK, map[string]any{
+					"budget":     budget,
+					"request_id": httpserver.RequestIDFromRequest(r),
+				})
+			})
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
