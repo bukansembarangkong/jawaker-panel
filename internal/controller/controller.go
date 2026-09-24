@@ -21,6 +21,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/backups"
 	"github.com/bukansembarangkong/jawaker-panel/internal/certs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
+	"github.com/bukansembarangkong/jawaker-panel/internal/containers"
 	"github.com/bukansembarangkong/jawaker-panel/internal/databases"
 	"github.com/bukansembarangkong/jawaker-panel/internal/dns"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
@@ -119,6 +120,11 @@ type Handler struct {
 	Certs *certs.Store
 	// DNSRoutesMounted reports whether the Phase 8 DNS and TLS routes are registered.
 	DNSRoutesMounted bool
+	// Containers is the Phase 9 container platform inventory store.
+	Containers *containers.Store
+	// ContainerRoutesMounted reports whether /api/v1/projects/{project_id}/container-*
+	// is registered.
+	ContainerRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -537,6 +543,24 @@ func Build(opts Options) (*Handler, error) {
 			return nil, fmt.Errorf("controller: dns+tls handlers: %w", dnsTLSErr)
 		}
 		dnsTLSRoutes := dnsTLSHandlers.Routes
+
+		// Container platform (Phase 9): registries, compose stacks, containers,
+		// volumes, and live log tails via nodewire OpContainerLogs.
+		out.Containers = containers.NewStore(opts.DB, out.Secrets)
+		containerHandlers, containerErr := NewContainerHandlers(ContainerHandlerOptions{
+			Containers: out.Containers,
+			Pool:       opts.DB,
+			Secrets:    out.Secrets,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger,
+			Audit:      opts.DB,
+			Now:        now,
+		})
+		if containerErr != nil {
+			return nil, fmt.Errorf("controller: container handlers: %w", containerErr)
+		}
+		containerRoutes := containerHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -551,6 +575,7 @@ func Build(opts Options) (*Handler, error) {
 			projectRoutes(mux)
 			jobRoutes(mux)
 			dnsTLSRoutes(mux)
+			containerRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -560,6 +585,7 @@ func Build(opts Options) (*Handler, error) {
 		out.ProjectRoutesMounted = true
 		out.JobRoutesMounted = true
 		out.DNSRoutesMounted = true
+		out.ContainerRoutesMounted = true
 		out.Events = broker
 		out.EventStreamMounted = true
 		out.NodeRoutesMounted = nodeRoutes != nil
