@@ -27,6 +27,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/dns"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ha"
+	"github.com/bukansembarangkong/jawaker-panel/internal/health"
 	"github.com/bukansembarangkong/jawaker-panel/internal/httpserver"
 	"github.com/bukansembarangkong/jawaker-panel/internal/identity"
 	"github.com/bukansembarangkong/jawaker-panel/internal/jobs"
@@ -162,6 +163,10 @@ type Handler struct {
 	Plugins *plugins.Store
 	// PluginRoutesMounted reports whether the Phase 16 plugin SDK routes are registered.
 	PluginRoutesMounted bool
+	// Health is the Phase 17 production hardening store (health logs, upgrade history, runbooks).
+	Health *health.Store
+	// HardeningRoutesMounted reports whether the Phase 17 hardening routes are registered.
+	HardeningRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -701,6 +706,20 @@ func Build(opts Options) (*Handler, error) {
 		}
 		pluginRoutes := pluginHandlers.Routes
 
+		// Production hardening (Phase 17): health checks, upgrade history, runbooks.
+		out.Health = health.New(opts.DB, now)
+		hardeningHandlers, hardeningErr := NewHardeningHandlers(HardeningHandlerOptions{
+			Health: out.Health,
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if hardeningErr != nil {
+			return nil, fmt.Errorf("controller: hardening handlers: %w", hardeningErr)
+		}
+		hardeningRoutes := hardeningHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -723,6 +742,7 @@ func Build(opts Options) (*Handler, error) {
 			haRoutes(mux)
 			copilotRoutes(mux)
 			pluginRoutes(mux)
+			hardeningRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -740,6 +760,7 @@ func Build(opts Options) (*Handler, error) {
 		out.HARoutesMounted = true
 		out.CopilotRoutesMounted = true
 		out.PluginRoutesMounted = true
+		out.HardeningRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
