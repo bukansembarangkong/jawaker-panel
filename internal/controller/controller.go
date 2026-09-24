@@ -35,6 +35,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
+	"github.com/bukansembarangkong/jawaker-panel/internal/security"
 	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -131,6 +132,11 @@ type Handler struct {
 	Network *network.Store
 	// NetworkRoutesMounted reports whether the Phase 10 networking routes are registered.
 	NetworkRoutesMounted bool
+	// Security is the Phase 11 security-center store (hardening checks, SSH posture,
+	// security events, bans, WAF rules).
+	Security *security.Store
+	// SecurityRoutesMounted reports whether the Phase 11 security-center routes are registered.
+	SecurityRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -583,6 +589,22 @@ func Build(opts Options) (*Handler, error) {
 		}
 		networkRoutes := networkHandlers.Routes
 
+		// Security Center (Phase 11): hardening checks, SSH posture,
+		// security events, bans, WAF rules.
+		out.Security = security.NewStore(opts.DB)
+		securityHandlers, securityErr := NewSecurityCenterHandlers(SecurityCenterHandlerOptions{
+			Security:   out.Security,
+			Pool:       opts.DB,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger,
+			Audit:      opts.DB,
+			Now:        now,
+		})
+		if securityErr != nil {
+			return nil, fmt.Errorf("controller: security handlers: %w", securityErr)
+		}
+		securityRoutes := securityHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -599,6 +621,7 @@ func Build(opts Options) (*Handler, error) {
 			dnsTLSRoutes(mux)
 			containerRoutes(mux)
 			networkRoutes(mux)
+			securityRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -610,6 +633,7 @@ func Build(opts Options) (*Handler, error) {
 		out.DNSRoutesMounted = true
 		out.ContainerRoutesMounted = true
 		out.NetworkRoutesMounted = true
+		out.SecurityRoutesMounted = true
 		out.Events = broker
 		out.EventStreamMounted = true
 		out.NodeRoutesMounted = nodeRoutes != nil
