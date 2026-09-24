@@ -668,6 +668,28 @@ var Operations = map[Operation]Descriptor{
 		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
 		Mutating:    false,
 	},
+
+	OpUpdateNodeAgent: {
+		Operation:  OpUpdateNodeAgent,
+		Permission: "updates.manage",
+		InputSchema: "{artifact_url: string, expected_sha256: string, version: string} — " +
+			"artifact_url must be an https://github.com release URL; " +
+			"expected_sha256 must be 64 lowercase hex chars",
+		Validation: "artifact_url must parse as https://github.com/**; " +
+			"expected_sha256 must be exactly 64 hex characters; " +
+			"the agent verifies the digest before replacing the binary",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead:  []string{"/proc/self/exe"},
+			FilesystemWrite: []string{"/usr/local/bin/jawaker-nodeagent"},
+			Network:         "outbound HTTPS to github.com for artifact download",
+		},
+		Timeout:     5 * time.Minute,
+		AuditAction: "update.node.agent.apply",
+		Retry:       RetryPolicy{Idempotent: false, MaxAttempts: 0},
+		Rollback:    "the atomic rename leaves the previous binary in place if verification fails; no explicit rollback step is needed",
+		Mutating:    true,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for

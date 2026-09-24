@@ -877,6 +877,28 @@ func (d *Dispatcher) SecBanList(ctx context.Context, serverID, requestID string,
 	return out, nil
 }
 
+// UpdateNodeAgent instructs the node agent to download and atomically replace
+// its own binary. The artifact URL must be a verified github.com release URL.
+func (d *Dispatcher) UpdateNodeAgent(ctx context.Context, serverID, requestID string, in nodewire.UpdateNodeAgentInput) (nodewire.UpdateNodeAgentResult, error) {
+	var out nodewire.UpdateNodeAgentResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid update node agent input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpUpdateNodeAgent,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode update node agent result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.
