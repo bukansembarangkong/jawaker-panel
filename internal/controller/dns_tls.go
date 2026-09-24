@@ -584,8 +584,8 @@ func (h *DNSTLSHandlers) handleImportCert(w http.ResponseWriter, r *http.Request
 				httpserver.WriteError(w, r, apierr.InvalidRequest("invalid chain_pem: "+err.Error(), nil))
 				return
 			}
-			if err := validateKeyMatchesCert(req.PrivateKeyPEM, leafCert); err != nil {
-				httpserver.WriteError(w, r, apierr.InvalidRequest("key/certificate mismatch: "+err.Error(), nil))
+			if keyErr := validateKeyMatchesCert(req.PrivateKeyPEM, leafCert); keyErr != nil {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("key/certificate mismatch: "+keyErr.Error(), nil))
 				return
 			}
 
@@ -962,15 +962,10 @@ func validateKeyMatchesCert(privateKeyPEM string, leaf *x509.Certificate) error 
 	if block == nil {
 		return errors.New("no PEM block found in private key")
 	}
-	// tls.X509KeyPair handles RSA, ECDSA, Ed25519.
-	_, err := tls.X509KeyPair([]byte(leaf.Raw), []byte(privateKeyPEM))
-	if err != nil {
-		// Build a minimal PEM for the leaf to pass to X509KeyPair.
-		leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf.Raw})
-		_, err = tls.X509KeyPair(leafPEM, []byte(privateKeyPEM))
-		if err != nil {
-			return fmt.Errorf("key does not match certificate: %w", err)
-		}
+	// leaf.Raw is DER; X509KeyPair requires PEM.
+	leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf.Raw})
+	if _, err := tls.X509KeyPair(leafPEM, []byte(privateKeyPEM)); err != nil {
+		return fmt.Errorf("key does not match certificate: %w", err)
 	}
 	return nil
 }
