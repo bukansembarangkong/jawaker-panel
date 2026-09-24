@@ -126,7 +126,6 @@ type Volume struct {
 }
 
 const registryColumns = `id, project_id, name, host, secret_ref, created_at, deleted_at`
-const imageColumns = `id, project_id, server_id, registry_id, reference, image_id, size_bytes, created_at, deleted_at`
 const stackColumns = `id, project_id, server_id, name, state, compose_yaml, created_at, deleted_at`
 const containerColumns = `id, project_id, server_id, stack_id, name, container_id, image_ref, state, cpu_limit, mem_limit_mb, privileged, health, started_at, created_at, deleted_at`
 const volumeColumns = `id, project_id, server_id, container_id, name, driver, mount_point, size_bytes, created_at, deleted_at`
