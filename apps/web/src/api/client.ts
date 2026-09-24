@@ -2324,3 +2324,35 @@ export const tokenApi = {
     return request(`/api/v1/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
+
+export interface PlatformUser {
+  id: string;
+  email: string;
+  display_name: string;
+  state: string;
+  account_type: string;
+  is_owner: boolean;
+  last_login_at?: string;
+  created_at: string;
+}
+
+export const userApi = {
+  list(): Promise<{ users: PlatformUser[]; total: number; request_id: string }> {
+    return request('/api/v1/users');
+  },
+  create(input: { email: string; display_name: string; password: string; account_type?: string }): Promise<{ user_id: string; request_id: string }> {
+    return request('/api/v1/users', { method: 'POST', body: input });
+  },
+  get(id: string): Promise<{ user: PlatformUser; request_id: string }> {
+    return request(`/api/v1/users/${encodeURIComponent(id)}`);
+  },
+  setState(id: string, state: 'active' | 'suspended'): Promise<{ user_id: string; state: string; request_id: string }> {
+    return request(`/api/v1/users/${encodeURIComponent(id)}/state`, { method: 'POST', body: { state } });
+  },
+  bindRole(id: string, input: { role_key: string; scope_type: string; scope_id?: string }): Promise<{ bound: boolean; request_id: string }> {
+    return request(`/api/v1/users/${encodeURIComponent(id)}/roles`, { method: 'POST', body: input });
+  },
+  unbindRole(id: string, bindingId: string): Promise<{ unbound: boolean; request_id: string }> {
+    return request(`/api/v1/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
+  },
+};
