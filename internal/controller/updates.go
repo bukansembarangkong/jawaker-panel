@@ -353,19 +353,17 @@ func (h *UpdatesHandlers) handleCanaryApply(w http.ResponseWriter, r *http.Reque
 			}
 
 			// Canary: mark applying.
-			if err := h.store.UpsertCanaryEntry(r.Context(), jobID, serverID, "applying", ""); err != nil {
+			if err = h.store.UpsertCanaryEntry(r.Context(), jobID, serverID, "applying", ""); err != nil {
 				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
 				return
 			}
 
 			requestID := httpserver.RequestIDFromRequest(r)
-			// checksumURL is used to obtain the expected SHA-256 at apply time.
-			// For now, checksum must be provided in the job's release checksumURL field.
 			// ponytail: real implementation fetches checksums.txt from rel.ChecksumURL; add when background worker exists.
 			var checksumReq struct {
 				ExpectedSHA256 string `json:"expected_sha256"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&checksumReq); err != nil || checksumReq.ExpectedSHA256 == "" {
+			if decErr := json.NewDecoder(r.Body).Decode(&checksumReq); decErr != nil || checksumReq.ExpectedSHA256 == "" {
 				_ = h.store.UpsertCanaryEntry(r.Context(), jobID, serverID, "failed", "expected_sha256 is required in request body")
 				httpserver.WriteError(w, r, apierr.InvalidRequest("expected_sha256 is required", nil))
 				return
