@@ -15,11 +15,13 @@ package authsession
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/apierr"
@@ -98,8 +100,95 @@ func Middleware(opts Options, next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := auth.SessionTokenFromRequest(r)
+		bearer := r.Header.Get("Authorization")
+		isBearer := false
+		if token == "" && strings.HasPrefix(bearer, "Bearer ") {
+			rawBearer := strings.TrimPrefix(bearer, "Bearer ")
+			if strings.HasPrefix(rawBearer, "jwk_") {
+				token = rawBearer
+				isBearer = true
+			}
+		}
+
 		if token == "" {
 			next.ServeHTTP(w, r)
+			return
+		}
+
+		if isBearer {
+			// Resolve API token directly from api_tokens table
+			hash := sha256.Sum256([]byte(token))
+			var tokenID, userID string
+			var scopes, cidrs []string
+			var expiresAt, revokedAt *time.Time
+			err := opts.DB.QueryRow(r.Context(), `
+				SELECT id, user_id, scopes, allowed_cidrs, expires_at, revoked_at
+				FROM api_tokens
+				WHERE token_hash = $1
+			`, hash[:]).Scan(&tokenID, &userID, &scopes, &cidrs, &expiresAt, &revokedAt)
+
+			now := opts.now()
+			if err != nil || revokedAt != nil || (expiresAt != nil && now.After(*expiresAt)) {
+				// Invalid/expired/revoked token
+				httpserver.WriteError(w, r, apierr.Unauthorized("API token is invalid or expired"))
+				return
+			}
+
+			// Validate IP if CIDRs set
+			if len(cidrs) > 0 {
+				clientIP := parseClientAddr(r)
+				allowed := false
+				for _, c := range cidrs {
+					if prefix, err := netip.ParsePrefix(c); err == nil && prefix.Contains(clientIP) {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					httpserver.WriteError(w, r, apierr.Forbidden("Client IP address is not permitted for this API token"))
+					return
+				}
+			}
+
+			// Load user
+			var user identity.User
+			err = opts.DB.QueryRow(r.Context(), `
+				SELECT id, email, display_name, state, is_owner
+				FROM users
+				WHERE id = $1 AND state = 'active' AND deleted_at IS NULL
+			`, userID).Scan(&user.ID, &user.Email, &user.DisplayName, &user.State, &user.IsOwner)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Unauthorized("User account inactive or not found"))
+				return
+			}
+
+			grants, err := identity.LoadGrants(r.Context(), opts.DB, user.ID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.DatabaseUnavailable())
+				return
+			}
+
+			elevated := now.Add(time.Hour)
+			principal := auth.Principal{
+				Principal: rbac.Principal{
+					UserID:        user.ID,
+					Grants:        toRBACGrants(grants),
+					ElevatedUntil: &elevated,
+					ClientAddr:    parseClientAddr(r),
+				},
+				SessionID:   tokenID,
+				UserID:      user.ID,
+				Email:       user.Email,
+				DisplayName: user.DisplayName,
+				IsOwner:     user.IsOwner,
+			}
+
+			// Async update last_used_at
+			go func(tID string, at time.Time) {
+				_, _ = opts.DB.Exec(context.Background(), `UPDATE api_tokens SET last_used_at = $1 WHERE id = $2`, at, tID)
+			}(tokenID, now)
+
+			next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), principal)))
 			return
 		}
 
