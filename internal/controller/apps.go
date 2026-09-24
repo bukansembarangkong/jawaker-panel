@@ -108,6 +108,10 @@ func (h *AppHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/webhook-tokens", h.handleListWebhookTokens)
 	mux.HandleFunc("DELETE /api/v1/projects/{project_id}/apps/{id}/webhook-tokens/{token_id}", h.handleRevokeWebhookToken)
 	mux.HandleFunc("POST /api/v1/webhooks/git/{token}", h.handleGitWebhook)
+	// Preview Environments (PRD §11.6)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/apps/{id}/previews", h.handleListPreviews)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/apps/{id}/previews", h.handleCreatePreview)
+	mux.HandleFunc("DELETE /api/v1/projects/{project_id}/apps/{id}/previews/{preview_id}", h.handleDeletePreview)
 }
 
 // --- CRUD -------------------------------------------------------------------
@@ -1134,4 +1138,175 @@ func deploymentResponses(list []apps.Deployment) []map[string]any {
 		out[i] = deploymentResponse(d)
 	}
 	return out
+}
+
+// ── Preview Environments Handlers (PRD §11.6) ────────────────────────────────
+
+type appPreviewItem struct {
+	ID         string     `json:"id"`
+	AppID      string     `json:"app_id"`
+	ProjectID  string     `json:"project_id"`
+	Branch     string     `json:"branch"`
+	PRNumber   *int       `json:"pr_number,omitempty"`
+	PreviewURL string     `json:"preview_url"`
+	Status     string     `json:"status"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
+type createPreviewRequest struct {
+	Branch   string `json:"branch"`
+	PRNumber *int   `json:"pr_number,omitempty"`
+}
+
+func (h *AppHandlers) handleListPreviews(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	appID := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := h.apps.GetAppInProject(r.Context(), projectID, appID)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			rows, err := h.pool.Query(r.Context(), `
+				SELECT id, app_id, project_id, branch, pr_number, preview_url, status, created_at, expires_at
+				FROM app_previews
+				WHERE app_id = $1 AND project_id = $2 AND status != 'terminated'
+				ORDER BY created_at DESC
+			`, appID, projectID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			defer rows.Close()
+
+			var list []appPreviewItem
+			for rows.Next() {
+				var item appPreviewItem
+				if err := rows.Scan(&item.ID, &item.AppID, &item.ProjectID, &item.Branch, &item.PRNumber, &item.PreviewURL, &item.Status, &item.CreatedAt, &item.ExpiresAt); err == nil {
+					list = append(list, item)
+				}
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"previews":   list,
+				"total":      len(list),
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+func (h *AppHandlers) handleCreatePreview(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	appID := r.PathValue("id")
+	authsession.RequirePermission(h.now, "deployment.create", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			app, err := h.apps.GetAppInProject(r.Context(), projectID, appID)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			var req createPreviewRequest
+			if err := decodeJSONStrict(r, &req); err != nil {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(err.Error(), nil))
+				return
+			}
+			req.Branch = strings.TrimSpace(req.Branch)
+			if req.Branch == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("branch is required", nil))
+				return
+			}
+
+			// Generate ephemeral preview subdomain: e.g. pr-12.slug.preview.local or branch.slug.preview.local
+			cleanBranch := regexp.MustCompile(`[^a-zA-Z0-9-]`).ReplaceAllString(req.Branch, "-")
+			previewURL := fmt.Sprintf("https://%s-%s.preview.local", strings.ToLower(cleanBranch), app.Slug)
+			if req.PRNumber != nil && *req.PRNumber > 0 {
+				previewURL = fmt.Sprintf("https://pr-%d-%s.preview.local", *req.PRNumber, app.Slug)
+			}
+
+			var previewID string
+			var createdAt time.Time
+			err = h.pool.QueryRow(r.Context(), `
+				INSERT INTO app_previews (app_id, project_id, branch, pr_number, preview_url, status)
+				VALUES ($1, $2, $3, $4, $5, 'active')
+				RETURNING id, created_at
+			`, appID, projectID, req.Branch, req.PRNumber, previewURL).Scan(&previewID, &createdAt)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+
+			_ = audit.Record(r.Context(), h.audit, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "app.preview.create",
+				ResourceType: "app_preview",
+				ResourceID:   previewID,
+				Result:       audit.ResultSuccess,
+				Context: map[string]any{
+					"app_id":      appID,
+					"branch":      req.Branch,
+					"preview_url": previewURL,
+				},
+			})
+
+			writeJSONResponse(w, http.StatusCreated, map[string]any{
+				"preview": appPreviewItem{
+					ID:         previewID,
+					AppID:      appID,
+					ProjectID:  projectID,
+					Branch:     req.Branch,
+					PRNumber:   req.PRNumber,
+					PreviewURL: previewURL,
+					Status:     "active",
+					CreatedAt:  createdAt,
+				},
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+func (h *AppHandlers) handleDeletePreview(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	appID := r.PathValue("id")
+	previewID := r.PathValue("preview_id")
+	authsession.RequirePermission(h.now, "deployment.manage", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := h.apps.GetAppInProject(r.Context(), projectID, appID)
+			if err != nil {
+				httpserver.WriteError(w, r, appErr(err))
+				return
+			}
+			tag, err := h.pool.Exec(r.Context(), `
+				UPDATE app_previews SET status = 'terminated', updated_at = now()
+				WHERE id = $1 AND app_id = $2 AND project_id = $3
+			`, previewID, appID, projectID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			if tag.RowsAffected() == 0 {
+				httpserver.WriteError(w, r, apierr.NotFound("preview environment not found"))
+				return
+			}
+
+			_ = audit.Record(r.Context(), h.audit, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "app.preview.teardown",
+				ResourceType: "app_preview",
+				ResourceID:   previewID,
+				Result:       audit.ResultSuccess,
+				Context: map[string]any{
+					"app_id": appID,
+				},
+			})
+
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"preview_id": previewID,
+				"status":     "terminated",
+				"message":    "Preview environment torn down successfully.",
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
 }

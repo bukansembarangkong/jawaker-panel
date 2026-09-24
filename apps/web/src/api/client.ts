@@ -599,6 +599,25 @@ export const api = {
       { method: 'DELETE' },
     ),
 
+  // --- Preview Environments (PRD §11.6) ----------------------------------------
+
+  listPreviews: (projectId: string, appId: string): Promise<{ previews: Array<{ id: string; app_id: string; branch: string; pr_number?: number; preview_url: string; status: string; created_at: string }>; total: number }> =>
+    request<{ previews: Array<{ id: string; app_id: string; branch: string; pr_number?: number; preview_url: string; status: string; created_at: string }>; total: number }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/previews`,
+    ),
+
+  createPreview: (projectId: string, appId: string, input: { branch: string; pr_number?: number }): Promise<{ preview: { id: string; app_id: string; branch: string; pr_number?: number; preview_url: string; status: string; created_at: string } }> =>
+    request<{ preview: { id: string; app_id: string; branch: string; pr_number?: number; preview_url: string; status: string; created_at: string } }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/previews`,
+      { method: 'POST', body: input },
+    ),
+
+  deletePreview: (projectId: string, appId: string, previewId: string): Promise<{ preview_id: string; status: string; message: string }> =>
+    request<{ preview_id: string; status: string; message: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/previews/${encodeURIComponent(previewId)}`,
+      { method: 'DELETE' },
+    ),
+
   // --- Databases (Phase 5) ----------------------------------------------------
 
   listDatabases: (projectId: string): Promise<DatabasePage> =>
