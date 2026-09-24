@@ -2083,3 +2083,93 @@ export const haApi = {
     );
   },
 };
+
+// ── AI Copilot (Phase 15) ─────────────────────────────────────────────────────
+
+export interface CopilotSession {
+  id: string;
+  project_id: string;
+  user_id: string;
+  state: string;
+  intent: string;
+  context: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CopilotPlan {
+  id: string;
+  session_id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  steps: unknown[];
+  risk_level: string;
+  state: string;
+  created_by: string;
+  reviewed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CopilotApproval {
+  id: string;
+  plan_id: string;
+  requested_by: string;
+  reviewed_by: string | null;
+  state: string;
+  comment: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const copilotApi = {
+  listSessions(projectId: string): Promise<{ sessions: CopilotSession[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/sessions`);
+  },
+  createSession(projectId: string, intent: string): Promise<{ session: CopilotSession; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/sessions`, {
+      method: 'POST',
+      body: { intent },
+    });
+  },
+  getSession(projectId: string, id: string): Promise<{ session: CopilotSession; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/sessions/${encodeURIComponent(id)}`);
+  },
+  closeSession(projectId: string, id: string, state: string): Promise<{ state: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/sessions/${encodeURIComponent(id)}/close`, {
+      method: 'POST',
+      body: { state },
+    });
+  },
+
+  listPlans(projectId: string): Promise<{ plans: CopilotPlan[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans`);
+  },
+  getPlan(projectId: string, id: string): Promise<{ plan: CopilotPlan; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(id)}`);
+  },
+  submitPlan(projectId: string, id: string): Promise<{ plan_id: string; state?: string; approval?: CopilotApproval; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(id)}/submit`, {
+      method: 'POST',
+      body: {},
+    });
+  },
+  cancelPlan(projectId: string, id: string): Promise<{ cancelled: boolean; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+      body: {},
+    });
+  },
+
+  listApprovals(projectId: string, planId: string): Promise<{ approvals: CopilotApproval[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(planId)}/approvals`);
+  },
+  reviewApproval(projectId: string, planId: string, id: string, state: string, comment: string): Promise<{ approval: CopilotApproval; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(planId)}/approvals/${encodeURIComponent(id)}/review`,
+      { method: 'POST', body: { state, comment } },
+    );
+  },
+};
