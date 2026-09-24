@@ -163,6 +163,12 @@ func (e *Executors) InspectContainer(ctx context.Context, name string) (nodewire
 	if e.dockerPath == "" {
 		return nodewire.ContainerInspectResult{}, notAvailable("docker is not installed on this host")
 	}
+	if !nodewire.ValidContainerName(name) {
+		return nodewire.ContainerInspectResult{}, &nodewire.Error{
+			Code:    nodewire.CodeInvalidInput,
+			Message: "container name contains characters that are not safe to pass to the docker CLI",
+		}
+	}
 
 	e.spawns.Add(1)
 	result, err := e.cmdRunner(ctx, CommandSpec{
@@ -288,6 +294,12 @@ func (e *Executors) ContainerLogs(ctx context.Context, in nodewire.ContainerLogs
 	}
 	if e.dockerPath == "" {
 		return nodewire.ContainerLogsResult{}, notAvailable("docker is not installed on this host")
+	}
+	if !nodewire.ValidContainerName(in.Name) {
+		return nodewire.ContainerLogsResult{}, &nodewire.Error{
+			Code:    nodewire.CodeInvalidInput,
+			Message: "container name contains characters that are not safe to pass to the docker CLI",
+		}
 	}
 
 	lines := in.Lines
