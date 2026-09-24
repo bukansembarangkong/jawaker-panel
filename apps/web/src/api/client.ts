@@ -717,6 +717,25 @@ export const api = {
       { method: 'POST', body: { dump_path: dumpPath } },
     ),
 
+  // --- Database Rescue Mode (PRD §12.5) ----------------------------------------
+
+  getRescueDiagnostics: (
+    projectId: string,
+    id: string,
+  ): Promise<{ database_id: string; database_state: string; engine: string; failed_jobs: any[]; rescue_actions: string[]; data_dir_protected: boolean; request_id: string }> =>
+    request<{ database_id: string; database_state: string; engine: string; failed_jobs: any[]; rescue_actions: string[]; data_dir_protected: boolean; request_id: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/rescue/diagnostics`,
+    ),
+
+  rescueRollback: (
+    projectId: string,
+    id: string,
+  ): Promise<{ database_id: string; state: string; message: string; data_protected: boolean; request_id: string }> =>
+    request<{ database_id: string; state: string; message: string; data_protected: boolean; request_id: string }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(id)}/rescue/rollback`,
+      { method: 'POST' },
+    ),
+
   // --- Backups (Phase 6) -------------------------------------------------------
 
   listBackupPlans: (projectId: string): Promise<BackupPlanPage> =>

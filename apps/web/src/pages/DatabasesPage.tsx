@@ -84,6 +84,16 @@ export function DatabasesPage() {
   const [restorePath, setRestorePath] = useState('');
   const [dumpJobMsg, setDumpJobMsg] = useState<string | null>(null);
   const [restoreJobMsg, setRestoreJobMsg] = useState<string | null>(null);
+  const [rescueDiagnostics, setRescueDiagnostics] = useState<{
+    database_id: string;
+    database_state: string;
+    engine: string;
+    failed_jobs: Array<{ id: string; type: string; state: string; error_summary?: string }>;
+    rescue_actions: string[];
+    data_dir_protected: boolean;
+  } | null>(null);
+  const [rescueMsg, setRescueMsg] = useState<string | null>(null);
+  const [rescueLoading, setRescueLoading] = useState(false);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -272,6 +282,38 @@ export function DatabasesPage() {
         const res = await api.restoreDatabase(selectedProject.id, selectedDb.id, restorePath.trim());
         setRestoreJobMsg(`Restore job queued (Job ID: ${res.job_id}). Recoverability will be verified automatically.`);
         setRestorePath('');
+      } catch (err: unknown) {
+        if (isStepUpRequired(err)) {
+          onElevationRequired(run);
+          return;
+        }
+        setError(toError(err));
+      }
+    };
+    await run();
+  };
+
+  const handleLoadRescue = async () => {
+    if (!selectedProject || !selectedDb) return;
+    setRescueLoading(true);
+    setRescueMsg(null);
+    try {
+      const diag = await api.getRescueDiagnostics(selectedProject.id, selectedDb.id);
+      setRescueDiagnostics(diag);
+    } catch (err: unknown) {
+      setError(toError(err));
+    } finally {
+      setRescueLoading(false);
+    }
+  };
+
+  const handleRescueRollback = async () => {
+    if (!selectedProject || !selectedDb) return;
+    const run = async () => {
+      try {
+        const res = await api.rescueRollback(selectedProject.id, selectedDb.id);
+        setRescueMsg(res.message);
+        await loadDatabases(selectedProject.id);
       } catch (err: unknown) {
         if (isStepUpRequired(err)) {
           onElevationRequired(run);
@@ -599,6 +641,65 @@ export function DatabasesPage() {
                 </button>
                 {restoreJobMsg && <p className="text-xs text-ink-secondary">{restoreJobMsg}</p>}
               </form>
+
+              {/* Database Rescue Mode (PRD §12.5) */}
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-amber-500 flex items-center gap-1.5">
+                      <span>🛡️</span> Database Rescue Mode & Diagnostics (PRD §12.5)
+                    </h4>
+                    <p className="text-xs text-ink-muted mt-1">
+                      In-place recovery for corrupted configuration or failed upgrades. Guarantees raw data directory preservation.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadRescue()}
+                    disabled={rescueLoading}
+                    className={secondaryButtonClass}
+                  >
+                    {rescueLoading ? 'Scanning...' : 'Run Diagnostics'}
+                  </button>
+                </div>
+
+                {rescueMsg && (
+                  <div className="rounded p-2 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    {rescueMsg}
+                  </div>
+                )}
+
+                {rescueDiagnostics && (
+                  <div className="space-y-2 pt-2 border-t border-line/60">
+                    <div className="flex items-center gap-4 text-xs">
+                      <div><span className="text-ink-muted">State:</span> <span className="font-mono font-medium">{rescueDiagnostics.database_state}</span></div>
+                      <div><span className="text-ink-muted">Data Directory:</span> <span className="text-emerald-500 font-medium">✓ Protected</span></div>
+                    </div>
+                    {rescueDiagnostics.failed_jobs && rescueDiagnostics.failed_jobs.length > 0 ? (
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold text-ink-muted">Recent Failed Jobs:</div>
+                        {rescueDiagnostics.failed_jobs.map((fj) => (
+                          <div key={fj.id} className="text-xs font-mono bg-canvas p-1.5 rounded border border-line flex justify-between">
+                            <span>{fj.type} ({fj.state})</span>
+                            <span className="text-rose-500">{fj.error_summary || 'Unknown error'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-ink-muted">No recent failed jobs found in queue.</p>
+                    )}
+                    <div className="pt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleRescueRollback()}
+                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 transition"
+                      >
+                        Rollback to Last-Known-Good Config
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
