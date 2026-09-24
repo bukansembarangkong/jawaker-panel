@@ -44,7 +44,7 @@ func NewWorker(cfg WorkerConfig) *Worker {
 	}
 }
 
-// Run starts the background ticker loop. It blocks until the context is cancelled.
+// Run starts the background ticker loop. It blocks until the context is canceled.
 func (w *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
