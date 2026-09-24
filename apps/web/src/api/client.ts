@@ -2532,3 +2532,26 @@ export const automationApi = {
     return request(`/api/v1/webhooks/outbound/${encodeURIComponent(id)}/test`, { method: 'POST', body: {} });
   },
 };
+
+export interface AttackModeStatus {
+  server_id: string;
+  enabled: boolean;
+  rate_limit_multiplier: number;
+  challenge_suspicious: boolean;
+  restrict_expensive: boolean;
+  activated_by?: string;
+  activated_at?: string;
+  updated_at: string;
+}
+
+export const attackModeApi = {
+  get(serverId: string): Promise<{ attack_mode: AttackModeStatus; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/attack-mode`);
+  },
+  enable(serverId: string): Promise<{ enabled: boolean; server_id: string; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/attack-mode`, { method: 'POST', body: {} });
+  },
+  disable(serverId: string): Promise<{ enabled: boolean; server_id: string; request_id: string }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/attack-mode`, { method: 'DELETE' });
+  },
+};

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   securityCenterApi,
+  attackModeApi,
   isStepUpRequired,
+  type AttackModeStatus,
   type BanEntry,
   type HardeningCheck,
   type HardeningFinding,
@@ -61,6 +63,8 @@ export function SecurityCenterPage() {
   const [error, setError] = useState<Error | null>(null);
   const [stepUpPending, setStepUpPending] = useState(false);
   const [stepUpAction, setStepUpAction] = useState<(() => Promise<void>) | null>(null);
+  const [attackMode, setAttackMode] = useState<AttackModeStatus | null>(null);
+  const [attackModeLoading, setAttackModeLoading] = useState(false);
 
   // Hardening tab
   const [checks, setChecks] = useState<HardeningCheck[]>([]);
@@ -188,6 +192,31 @@ export function SecurityCenterPage() {
     loadData();
   }
 
+  async function loadAttackMode(sid: string) {
+    if (!sid) return;
+    try {
+      const res = await attackModeApi.get(sid);
+      setAttackMode(res.attack_mode);
+    } catch { /* ignore */ }
+  }
+
+  async function handleToggleAttackMode() {
+    if (!serverId) return;
+    setAttackModeLoading(true);
+    try {
+      if (attackMode?.enabled) {
+        await attackModeApi.disable(serverId);
+      } else {
+        await attackModeApi.enable(serverId);
+      }
+      await loadAttackMode(serverId);
+    } catch (e) {
+      setError(toError(e));
+    } finally {
+      setAttackModeLoading(false);
+    }
+  }
+
   const tabClass = (t: Tab) =>
     `px-3 py-1.5 text-sm rounded-md ${tab === t ? 'bg-elevated font-medium text-ink' : 'text-ink-secondary hover:text-ink'}`;
 
@@ -197,9 +226,36 @@ export function SecurityCenterPage() {
     <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-base font-semibold">Security Center</h2>
-        <select className={inputClass} value={serverId} onChange={(e) => setServerId(e.target.value)} aria-label="Select server">
+        <select className={inputClass} value={serverId} onChange={(e) => { setServerId(e.target.value); void loadAttackMode(e.target.value); }} aria-label="Select server">
           {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+      </div>
+
+      {/* Under Attack Mode Banner (PRD §21.4) */}
+      <div className={`rounded-lg border p-4 flex items-center justify-between ${
+        attackMode?.enabled
+          ? 'border-red-400 bg-red-50 dark:bg-red-950/20'
+          : 'border-border bg-surface'
+      }`}>
+        <div>
+          <p className={`text-sm font-semibold ${attackMode?.enabled ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>
+            {attackMode?.enabled ? '🚨 Under Attack Mode — ACTIVE' : 'Under Attack Mode (PRD §21.4)'}
+          </p>
+          <p className="text-xs text-ink-secondary mt-0.5">
+            {attackMode?.enabled
+              ? `Activated: ${attackMode.activated_at ? new Date(attackMode.activated_at).toLocaleString() : 'just now'}. Rate limits tightened ${attackMode.rate_limit_multiplier}×. Suspicious traffic challenged.`
+              : 'Temporarily tightens rate limits, challenges suspicious traffic, restricts expensive endpoints.'}
+          </p>
+        </div>
+        <button
+          onClick={() => void handleToggleAttackMode()}
+          disabled={attackModeLoading}
+          className={`rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
+            attackMode?.enabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+          }`}
+        >
+          {attackModeLoading ? 'Updating…' : attackMode?.enabled ? 'Deactivate' : 'Activate Under Attack Mode'}
+        </button>
       </div>
 
       {error && <ErrorNote error={error} onRetry={loadData} />}
