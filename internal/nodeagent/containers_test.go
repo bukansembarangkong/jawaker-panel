@@ -43,7 +43,7 @@ func TestListContainersParsesDockerPSOutput(t *testing.T) {
 	e := &Executors{
 		dockerPath:      "/usr/bin/docker",
 		dockerAvailable: true,
-		now: func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
+		now:             func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
 		cmdRunner: func(_ context.Context, spec CommandSpec) (CommandResult, error) {
 			// Assert the argv shape.
 			if spec.Path != "/usr/bin/docker" {
@@ -103,7 +103,7 @@ func TestInspectContainerParsesInspectOutput(t *testing.T) {
 	e := &Executors{
 		dockerPath:      "/usr/bin/docker",
 		dockerAvailable: true,
-		now: func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
+		now:             func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
 		cmdRunner: func(_ context.Context, spec CommandSpec) (CommandResult, error) {
 			if spec.Args[0] != "inspect" {
 				t.Errorf("first arg = %q, want inspect", spec.Args[0])
@@ -158,7 +158,7 @@ func TestContainerLogsRedactsSecretPatterns(t *testing.T) {
 	e := &Executors{
 		dockerPath:      "/usr/bin/docker",
 		dockerAvailable: true,
-		now: func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
+		now:             func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
 		cmdRunner: func(_ context.Context, _ CommandSpec) (CommandResult, error) {
 			return CommandResult{Stdout: rawOutput}, nil
 		},
@@ -189,7 +189,7 @@ func TestContainerLogsRejectsInvalidRedactPattern(t *testing.T) {
 	e := &Executors{
 		dockerPath:      "/usr/bin/docker",
 		dockerAvailable: true,
-		now: func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
+		now:             func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
 		cmdRunner: func(_ context.Context, _ CommandSpec) (CommandResult, error) {
 			return CommandResult{Stdout: "line\n"}, nil
 		},
@@ -211,7 +211,7 @@ func TestContainerLogsCapsLines(t *testing.T) {
 	e := &Executors{
 		dockerPath:      "/usr/bin/docker",
 		dockerAvailable: true,
-		now: func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
+		now:             func() time.Time { return time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC) },
 		cmdRunner: func(_ context.Context, spec CommandSpec) (CommandResult, error) {
 			// Verify that the --tail arg is capped at 1000.
 			for i, arg := range spec.Args {
