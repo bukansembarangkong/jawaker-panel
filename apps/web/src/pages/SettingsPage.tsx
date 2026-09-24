@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { ErrorNote, secondaryButtonClass } from '../components/ui';
 import type { ApiError } from '../api/client';
+import { useTheme, type Theme } from '../theme/useTheme';
 
 type Tab = 'general' | 'security' | 'sessions' | 'audit';
 
 export function SettingsPage() {
   const [tab, setTab] = useState<Tab>('general');
   const [_error] = useState<ApiError | Error | null>(null);
+  const { theme, setTheme } = useTheme();
 
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 ${
@@ -64,6 +66,26 @@ export function SettingsPage() {
                 placeholder="https://…"
                 className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
               />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-base font-medium text-ink">Appearance</h2>
+            <p className="text-xs text-ink-secondary">Choose the color theme for the JAWAKER Panel interface.</p>
+            <div className="flex gap-2">
+              {(['system', 'light', 'dark'] as Theme[]).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setTheme(opt)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    theme === opt
+                      ? 'bg-accent text-white border-accent'
+                      : 'border-border text-ink-secondary hover:text-ink hover:border-ink-secondary'
+                  }`}
+                  aria-pressed={theme === opt}
+                >
+                  {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
         </section>
