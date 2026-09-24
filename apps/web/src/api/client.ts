@@ -2599,3 +2599,34 @@ export const attackModeApi = {
     return request(`/api/v1/servers/${encodeURIComponent(serverId)}/security/attack-mode`, { method: 'DELETE' });
   },
 };
+
+// --- Terminal API (PRD §17.4) ------------------------------------------------
+// Bounded task runner: exec runs only allowlisted commands.
+// SSE audit stream: EventSource('/api/v1/servers/{id}/terminal/stream') for read-only.
+
+export const terminalApi = {
+  exec(
+    serverId: string,
+    command: string,
+    args: string[] = [],
+    mode = 'project',
+  ): Promise<{
+    server_id: string;
+    command: string;
+    stdout: string;
+    stderr: string;
+    exit_code: number;
+    error?: string;
+    request_id: string;
+  }> {
+    return request(`/api/v1/servers/${encodeURIComponent(serverId)}/terminal/exec`, {
+      method: 'POST',
+      body: { command, args, mode },
+    });
+  },
+  // Returns a URL for EventSource (SSE) — construct in the component.
+  streamUrl(serverId: string): string {
+    return `/api/v1/servers/${encodeURIComponent(serverId)}/terminal/stream`;
+  },
+};
+
