@@ -157,3 +157,40 @@ type ContainerLogsResult struct {
 	// ObservedAt is when the tail was collected.
 	ObservedAt time.Time `json:"observed_at"`
 }
+
+// ContainerLifecycleInput is the input for container.lifecycle.
+type ContainerLifecycleInput struct {
+	// Name is the container name. Must satisfy ValidContainerName.
+	Name string `json:"name"`
+	// Action is one of: "start", "stop", "restart".
+	Action string `json:"action"`
+}
+
+// Validate checks that the input is well-formed.
+func (in ContainerLifecycleInput) Validate() error {
+	var errs []error
+	if in.Name == "" {
+		errs = append(errs, errors.New("container name is required"))
+	} else if !ValidContainerName(in.Name) {
+		errs = append(errs, errors.New("container name contains characters that are not safe to pass to the docker CLI"))
+	}
+	switch in.Action {
+	case "start", "stop", "restart":
+		// valid
+	default:
+		errs = append(errs, errors.New("action must be one of: start, stop, restart"))
+	}
+	return errors.Join(errs...)
+}
+
+// ContainerLifecycleResult is the output of container.lifecycle.
+type ContainerLifecycleResult struct {
+	// Name is the container name.
+	Name string `json:"name"`
+	// Action is the action that was performed.
+	Action string `json:"action"`
+	// Success reports whether the action completed without error.
+	Success bool `json:"success"`
+	// Message is an optional detail from docker (trimmed stdout/stderr).
+	Message string `json:"message,omitempty"`
+}

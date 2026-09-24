@@ -43,6 +43,7 @@ func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 		OpContainerList,
 		OpContainerInspect,
 		OpContainerLogs,
+		OpContainerLifecycle,
 		OpNetFirewallList,
 		OpNetPortInventory,
 		OpNetDiag,

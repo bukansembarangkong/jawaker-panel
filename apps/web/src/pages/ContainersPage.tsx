@@ -59,6 +59,7 @@ export function ContainersPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [showCreateRegistry, setShowCreateRegistry] = useState(false);
   const [newReg, setNewReg] = useState({ name: '', host: '', password: '' });
+  const [lifecycleLoading, setLifecycleLoading] = useState<Record<string, boolean>>({});
 
   // Load projects from the api.listProjects endpoint via the existing api object.
   // ponytail: api object not imported here — use the same import pattern as DatabasesPage
@@ -151,6 +152,25 @@ export function ContainersPage() {
       } else {
         setError(toError(e));
       }
+    }
+  }
+
+  async function handleLifecycle(c: Container, action: 'start' | 'stop' | 'restart') {
+    setLifecycleLoading((prev) => ({ ...prev, [c.id]: true }));
+    setError(null);
+    try {
+      if (action === 'start') {
+        await containerApi.startContainer(c.project_id, c.id);
+      } else if (action === 'stop') {
+        await containerApi.stopContainer(c.project_id, c.id);
+      } else if (action === 'restart') {
+        await containerApi.restartContainer(c.project_id, c.id);
+      }
+      loadData();
+    } catch (e: unknown) {
+      setError(toError(e));
+    } finally {
+      setLifecycleLoading((prev) => ({ ...prev, [c.id]: false }));
     }
   }
 
@@ -263,12 +283,40 @@ export function ContainersPage() {
                       </td>
                       <td className="px-4 py-3 text-ink-secondary">{formatTs(c.started_at)}</td>
                       <td className="px-4 py-3">
-                        <button
-                          className={secondaryButtonClass}
-                          onClick={() => openLogs(c)}
-                        >
-                          Logs
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className={secondaryButtonClass}
+                            onClick={() => openLogs(c)}
+                          >
+                            Logs
+                          </button>
+                          {c.state === 'running' ? (
+                            <>
+                              <button
+                                className={secondaryButtonClass}
+                                disabled={lifecycleLoading[c.id]}
+                                onClick={() => handleLifecycle(c, 'restart')}
+                              >
+                                {lifecycleLoading[c.id] ? '…' : 'Restart'}
+                              </button>
+                              <button
+                                className={secondaryButtonClass}
+                                disabled={lifecycleLoading[c.id]}
+                                onClick={() => handleLifecycle(c, 'stop')}
+                              >
+                                {lifecycleLoading[c.id] ? '…' : 'Stop'}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className={secondaryButtonClass}
+                              disabled={lifecycleLoading[c.id]}
+                              onClick={() => handleLifecycle(c, 'start')}
+                            >
+                              {lifecycleLoading[c.id] ? '…' : 'Start'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
