@@ -2356,3 +2356,54 @@ export const userApi = {
     return request(`/api/v1/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
   },
 };
+
+export interface NotificationChannel {
+  id: string;
+  type: string;
+  name: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotifyDelivery {
+  id: string;
+  event: string;
+  severity: string;
+  channel_id: string;
+  payload: Record<string, unknown>;
+  state: string;
+  created_at: string;
+  delivered_at?: string;
+}
+
+export const notifyApi = {
+  listChannels(): Promise<{ channels: NotificationChannel[]; request_id: string }> {
+    return request('/api/v1/notifications/channels');
+  },
+  createChannel(input: { type: string; name: string; config: Record<string, unknown>; enabled?: boolean }): Promise<{ channel_id: string; request_id: string }> {
+    return request('/api/v1/notifications/channels', { method: 'POST', body: input });
+  },
+  getChannel(id: string): Promise<{ channel: NotificationChannel; request_id: string }> {
+    return request(`/api/v1/notifications/channels/${encodeURIComponent(id)}`);
+  },
+  updateChannel(id: string, input: { name?: string; config?: Record<string, unknown>; enabled?: boolean }): Promise<{ updated: boolean; request_id: string }> {
+    return request(`/api/v1/notifications/channels/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+  deleteChannel(id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/notifications/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  testChannel(id: string): Promise<{ enqueued: number; request_id: string }> {
+    return request(`/api/v1/notifications/channels/${encodeURIComponent(id)}/test`, { method: 'POST', body: {} });
+  },
+  inbox(): Promise<{ deliveries: NotifyDelivery[]; request_id: string }> {
+    return request('/api/v1/notifications/inbox');
+  },
+  markRead(id: string): Promise<{ read: boolean; request_id: string }> {
+    return request(`/api/v1/notifications/inbox/${encodeURIComponent(id)}/read`, { method: 'POST', body: {} });
+  },
+  unreadCount(): Promise<{ unread_count: number; request_id: string }> {
+    return request('/api/v1/notifications/inbox/unread');
+  },
+};
