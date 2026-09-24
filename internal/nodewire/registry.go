@@ -612,7 +612,6 @@ var Operations = map[Operation]Descriptor{
 	},
 }
 
-
 // Lookup returns the descriptor for an operation. The second result is false for
 // any name not in the registry, which is what makes an unknown operation
 // unrepresentable rather than merely rejected.
