@@ -37,6 +37,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
 	"github.com/bukansembarangkong/jawaker-panel/internal/security"
 	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
+	"github.com/bukansembarangkong/jawaker-panel/internal/updates"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -137,6 +138,10 @@ type Handler struct {
 	Security *security.Store
 	// SecurityRoutesMounted reports whether the Phase 11 security-center routes are registered.
 	SecurityRoutesMounted bool
+	// Updates is the Phase 12 update platform store (releases, jobs, snapshots, canary, modules).
+	Updates *updates.Store
+	// UpdatesRoutesMounted reports whether the Phase 12 update platform routes are registered.
+	UpdatesRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -605,6 +610,21 @@ func Build(opts Options) (*Handler, error) {
 		}
 		securityRoutes := securityHandlers.Routes
 
+		// Update platform (Phase 12): releases, jobs, canary rollout, modules.
+		out.Updates = updates.New(opts.DB)
+		updatesHandlers, updatesErr := NewUpdatesHandlers(UpdatesHandlerOptions{
+			Updates:    out.Updates,
+			Pool:       opts.DB,
+			Dispatcher: out.Dispatcher,
+			Logger:     logger,
+			Audit:      opts.DB,
+			Now:        now,
+		})
+		if updatesErr != nil {
+			return nil, fmt.Errorf("controller: updates handlers: %w", updatesErr)
+		}
+		updatesRoutes := updatesHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -622,6 +642,7 @@ func Build(opts Options) (*Handler, error) {
 			containerRoutes(mux)
 			networkRoutes(mux)
 			securityRoutes(mux)
+			updatesRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -634,6 +655,8 @@ func Build(opts Options) (*Handler, error) {
 		out.ContainerRoutesMounted = true
 		out.NetworkRoutesMounted = true
 		out.SecurityRoutesMounted = true
+		out.UpdatesRoutesMounted = true
+
 		out.Events = broker
 		out.EventStreamMounted = true
 		out.NodeRoutesMounted = nodeRoutes != nil
