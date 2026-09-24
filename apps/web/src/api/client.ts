@@ -2630,3 +2630,45 @@ export const terminalApi = {
   },
 };
 
+// --- Audit Log API (PRD §36) -------------------------------------------------
+
+export interface AuditEventItem {
+  id: string;
+  seq: number;
+  actor_type: string;
+  actor_id?: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  result: 'success' | 'failure' | 'denied';
+  source_ip?: string;
+  occurred_at: string;
+}
+
+export const auditLogApi = {
+  list(params?: {
+    action?: string;
+    resource_type?: string;
+    result?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ events: AuditEventItem[]; total: number; request_id: string }> {
+    const q = new URLSearchParams();
+    if (params?.action) q.set('action', params.action);
+    if (params?.resource_type) q.set('resource_type', params.resource_type);
+    if (params?.result) q.set('result', params.result);
+    if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.offset) q.set('offset', String(params.offset));
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return request(`/api/v1/audit-events${qs}`);
+  },
+  csvExportUrl(params?: { action?: string; resource_type?: string; result?: string }): string {
+    const q = new URLSearchParams({ format: 'csv' });
+    if (params?.action) q.set('action', params.action);
+    if (params?.resource_type) q.set('resource_type', params.resource_type);
+    if (params?.result) q.set('result', params.result);
+    return `/api/v1/audit-events?${q.toString()}`;
+  },
+};
+
+
