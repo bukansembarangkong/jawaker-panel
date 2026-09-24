@@ -1898,6 +1898,12 @@ export const updatesApi = {
       body: { expected_sha256: expectedSha256 },
     });
   },
+  fleetRollout(releaseId: string, batchSize = 1): Promise<{ job_id: string; release_id: string; total_nodes: number; batch_size: number; status: string; request_id: string }> {
+    return request('/api/v1/updates/fleet/rollout', {
+      method: 'POST',
+      body: { release_id: releaseId, batch_size: batchSize },
+    });
+  },
 
   // Modules
   listModules(): Promise<{ modules: ModuleUpdate[]; total: number; request_id: string }> {

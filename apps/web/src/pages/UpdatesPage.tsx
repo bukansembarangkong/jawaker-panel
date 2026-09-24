@@ -41,6 +41,8 @@ function ReleasesTab() {
   const [error, setError] = useState<Error | null>(null);
   const [channel, setChannel] = useState('');
   const [applying, setApplying] = useState<string | null>(null);
+  const [fleetRolling, setFleetRolling] = useState<string | null>(null);
+  const [fleetMsg, setFleetMsg] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -74,11 +76,30 @@ function ReleasesTab() {
     }
   };
 
+  const runFleetRollout = async (id: string) => {
+    setFleetRolling(id);
+    setFleetMsg(null);
+    try {
+      const res = await updatesApi.fleetRollout(id);
+      setFleetMsg(`Fleet rollout started: job ${res.job_id.slice(0, 8)}… across ${res.total_nodes} nodes (batch ${res.batch_size}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setFleetRolling(null);
+    }
+  };
+
   if (loading) return <p className="text-ink-secondary text-sm">Loading releases…</p>;
   if (error) return <ErrorNote error={error} title="Failed to load releases" onRetry={load} />;
 
   return (
     <div className="space-y-4">
+      {fleetMsg && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs text-emerald-600">
+          ✓ {fleetMsg}
+          <button onClick={() => setFleetMsg(null)} className="ml-2 text-emerald-500 hover:underline">dismiss</button>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <select
           value={channel}
@@ -131,6 +152,16 @@ function ReleasesTab() {
                         className="rounded-md bg-accent px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-50"
                       >
                         {applying === rel.id ? 'Applying…' : 'Apply'}
+                      </button>
+                    )}
+                    {rel.compatible === true && (
+                      <button
+                        onClick={() => void runFleetRollout(rel.id)}
+                        disabled={fleetRolling === rel.id}
+                        className="rounded-md border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+                        title="Fleet Rollout (PRD §25.5): rolling update across all enrolled nodes"
+                      >
+                        {fleetRolling === rel.id ? 'Rolling…' : 'Fleet Rollout'}
                       </button>
                     )}
                   </td>
