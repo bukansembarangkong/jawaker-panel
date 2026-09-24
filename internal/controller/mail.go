@@ -3,8 +3,10 @@ package controller
 import (
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bukansembarangkong/jawaker-panel/internal/apierr"
@@ -222,21 +224,90 @@ func (h *MailHandlers) handleReadinessCheck(w http.ResponseWriter, r *http.Reque
 	authsession.RequirePermission(h.now, "mail.read", rbac.ProjectScope(projectID), false,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")
-			// ponytail: real DNS check (SPF/DKIM/DMARC lookups); add when dns resolver available.
-			// Optimistic: mark all true for now (controller will do real checks in future worker).
-			if err := h.store.UpdateReadiness(r.Context(), id, false, false, false); err != nil {
-				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
+			domain, err := h.store.GetDomain(r.Context(), id)
+			if errors.Is(err, mail.ErrNotFound) {
+				httpserver.WriteError(w, r, apierr.NotFound("domain not found"))
 				return
 			}
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+
+			hostname := domain.Domain
+			spfOk := checkSPF(hostname)
+			dkimOk := checkDKIM(hostname)
+			dmarcOk := checkDMARC(hostname)
+
+			_ = h.store.UpdateReadiness(r.Context(), id, spfOk, dkimOk, dmarcOk)
+
+			msg := "All DNS records verified."
+			if !spfOk || !dkimOk || !dmarcOk {
+				var missing []string
+				if !spfOk {
+					missing = append(missing, "SPF")
+				}
+				if !dkimOk {
+					missing = append(missing, "DKIM")
+				}
+				if !dmarcOk {
+					missing = append(missing, "DMARC")
+				}
+				msg = "Missing or invalid DNS records: " + strings.Join(missing, ", ")
+			}
+
 			writeJSONResponse(w, http.StatusOK, map[string]any{
 				"domain_id":  id,
-				"spf_ok":     false,
-				"dkim_ok":    false,
-				"dmarc_ok":   false,
-				"message":    "DNS records not yet verified. Configure SPF, DKIM, and DMARC for this domain.",
+				"domain":     hostname,
+				"spf_ok":     spfOk,
+				"dkim_ok":    dkimOk,
+				"dmarc_ok":   dmarcOk,
+				"message":    msg,
 				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
+}
+
+// checkSPF looks up the domain's TXT records and checks for a v=spf1 record.
+func checkSPF(domain string) bool {
+	txts, err := net.LookupTXT(domain)
+	if err != nil {
+		return false
+	}
+	for _, txt := range txts {
+		if strings.HasPrefix(strings.ToLower(txt), "v=spf1") {
+			return true
+		}
+	}
+	return false
+}
+
+// checkDKIM probes the default._domainkey.<domain> TXT record for DKIM1.
+func checkDKIM(domain string) bool {
+	txts, err := net.LookupTXT("default._domainkey." + domain)
+	if err != nil {
+		return false
+	}
+	for _, txt := range txts {
+		if strings.Contains(strings.ToLower(txt), "v=dkim1") {
+			return true
+		}
+	}
+	return false
+}
+
+// checkDMARC probes the _dmarc.<domain> TXT record for DMARC1.
+func checkDMARC(domain string) bool {
+	txts, err := net.LookupTXT("_dmarc." + domain)
+	if err != nil {
+		return false
+	}
+	for _, txt := range txts {
+		if strings.Contains(strings.ToLower(txt), "v=dmarc1") {
+			return true
+		}
+	}
+	return false
 }
 
 // ── Mailboxes ──────────────────────────────────────────────────────────────────
