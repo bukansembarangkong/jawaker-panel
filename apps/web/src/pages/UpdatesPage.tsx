@@ -1,32 +1,36 @@
 import { useEffect, useState } from 'react';
-import { EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
 import { type CanaryEntry, type ModuleUpdate, type UpdateJob, type UpdateRelease, updatesApi } from '../api/client';
 
-type Tab = 'releases' | 'jobs' | 'modules' | 'canary';
+type Tab = 'releases' | 'jobs' | 'modules';
 
-function stateBadge(state: string) {
-  const variants: Record<string, 'neutral' | 'ok' | 'warn' | 'error' | 'info'> = {
-    done: 'ok',
-    ready: 'ok',
-    pass: 'ok',
-    pending: 'neutral',
-    idle: 'neutral',
-    preflight: 'info',
-    downloading: 'info',
-    verifying: 'info',
-    applying: 'info',
-    updating: 'info',
-    running: 'info',
-    failed: 'error',
-    rolled_back: 'warn',
-    paused: 'warn',
+function stateToOperational(state: string): OperationalState {
+  const map: Record<string, OperationalState> = {
+    done: 'Healthy',
+    ready: 'Healthy',
+    pass: 'Healthy',
+    pending: 'Pending',
+    idle: 'Disabled',
+    preflight: 'Running',
+    downloading: 'Running',
+    verifying: 'Running',
+    applying: 'Running',
+    updating: 'Updating',
+    running: 'Running',
+    failed: 'Failed',
+    rolled_back: 'Warning',
+    paused: 'Paused',
   };
-  return <StatusBadge variant={variants[state] ?? 'neutral'}>{state}</StatusBadge>;
+  return map[state] ?? 'Unknown';
 }
 
-function compatBadge(c: boolean | null) {
-  if (c === null) return <StatusBadge variant="neutral">unchecked</StatusBadge>;
-  return c ? <StatusBadge variant="ok">compatible</StatusBadge> : <StatusBadge variant="error">incompatible</StatusBadge>;
+function StateBadge({ state }: { state: string }) {
+  return <StatusBadge state={stateToOperational(state)} detail={state} />;
+}
+
+function CompatBadge({ compatible }: { compatible: boolean | null }) {
+  if (compatible === null) return <StatusBadge state="Unknown" detail="unchecked" />;
+  return compatible ? <StatusBadge state="Healthy" detail="compatible" /> : <StatusBadge state="Failed" detail="incompatible" />;
 }
 
 // ── Releases tab ───────────────────────────────────────────────────────────────
@@ -34,7 +38,7 @@ function compatBadge(c: boolean | null) {
 function ReleasesTab() {
   const [releases, setReleases] = useState<UpdateRelease[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [channel, setChannel] = useState('');
   const [applying, setApplying] = useState<string | null>(null);
 
@@ -43,7 +47,7 @@ function ReleasesTab() {
     updatesApi
       .listReleases(channel || undefined)
       .then((r) => setReleases(r.releases ?? []))
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
@@ -54,7 +58,7 @@ function ReleasesTab() {
       await updatesApi.runPreflight(id);
       load();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e : new Error(String(e)));
     }
   };
 
@@ -64,7 +68,7 @@ function ReleasesTab() {
       await updatesApi.applyUpdate(id);
       load();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       setApplying(null);
     }
@@ -110,7 +114,7 @@ function ReleasesTab() {
                   <td className="py-2 pr-4 font-mono text-xs">{rel.version}</td>
                   <td className="py-2 pr-4">{rel.channel}</td>
                   <td className="py-2 pr-4 text-ink-secondary">{new Date(rel.published_at).toLocaleDateString()}</td>
-                  <td className="py-2 pr-4">{compatBadge(rel.compatible)}</td>
+                  <td className="py-2 pr-4"><CompatBadge compatible={rel.compatible} /></td>
                   <td className="py-2 flex gap-2">
                     {rel.compatible === null && (
                       <button
@@ -145,7 +149,7 @@ function ReleasesTab() {
 function JobsTab() {
   const [jobs, setJobs] = useState<UpdateJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
   const [canary, setCanary] = useState<CanaryEntry[]>([]);
 
@@ -154,7 +158,7 @@ function JobsTab() {
     updatesApi
       .listJobs()
       .then((r) => setJobs(r.jobs ?? []))
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
@@ -190,7 +194,7 @@ function JobsTab() {
                 {jobs.map((job) => (
                   <tr key={job.id}>
                     <td className="py-2 pr-4 font-mono text-xs">{job.id.slice(0, 8)}…</td>
-                    <td className="py-2 pr-4">{stateBadge(job.state)}</td>
+                    <td className="py-2 pr-4"><StateBadge state={job.state} /></td>
                     <td className="py-2 pr-4 text-ink-secondary">{new Date(job.created_at).toLocaleString()}</td>
                     <td className="py-2">
                       <button
@@ -223,7 +227,7 @@ function JobsTab() {
                     {canary.map((e) => (
                       <tr key={e.id}>
                         <td className="py-1 pr-3 font-mono">{e.server_id.slice(0, 8)}…</td>
-                        <td className="py-1">{stateBadge(e.state)}</td>
+                        <td className="py-1"><StateBadge state={e.state} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -242,13 +246,13 @@ function JobsTab() {
 function ModulesTab() {
   const [modules, setModules] = useState<ModuleUpdate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     updatesApi
       .listModules()
       .then((r) => setModules(r.modules ?? []))
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   }, []);
 
@@ -277,7 +281,7 @@ function ModulesTab() {
                 <td className="py-2 pr-4 font-mono text-xs">{m.module_name}</td>
                 <td className="py-2 pr-4 text-ink-secondary">{m.current_ver}</td>
                 <td className="py-2 pr-4">{m.latest_ver ?? '—'}</td>
-                <td className="py-2">{stateBadge(m.state)}</td>
+                <td className="py-2"><StateBadge state={m.state} /></td>
               </tr>
             ))}
           </tbody>
