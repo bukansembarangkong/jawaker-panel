@@ -2292,3 +2292,35 @@ export const hardeningApi = {
     });
   },
 };
+
+// --- API Tokens (PRD §26.2) ---------------------------------------------------
+
+export interface APIToken {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: 'personal' | 'service';
+  token_prefix: string;
+  scopes: string[];
+  allowed_cidrs: string[];
+  expires_at?: string;
+  revoked_at?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface CreatedAPIToken extends APIToken {
+  plaintext: string;
+}
+
+export const tokenApi = {
+  list(): Promise<{ tokens: APIToken[]; request_id: string }> {
+    return request('/api/v1/tokens');
+  },
+  create(input: { name: string; kind: string; scopes?: string[]; allowed_cidrs?: string[]; expires_at?: string }): Promise<{ token: CreatedAPIToken; request_id: string }> {
+    return request('/api/v1/tokens', { method: 'POST', body: input });
+  },
+  revoke(id: string): Promise<{ revoked: boolean; request_id: string }> {
+    return request(`/api/v1/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};

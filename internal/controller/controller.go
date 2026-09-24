@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bukansembarangkong/jawaker-panel/internal/apitoken"
 	"github.com/bukansembarangkong/jawaker-panel/internal/apps"
 	"github.com/bukansembarangkong/jawaker-panel/internal/auth"
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
@@ -163,6 +164,10 @@ type Handler struct {
 	Plugins *plugins.Store
 	// PluginRoutesMounted reports whether the Phase 16 plugin SDK routes are registered.
 	PluginRoutesMounted bool
+	// Tokens is the Phase 2 API token store.
+	Tokens *apitoken.Store
+	// TokenRoutesMounted reports whether the /api/v1/tokens routes are registered.
+	TokenRoutesMounted bool
 	// Health is the Phase 17 production hardening store (health logs, upgrade history, runbooks).
 	Health *health.Store
 	// HardeningRoutesMounted reports whether the Phase 17 hardening routes are registered.
@@ -720,6 +725,19 @@ func Build(opts Options) (*Handler, error) {
 		}
 		hardeningRoutes := hardeningHandlers.Routes
 
+		out.Tokens = apitoken.NewStore(opts.DB, now)
+		tokenHandlers, tokenErr := NewAPITokenHandlers(APITokenHandlerOptions{
+			Tokens: out.Tokens,
+			Pool:   opts.DB,
+			Logger: logger,
+			Audit:  opts.DB,
+			Now:    now,
+		})
+		if tokenErr != nil {
+			return nil, fmt.Errorf("controller: token handlers: %w", tokenErr)
+		}
+		tokenRoutes := tokenHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -743,6 +761,7 @@ func Build(opts Options) (*Handler, error) {
 			copilotRoutes(mux)
 			pluginRoutes(mux)
 			hardeningRoutes(mux)
+			tokenRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -761,6 +780,7 @@ func Build(opts Options) (*Handler, error) {
 		out.CopilotRoutesMounted = true
 		out.PluginRoutesMounted = true
 		out.HardeningRoutesMounted = true
+		out.TokenRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true

@@ -13,6 +13,7 @@ import { HAPage } from './pages/HAPage';
 import { CopilotPage } from './pages/CopilotPage';
 import { PluginsPage } from './pages/PluginsPage';
 import { HardeningPage } from './pages/HardeningPage';
+import { APITokensPage } from './pages/APITokensPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -40,7 +41,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot' | 'plugins' | 'hardening' | 'api-tokens';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -60,6 +61,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/copilot') return 'copilot';
   if (window.location.hash === '#/plugins') return 'plugins';
   if (window.location.hash === '#/hardening') return 'hardening';
+  if (window.location.hash === '#/api-tokens') return 'api-tokens';
   return 'dashboard';
 }
 
@@ -377,6 +379,19 @@ export default function App() {
                 Hardening
               </a>
             </li>
+            <li>
+              <a
+                href="#/api-tokens"
+                aria-current={route === 'api-tokens' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'api-tokens'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                API Tokens
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -415,6 +430,8 @@ export default function App() {
             <PluginsPage />
           ) : route === 'hardening' ? (
             <HardeningPage />
+          ) : route === 'api-tokens' ? (
+            <APITokensPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
