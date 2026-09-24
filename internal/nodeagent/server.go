@@ -196,6 +196,15 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpContainerInspect] = true
 		served[nodewire.OpContainerLogs] = true
 	}
+	// net.* operations require Linux. iptables-save and ss are detected at
+	// dispatch time (not startup) because they may be installed after the
+	// agent starts. All three are always offered on Linux; the executor
+	// returns notAvailable if the binary is missing at dispatch time.
+	if supportedOS() {
+		served[nodewire.OpNetFirewallList] = true
+		served[nodewire.OpNetPortInventory] = true
+		served[nodewire.OpNetDiag] = true
+	}
 	return served
 }
 
@@ -682,6 +691,48 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.ContainerLogs(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpNetFirewallList:
+		in, err := nodewire.DecodeInput[nodewire.NetFirewallListInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.NetFirewallList(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpNetPortInventory:
+		in, err := nodewire.DecodeInput[nodewire.NetPortInventoryInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.NetPortInventory(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpNetDiag:
+		in, err := nodewire.DecodeInput[nodewire.NetDiagInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.NetDiag(ctx, in)
 		if err != nil {
 			return nil, err
 		}
