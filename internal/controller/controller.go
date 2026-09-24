@@ -22,6 +22,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/certs"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/containers"
+	"github.com/bukansembarangkong/jawaker-panel/internal/copilot"
 	"github.com/bukansembarangkong/jawaker-panel/internal/databases"
 	"github.com/bukansembarangkong/jawaker-panel/internal/dns"
 	"github.com/bukansembarangkong/jawaker-panel/internal/eventstream"
@@ -152,6 +153,10 @@ type Handler struct {
 	HA *ha.Store
 	// HARoutesMounted reports whether the Phase 14 HA routes are registered.
 	HARoutesMounted bool
+	// Copilot is the Phase 15 AI infrastructure copilot store (sessions, tool-call audit, plans, approvals).
+	Copilot *copilot.Store
+	// CopilotRoutesMounted reports whether the Phase 15 copilot routes are registered.
+	CopilotRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -663,6 +668,20 @@ func Build(opts Options) (*Handler, error) {
 		}
 		haRoutes := haHandlers.Routes
 
+		// AI Copilot (Phase 15): sessions, tool-call audit, plans, approvals.
+		out.Copilot = copilot.New(opts.DB, now)
+		copilotHandlers, copilotErr := NewCopilotHandlers(CopilotHandlerOptions{
+			Copilot: out.Copilot,
+			Pool:    opts.DB,
+			Logger:  logger,
+			Audit:   opts.DB,
+			Now:     now,
+		})
+		if copilotErr != nil {
+			return nil, fmt.Errorf("controller: copilot handlers: %w", copilotErr)
+		}
+		copilotRoutes := copilotHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -683,6 +702,7 @@ func Build(opts Options) (*Handler, error) {
 			updatesRoutes(mux)
 			mailRoutes(mux)
 			haRoutes(mux)
+			copilotRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -698,6 +718,7 @@ func Build(opts Options) (*Handler, error) {
 		out.UpdatesRoutesMounted = true
 		out.MailRoutesMounted = true
 		out.HARoutesMounted = true
+		out.CopilotRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
