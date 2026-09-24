@@ -2173,3 +2173,67 @@ export const copilotApi = {
     );
   },
 };
+
+// ── Plugin SDK (Phase 16) ─────────────────────────────────────────────────────
+
+export interface Plugin {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  version: string;
+  author: string;
+  homepage_url: string;
+  manifest: Record<string, unknown>;
+  trust_level: string;
+  state: string;
+  signature: string;
+  checksum: string;
+  installed_at: string;
+  updated_at: string;
+}
+
+export interface PluginPermission {
+  id: string;
+  plugin_id: string;
+  permission: string;
+  scope_kind: string;
+  granted: boolean;
+  granted_by: string | null;
+  granted_at: string | null;
+  created_at: string;
+}
+
+export const pluginsApi = {
+  listPlugins(stateFilter?: string): Promise<{ plugins: Plugin[]; total: number; request_id: string }> {
+    const q = stateFilter ? `?state=${encodeURIComponent(stateFilter)}` : '';
+    return request(`/api/v1/plugins${q}`);
+  },
+  getPlugin(id: string): Promise<{ plugin: Plugin; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}`);
+  },
+  enablePlugin(id: string): Promise<{ state: string; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}/enable`, { method: 'POST', body: {} });
+  },
+  disablePlugin(id: string): Promise<{ state: string; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}/disable`, { method: 'POST', body: {} });
+  },
+  uninstallPlugin(id: string): Promise<{ removed: boolean; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  setTrust(id: string, trustLevel: string): Promise<{ trust_level: string; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}/trust`, { method: 'POST', body: { trust_level: trustLevel } });
+  },
+  listPermissions(id: string): Promise<{ permissions: PluginPermission[]; total: number; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}/permissions`);
+  },
+  grantPermission(pluginId: string, permId: string): Promise<{ granted: boolean; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(pluginId)}/permissions/${encodeURIComponent(permId)}/grant`, {
+      method: 'POST',
+      body: {},
+    });
+  },
+  quarantinePlugin(id: string, reason: string): Promise<{ quarantine: unknown; request_id: string }> {
+    return request(`/api/v1/plugins/${encodeURIComponent(id)}/quarantine`, { method: 'POST', body: { reason } });
+  },
+};
