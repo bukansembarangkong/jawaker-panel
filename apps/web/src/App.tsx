@@ -6,6 +6,7 @@ import { AuthGate } from './pages/AuthGate';
 import { BackupsPage } from './pages/BackupsPage';
 import { ContainersPage } from './pages/ContainersPage';
 import { NetworkPage } from './pages/NetworkPage';
+import { SecurityCenterPage } from './pages/SecurityCenterPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -33,7 +34,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -46,6 +47,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/dnstls') return 'dnstls';
   if (window.location.hash === '#/containers') return 'containers';
   if (window.location.hash === '#/networking') return 'networking';
+  if (window.location.hash === '#/security-center') return 'security-center';
   return 'dashboard';
 }
 
@@ -272,6 +274,19 @@ export default function App() {
                 Networking
               </a>
             </li>
+            <li>
+              <a
+                href="#/security-center"
+                aria-current={route === 'security-center' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'security-center'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Sec Center
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -296,6 +311,8 @@ export default function App() {
             <ContainersPage />
           ) : route === 'networking' ? (
             <NetworkPage />
+          ) : route === 'security-center' ? (
+            <SecurityCenterPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
