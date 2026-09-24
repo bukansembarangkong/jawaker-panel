@@ -170,6 +170,22 @@ const (
 	// agent, not the caller, because the agent is the only party with access
 	// to the raw log stream.
 	OpContainerLogs Operation = "container.logs" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpNetFirewallList reads the current iptables/nftables ruleset from the
+	// node and returns it as a structured chain/rule list. It is read-only:
+	// no process is spawned that changes state, and the output path is
+	// /proc/net (procfs, not a user-writable path).
+	OpNetFirewallList Operation = "net.firewall.list" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpNetPortInventory runs 'ss -tlunp' (socket statistics) and returns the
+	// set of bound TCP/UDP ports with their owning process. Read-only.
+	OpNetPortInventory Operation = "net.port.inventory" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpNetDiag runs a confined ping or traceroute to a validated target.
+	// The target is validated against a strict character allowlist before any
+	// process is spawned; it is passed as a single argv element. The mode
+	// enum limits the operation to known diagnostic tools; no shell is used.
+	OpNetDiag Operation = "net.diag" //nolint:gosec // G101: an operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not

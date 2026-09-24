@@ -43,6 +43,9 @@ func TestRegistryContainsExactlyTheDeclaredOperations(t *testing.T) {
 		OpContainerList,
 		OpContainerInspect,
 		OpContainerLogs,
+		OpNetFirewallList,
+		OpNetPortInventory,
+		OpNetDiag,
 	}
 	if len(Operations) != len(want) {
 		t.Errorf("registry has %d operations %v, want %d", len(Operations), Names(), len(want))

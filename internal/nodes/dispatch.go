@@ -754,6 +754,69 @@ func (d *Dispatcher) ContainerLogs(ctx context.Context, serverID, requestID stri
 	return out, nil
 }
 
+// NetFirewallList reads the iptables ruleset from a node.
+func (d *Dispatcher) NetFirewallList(ctx context.Context, serverID, requestID string, in nodewire.NetFirewallListInput) (nodewire.NetFirewallListResult, error) {
+	var out nodewire.NetFirewallListResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid net firewall list input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpNetFirewallList,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode net firewall list result: %w", err)
+	}
+	return out, nil
+}
+
+// NetPortInventory lists listening ports on a node.
+func (d *Dispatcher) NetPortInventory(ctx context.Context, serverID, requestID string, in nodewire.NetPortInventoryInput) (nodewire.NetPortInventoryResult, error) {
+	var out nodewire.NetPortInventoryResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid net port inventory input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpNetPortInventory,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode net port inventory result: %w", err)
+	}
+	return out, nil
+}
+
+// NetDiag runs a ping or traceroute diagnostic on a node.
+func (d *Dispatcher) NetDiag(ctx context.Context, serverID, requestID string, in nodewire.NetDiagInput) (nodewire.NetDiagResult, error) {
+	var out nodewire.NetDiagResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid net diag input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpNetDiag,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode net diag result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.
