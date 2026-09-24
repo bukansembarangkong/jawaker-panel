@@ -85,9 +85,10 @@ func (h *UpdatesHandlers) Routes(mux *http.ServeMux) {
 	// Snapshots
 	mux.HandleFunc("GET /api/v1/updates/snapshots/{id}", h.handleGetSnapshot)
 
-	// Fleet canary rollout
+	// Fleet canary rollout & orchestration (PRD §25.5)
 	mux.HandleFunc("GET /api/v1/updates/jobs/{id}/canary", h.handleListCanary)
 	mux.HandleFunc("POST /api/v1/updates/jobs/{id}/canary/{server_id}/apply", h.handleCanaryApply)
+	mux.HandleFunc("POST /api/v1/updates/fleet/rollout", h.handleFleetRollout)
 
 	// Module updates
 	mux.HandleFunc("GET /api/v1/updates/modules", h.handleListModules)
@@ -410,6 +411,94 @@ func (h *UpdatesHandlers) handleListModules(w http.ResponseWriter, r *http.Reque
 				"modules":    modules,
 				"total":      len(modules),
 				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// ── Fleet Rollout Orchestration (PRD §25.5) ──────────────────────────────────
+
+type fleetRolloutRequest struct {
+	ReleaseID string `json:"release_id"`
+	BatchSize int    `json:"batch_size"` // default 1
+}
+
+// POST /api/v1/updates/fleet/rollout
+func (h *UpdatesHandlers) handleFleetRollout(w http.ResponseWriter, r *http.Request) {
+	authsession.RequirePermission(h.now, "updates.manage", rbac.GlobalScope(), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req fleetRolloutRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(err.Error(), nil))
+				return
+			}
+			if req.ReleaseID == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("release_id is required", nil))
+				return
+			}
+			if req.BatchSize <= 0 {
+				req.BatchSize = 1
+			}
+
+			// Validate release exists
+			_, err := h.store.GetRelease(r.Context(), req.ReleaseID)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.NotFound("release not found"))
+				return
+			}
+
+			p, _ := auth.PrincipalFrom(r.Context())
+			job, err := h.store.CreateJob(r.Context(), req.ReleaseID, p.UserID)
+			if err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
+				return
+			}
+
+			// Find all active servers
+			rows, err := h.pool.Query(r.Context(), `
+				SELECT id FROM servers WHERE deleted_at IS NULL ORDER BY created_at ASC
+			`)
+			if err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
+				return
+			}
+			defer rows.Close()
+
+			var serverIDs []string
+			for rows.Next() {
+				var sID string
+				if err := rows.Scan(&sID); err == nil {
+					serverIDs = append(serverIDs, sID)
+				}
+			}
+
+			// Register canary rollout row for each server
+			for _, sID := range serverIDs {
+				_, _ = h.pool.Exec(r.Context(), `
+					INSERT INTO canary_rollouts (job_id, server_id, state)
+					VALUES ($1, $2, 'pending')
+					ON CONFLICT (job_id, server_id) DO NOTHING
+				`, job.ID, sID)
+			}
+
+			h.recordAudit(r, audit.Event{
+				Action:       "updates.fleet_rollout",
+				ResourceType: "update_job",
+				ResourceID:   job.ID,
+				Result:       audit.ResultSuccess,
+				Context: map[string]any{
+					"release_id":  req.ReleaseID,
+					"batch_size":  req.BatchSize,
+					"total_nodes": len(serverIDs),
+				},
+			})
+
+			writeJSONResponse(w, http.StatusAccepted, map[string]any{
+				"job_id":      job.ID,
+				"release_id":  req.ReleaseID,
+				"total_nodes": len(serverIDs),
+				"batch_size":  req.BatchSize,
+				"status":      "in_progress",
+				"request_id":  httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
 }
