@@ -2671,4 +2671,40 @@ export const auditLogApi = {
   },
 };
 
+// --- Revisions API (PRD §36) -------------------------------------------------
+
+export interface RevisionSummary {
+  id: string;
+  resource_type: string;
+  resource_id: string;
+  actor_type: string;
+  actor_id?: string;
+  candidate_hash: string;
+  state: string;
+  git_sync_state: string;
+  git_commit_sha?: string;
+  created_at: string;
+  applied_at?: string;
+}
+
+export const revisionApi = {
+  list(params?: {
+    resource_type?: string;
+    resource_id?: string;
+    state?: string;
+    limit?: number;
+  }): Promise<{ revisions: RevisionSummary[]; total: number; request_id: string }> {
+    const q = new URLSearchParams();
+    if (params?.resource_type) q.set('resource_type', params.resource_type);
+    if (params?.resource_id) q.set('resource_id', params.resource_id);
+    if (params?.state) q.set('state', params.state);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return request(`/api/v1/revisions${qs}`);
+  },
+  get(id: string): Promise<{ revision: any; request_id: string }> {
+    return request(`/api/v1/revisions/${encodeURIComponent(id)}`);
+  },
+};
+
 

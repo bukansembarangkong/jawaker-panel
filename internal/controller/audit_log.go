@@ -29,9 +29,11 @@ func NewAuditLogHandlers(pool *pgxpool.Pool, now func() time.Time) *AuditLogHand
 	return &AuditLogHandlers{pool: pool, now: now}
 }
 
-// Routes registers audit log endpoints on the mux.
+// Routes registers audit log and revision history endpoints on the mux.
 func (h *AuditLogHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/audit-events", h.handleListAuditEvents)
+	mux.HandleFunc("GET /api/v1/revisions", h.handleListRevisions)
+	mux.HandleFunc("GET /api/v1/revisions/{id}", h.handleGetRevision)
 }
 
 type auditEventRow struct {
@@ -145,6 +147,123 @@ func (h *AuditLogHandlers) handleListAuditEvents(w http.ResponseWriter, r *http.
 				"total":      len(events),
 				"limit":      limit,
 				"offset":     offset,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// ── Revision History Handlers (PRD §36) ──────────────────────────────────────
+
+type revisionSummaryRow struct {
+	ID            string     `json:"id"`
+	ResourceType  string     `json:"resource_type"`
+	ResourceID    string     `json:"resource_id"`
+	ActorType     string     `json:"actor_type"`
+	ActorID       *string    `json:"actor_id,omitempty"`
+	CandidateHash string     `json:"candidate_hash"`
+	State         string     `json:"state"`
+	GitSyncState  string     `json:"git_sync_state"`
+	GitCommitSHA  *string    `json:"git_commit_sha,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	AppliedAt     *time.Time `json:"applied_at,omitempty"`
+}
+
+// GET /api/v1/revisions
+func (h *AuditLogHandlers) handleListRevisions(w http.ResponseWriter, r *http.Request) {
+	authsession.RequirePermission(h.now, "audit.read", rbac.GlobalScope(), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			resType := q.Get("resource_type")
+			resID := q.Get("resource_id")
+			state := q.Get("state")
+
+			limit := 50
+			if lStr := q.Get("limit"); lStr != "" {
+				if parsed, err := strconv.Atoi(lStr); err == nil && parsed > 0 && parsed <= 200 {
+					limit = parsed
+				}
+			}
+
+			rows, err := h.pool.Query(r.Context(), `
+				SELECT id, resource_type, resource_id, actor_type, actor_id,
+				       candidate_hash, state, git_sync_state, git_commit_sha,
+				       created_at, applied_at
+				FROM revisions
+				WHERE ($1 = '' OR resource_type = $1)
+				  AND ($2 = '' OR resource_id = $2)
+				  AND ($3 = '' OR state = $3)
+				ORDER BY created_at DESC
+				LIMIT $4
+			`, resType, resID, state, limit)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+			defer rows.Close()
+
+			var revs []revisionSummaryRow
+			for rows.Next() {
+				var row revisionSummaryRow
+				if err := rows.Scan(
+					&row.ID, &row.ResourceType, &row.ResourceID, &row.ActorType, &row.ActorID,
+					&row.CandidateHash, &row.State, &row.GitSyncState, &row.GitCommitSHA,
+					&row.CreatedAt, &row.AppliedAt,
+				); err == nil {
+					revs = append(revs, row)
+				}
+			}
+
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"revisions":  revs,
+				"total":      len(revs),
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// GET /api/v1/revisions/{id}
+func (h *AuditLogHandlers) handleGetRevision(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "audit.read", rbac.GlobalScope(), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			type revisionDetail struct {
+				ID               string     `json:"id"`
+				ResourceType     string     `json:"resource_type"`
+				ResourceID       string     `json:"resource_id"`
+				ActorType        string     `json:"actor_type"`
+				ActorID          *string    `json:"actor_id,omitempty"`
+				BaseRevisionID   *string    `json:"base_revision_id,omitempty"`
+				Candidate        any        `json:"candidate"`
+				Previous         any        `json:"previous,omitempty"`
+				CandidateHash    string     `json:"candidate_hash"`
+				State            string     `json:"state"`
+				ValidationResult any        `json:"validation_result,omitempty"`
+				HealthResult     any        `json:"health_result,omitempty"`
+				GitSyncState     string     `json:"git_sync_state"`
+				GitCommitSHA     *string    `json:"git_commit_sha,omitempty"`
+				CreatedAt        time.Time  `json:"created_at"`
+				AppliedAt        *time.Time `json:"applied_at,omitempty"`
+			}
+
+			var d revisionDetail
+			err := h.pool.QueryRow(r.Context(), `
+				SELECT id, resource_type, resource_id, actor_type, actor_id, base_revision_id,
+				       candidate, previous, candidate_hash, state, validation_result,
+				       health_result, git_sync_state, git_commit_sha, created_at, applied_at
+				FROM revisions
+				WHERE id = $1
+			`, id).Scan(
+				&d.ID, &d.ResourceType, &d.ResourceID, &d.ActorType, &d.ActorID, &d.BaseRevisionID,
+				&d.Candidate, &d.Previous, &d.CandidateHash, &d.State, &d.ValidationResult,
+				&d.HealthResult, &d.GitSyncState, &d.GitCommitSHA, &d.CreatedAt, &d.AppliedAt,
+			)
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.NotFound("revision not found"))
+				return
+			}
+
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"revision":   d,
 				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
