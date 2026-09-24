@@ -2407,3 +2407,55 @@ export const notifyApi = {
     return request('/api/v1/notifications/inbox/unread');
   },
 };
+
+export interface JobSummary {
+  id: string;
+  type: string;
+  server_id?: string;
+  project_id?: string;
+  state: string;
+  priority: number;
+  progress_current: number;
+  progress_total?: number;
+  current_step?: string;
+  attempt_count: number;
+  max_attempts: number;
+  error_code?: string;
+  error_summary?: string;
+  created_at: string;
+  lease_expires_at?: string;
+}
+
+export const jobsApi = {
+  list(): Promise<{ jobs: JobSummary[]; request_id: string }> {
+    return request('/api/v1/jobs');
+  },
+  get(id: string): Promise<{ job: JobSummary; steps: unknown[]; request_id: string }> {
+    return request(`/api/v1/jobs/${encodeURIComponent(id)}`);
+  },
+  cancel(id: string): Promise<{ canceled: boolean; request_id: string }> {
+    return request(`/api/v1/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
+  },
+};
+
+export interface ProjectQuota {
+  id: string;
+  project_id: string;
+  resource: string;
+  limit_value: number;
+  current_value: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const quotaApi = {
+  list(projectId: string): Promise<{ quotas: ProjectQuota[]; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/quotas`);
+  },
+  set(projectId: string, resource: string, limitValue: number): Promise<{ quota_id: string; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/quotas/${encodeURIComponent(resource)}`, {
+      method: 'PUT',
+      body: { limit_value: limitValue },
+    });
+  },
+};
