@@ -1958,3 +1958,128 @@ export const mailApi = {
     );
   },
 };
+
+// ── HA platform (Phase 14) ────────────────────────────────────────────────────
+
+export interface HAPool {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  mode: string;
+  state: string;
+  min_healthy: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HAMember {
+  id: string;
+  pool_id: string;
+  server_id: string;
+  role: string;
+  state: string;
+  weight: number;
+  joined_at: string;
+  updated_at: string;
+}
+
+export interface HAEvent {
+  id: string;
+  pool_id: string;
+  event_type: string;
+  server_id: string;
+  triggered_by: string;
+  details: Record<string, unknown>;
+  resolved: boolean;
+  occurred_at: string;
+}
+
+export interface HADrill {
+  id: string;
+  pool_id: string;
+  drill_type: string;
+  state: string;
+  initiated_by: string;
+  notes: string;
+  started_at: string | null;
+  completed_at: string | null;
+  result_log: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const haApi = {
+  listPools(projectId: string): Promise<{ pools: HAPool[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools`);
+  },
+  createPool(projectId: string, name: string, description: string, mode: string, minHealthy: number): Promise<{ pool: HAPool; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools`, {
+      method: 'POST',
+      body: { name, description, mode, min_healthy: minHealthy },
+    });
+  },
+  getPool(projectId: string, id: string): Promise<{ pool: HAPool; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(id)}`);
+  },
+  deletePool(projectId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  listMembers(projectId: string, poolId: string): Promise<{ members: HAMember[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/members`);
+  },
+  addMember(projectId: string, poolId: string, serverId: string, role: string, weight: number): Promise<{ member: HAMember; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/members`, {
+      method: 'POST',
+      body: { server_id: serverId, role, weight },
+    });
+  },
+  removeMember(projectId: string, poolId: string, id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/members/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  startDrain(projectId: string, poolId: string, serverId: string, reason: string): Promise<{ drain_request: unknown; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/drain`, {
+      method: 'POST',
+      body: { server_id: serverId, reason },
+    });
+  },
+  cancelDrain(projectId: string, poolId: string, id: string): Promise<{ cancelled: boolean; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/drain/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: {} },
+    );
+  },
+
+  listEvents(projectId: string, poolId: string, limit = 50): Promise<{ events: HAEvent[]; total: number; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/events?limit=${limit}`,
+    );
+  },
+  resolveEvent(projectId: string, poolId: string, id: string): Promise<{ resolved: boolean; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/events/${encodeURIComponent(id)}/resolve`,
+      { method: 'POST', body: {} },
+    );
+  },
+
+  listDrills(projectId: string, poolId: string): Promise<{ drills: HADrill[]; total: number; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/drills`);
+  },
+  createDrill(projectId: string, poolId: string, drillType: string, notes: string): Promise<{ drill: HADrill; request_id: string }> {
+    return request(`/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/drills`, {
+      method: 'POST',
+      body: { drill_type: drillType, notes },
+    });
+  },
+  completeDrill(projectId: string, poolId: string, id: string, state: string, resultLog: string): Promise<{ state: string; request_id: string }> {
+    return request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/ha/pools/${encodeURIComponent(poolId)}/drills/${encodeURIComponent(id)}/complete`,
+      { method: 'POST', body: { state, result_log: resultLog } },
+    );
+  },
+};
