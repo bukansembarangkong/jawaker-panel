@@ -10,6 +10,7 @@ import { SecurityCenterPage } from './pages/SecurityCenterPage';
 import { UpdatesPage } from './pages/UpdatesPage';
 import { MailPage } from './pages/MailPage';
 import { HAPage } from './pages/HAPage';
+import { CopilotPage } from './pages/CopilotPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasesPage } from './pages/DatabasesPage';
@@ -37,7 +38,7 @@ import { useTheme } from './theme/useTheme';
  * (PRD rule: no authorization rule may exist only in frontend code).
  */
 
-type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha';
+type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'databases' | 'backups' | 'observability' | 'dnstls' | 'containers' | 'networking' | 'security-center' | 'updates' | 'mail' | 'ha' | 'copilot';
 
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
@@ -54,6 +55,7 @@ function routeFromHash(): Route {
   if (window.location.hash === '#/updates') return 'updates';
   if (window.location.hash === '#/mail') return 'mail';
   if (window.location.hash === '#/ha') return 'ha';
+  if (window.location.hash === '#/copilot') return 'copilot';
   return 'dashboard';
 }
 
@@ -332,6 +334,19 @@ export default function App() {
                 HA
               </a>
             </li>
+            <li>
+              <a
+                href="#/copilot"
+                aria-current={route === 'copilot' ? 'page' : undefined}
+                className={`block rounded-md px-3 py-1.5 text-sm ${
+                  route === 'copilot'
+                    ? 'bg-elevated font-medium text-ink'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                AI Copilot
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -364,6 +379,8 @@ export default function App() {
             <MailPage />
           ) : route === 'ha' ? (
             <HAPage />
+          ) : route === 'copilot' ? (
+            <CopilotPage />
           ) : (
             <DashboardPage session={session} version={version} />
           )}
