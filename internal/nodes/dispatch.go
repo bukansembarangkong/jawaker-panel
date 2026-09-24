@@ -817,6 +817,66 @@ func (d *Dispatcher) NetDiag(ctx context.Context, serverID, requestID string, in
 	return out, nil
 }
 
+// SecHardeningScan runs the hardening check suite on a node.
+func (d *Dispatcher) SecHardeningScan(ctx context.Context, serverID, requestID string, in nodewire.SecHardeningScanInput) (nodewire.SecHardeningScanResult, error) {
+	var out nodewire.SecHardeningScanResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid sec hardening scan input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecHardeningScan,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec hardening scan result: %w", err)
+	}
+	return out, nil
+}
+
+// SecSSHPosture reads the SSH configuration and session posture from a node.
+func (d *Dispatcher) SecSSHPosture(ctx context.Context, serverID, requestID string) (nodewire.SecSSHPostureResult, error) {
+	var out nodewire.SecSSHPostureResult
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecSSHPosture,
+		RequestID: requestID,
+		Input:     nodewire.SecSSHPostureInput{},
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec ssh posture result: %w", err)
+	}
+	return out, nil
+}
+
+// SecBanList reads the active ban list from a node's fail2ban/crowdsec adapters.
+func (d *Dispatcher) SecBanList(ctx context.Context, serverID, requestID string, in nodewire.SecBanListInput) (nodewire.SecBanListResult, error) {
+	var out nodewire.SecBanListResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid sec ban list input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecBanList,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec ban list result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.

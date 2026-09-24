@@ -186,6 +186,20 @@ const (
 	// process is spawned; it is passed as a single argv element. The mode
 	// enum limits the operation to known diagnostic tools; no shell is used.
 	OpNetDiag Operation = "net.diag" //nolint:gosec // G101: an operation wire name, not a credential
+
+	// OpSecHardeningScan runs a hardening check suite on the node and returns
+	// structured findings with severity, status, and remediation hints.
+	// The scan reads configuration files only; it never writes or executes
+	// arbitrary commands.
+	OpSecHardeningScan Operation = "sec.hardening.scan"
+
+	// OpSecSSHPosture reads the sshd_config and active-session data to assess
+	// the SSH attack surface. Read-only; no sshd is restarted.
+	OpSecSSHPosture Operation = "sec.ssh.posture"
+
+	// OpSecBanList reads the current ban list from fail2ban or crowdsec.
+	// The source adapter is selected by the Source field; both are read-only.
+	OpSecBanList Operation = "sec.ban.list"
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not
