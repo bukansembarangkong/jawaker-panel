@@ -172,6 +172,8 @@ type Handler struct {
 	Health *health.Store
 	// HardeningRoutesMounted reports whether the Phase 17 hardening routes are registered.
 	HardeningRoutesMounted bool
+	// UserRoutesMounted reports whether the /api/v1/users routes are registered.
+	UserRoutesMounted bool
 	// SiteWorker is the background jobs worker executing configuration applies
 	// and deployments, nil when background processing is disabled.
 	SiteWorker *jobs.Worker
@@ -738,6 +740,18 @@ func Build(opts Options) (*Handler, error) {
 		}
 		tokenRoutes := tokenHandlers.Routes
 
+		userHandlers, userErr := NewUserHandlers(UserHandlerOptions{
+			Pool:           opts.DB,
+			Logger:         logger,
+			Audit:          opts.DB,
+			PasswordParams: params,
+			Now:            now,
+		})
+		if userErr != nil {
+			return nil, fmt.Errorf("controller: user handlers: %w", userErr)
+		}
+		userRoutes := userHandlers.Routes
+
 		register = func(mux *http.ServeMux) {
 			authRoutes(mux)
 			mux.Handle("GET "+EventStreamPath+"{topic...}", streamHandler)
@@ -762,6 +776,7 @@ func Build(opts Options) (*Handler, error) {
 			pluginRoutes(mux)
 			hardeningRoutes(mux)
 			tokenRoutes(mux)
+			userRoutes(mux)
 		}
 		out.SiteRoutesMounted = true
 		out.AppRoutesMounted = true
@@ -781,6 +796,7 @@ func Build(opts Options) (*Handler, error) {
 		out.PluginRoutesMounted = true
 		out.HardeningRoutesMounted = true
 		out.TokenRoutesMounted = true
+		out.UserRoutesMounted = true
 
 		out.Events = broker
 		out.EventStreamMounted = true
