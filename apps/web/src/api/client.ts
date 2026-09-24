@@ -2459,3 +2459,76 @@ export const quotaApi = {
     });
   },
 };
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  trigger_event: string;
+  condition: Record<string, unknown>;
+  action_type: string;
+  action_target: Record<string, unknown>;
+  enabled: boolean;
+  last_triggered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutboundWebhook {
+  id: string;
+  name: string;
+  target_url: string;
+  event_filter: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  payload: Record<string, unknown>;
+  status: string;
+  status_code?: number;
+  error_message?: string;
+  attempt_count: number;
+  max_attempts: number;
+  delivered_at?: string;
+  created_at: string;
+}
+
+export const automationApi = {
+  listRules(): Promise<{ rules: AutomationRule[]; request_id: string }> {
+    return request('/api/v1/automation/rules');
+  },
+  createRule(input: { name: string; trigger_event: string; condition?: Record<string, unknown>; action_type: string; action_target?: Record<string, unknown>; enabled?: boolean }): Promise<{ rule_id: string; request_id: string }> {
+    return request('/api/v1/automation/rules', { method: 'POST', body: input });
+  },
+  updateRule(id: string, input: { name?: string; trigger_event?: string; condition?: Record<string, unknown>; action_type?: string; enabled?: boolean }): Promise<{ updated: boolean; request_id: string }> {
+    return request(`/api/v1/automation/rules/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+  deleteRule(id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/automation/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  testRule(id: string): Promise<{ simulated: boolean; rule: AutomationRule; would_action: string; request_id: string }> {
+    return request(`/api/v1/automation/rules/${encodeURIComponent(id)}/test`, { method: 'POST', body: {} });
+  },
+  listWebhooks(): Promise<{ webhooks: OutboundWebhook[]; request_id: string }> {
+    return request('/api/v1/webhooks/outbound');
+  },
+  createWebhook(input: { name: string; target_url: string; event_filter?: string[]; enabled?: boolean }): Promise<{ webhook_id: string; signing_secret: string; request_id: string }> {
+    return request('/api/v1/webhooks/outbound', { method: 'POST', body: input });
+  },
+  updateWebhook(id: string, input: { name?: string; target_url?: string; enabled?: boolean }): Promise<{ updated: boolean; request_id: string }> {
+    return request(`/api/v1/webhooks/outbound/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+  deleteWebhook(id: string): Promise<{ deleted: boolean; request_id: string }> {
+    return request(`/api/v1/webhooks/outbound/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  getDeliveries(id: string): Promise<{ deliveries: WebhookDelivery[]; request_id: string }> {
+    return request(`/api/v1/webhooks/outbound/${encodeURIComponent(id)}/deliveries`);
+  },
+  testWebhook(id: string): Promise<{ enqueued: boolean; target_url: string; delivery_id: string; request_id: string }> {
+    return request(`/api/v1/webhooks/outbound/${encodeURIComponent(id)}/test`, { method: 'POST', body: {} });
+  },
+};
