@@ -610,6 +610,64 @@ var Operations = map[Operation]Descriptor{
 		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
 		Mutating:    false,
 	},
+
+	OpSecHardeningScan: {
+		Operation:   OpSecHardeningScan,
+		Permission:  "security.read",
+		InputSchema: "{categories?: string[]} — optional list of categories to restrict the scan",
+		Validation: "categories, if present, must be a subset of: os, ssh, firewall, packages, " +
+			"services, network; no shell commands are issued — all checks read config files only",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{
+				"/etc/", "/proc/", "/sys/kernel/",
+				"/usr/bin/apt", "/usr/bin/dpkg", "/usr/bin/rpm",
+			},
+			Network: "none",
+		},
+		Timeout:     60 * time.Second,
+		AuditAction: "sec.hardening.scan",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Mutating:    false,
+	},
+
+	OpSecSSHPosture: {
+		Operation:   OpSecSSHPosture,
+		Permission:  "security.read",
+		InputSchema: "{} (no input) — reads sshd_config and active sessions",
+		Validation:  "no input to validate; reads /etc/ssh/sshd_config and runs 'ss -tnp' for active sessions",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{"/etc/ssh/sshd_config", "/etc/ssh/sshd_config.d/"},
+			Network:        "none",
+		},
+		Timeout:     15 * time.Second,
+		AuditAction: "sec.ssh.posture.read",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
+
+	OpSecBanList: {
+		Operation:   OpSecBanList,
+		Permission:  "security.read",
+		InputSchema: "{source?: \"fail2ban\"|\"crowdsec\"} — empty returns bans from all available sources",
+		Validation: "source, if present, must be fail2ban or crowdsec; " +
+			"the agent probes which adapters are present and skips absent ones gracefully",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemRead: []string{
+				"/var/run/fail2ban/",
+				"/var/lib/crowdsec/",
+				"/usr/bin/fail2ban-client",
+				"/usr/bin/cscli",
+			},
+			Network: "none",
+		},
+		Timeout:     20 * time.Second,
+		AuditAction: "sec.ban.list.read",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for

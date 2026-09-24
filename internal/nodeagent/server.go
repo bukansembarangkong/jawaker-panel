@@ -204,6 +204,9 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpNetFirewallList] = true
 		served[nodewire.OpNetPortInventory] = true
 		served[nodewire.OpNetDiag] = true
+		served[nodewire.OpSecHardeningScan] = true
+		served[nodewire.OpSecSSHPosture] = true
+		served[nodewire.OpSecBanList] = true
 	}
 	return served
 }
@@ -733,6 +736,48 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.NetDiag(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSecHardeningScan:
+		in, err := nodewire.DecodeInput[nodewire.SecHardeningScanInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.SecHardeningScan(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSecSSHPosture:
+		in, err := nodewire.DecodeInput[nodewire.SecSSHPostureInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.SecSSHPosture(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSecBanList:
+		in, err := nodewire.DecodeInput[nodewire.SecBanListInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.SecBanList(ctx, in)
 		if err != nil {
 			return nil, err
 		}
