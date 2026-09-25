@@ -95,37 +95,112 @@ if [ -n "$DOMAIN" ]; then
     info "Will configure HTTPS for: ${DOMAIN}"
 fi
 
+# ── Interactive port selector (arrow keys / vim keys / Enter) ─────────────────
+# menu_select <selected_var> <item1> [item2 ...] — sets selected_var to the
+# index (0-based) of the chosen item. Requires a real TTY.
+menu_select() {
+    local _var="$1"; shift
+    local _items=("$@")
+    local _n=${#_items[@]}
+    local _cur=0
+
+    # Hide cursor, save position
+    tput civis 2>/dev/null || true
+
+    _draw_menu() {
+        # Move cursor up _n lines if not first draw
+        [ "${_first_draw:-1}" -eq 0 ] && tput cuu "$_n" 2>/dev/null
+        _first_draw=0
+        for i in $(seq 0 $((_n - 1))); do
+            if [ "$i" -eq "$_cur" ]; then
+                printf "\r  \033[1;32m❯ %-40s\033[0m\n" "${_items[$i]}"
+            else
+                printf "\r    \033[0m%-40s\033[0m\n" "${_items[$i]}"
+            fi
+        done
+    }
+
+    _first_draw=1
+    _draw_menu
+
+    while true; do
+        # Read one or more bytes (handles escape sequences)
+        IFS= read -rsn1 _k
+        if [ "$_k" = $'\x1b' ]; then
+            IFS= read -rsn1 -t 0.1 _k2
+            IFS= read -rsn1 -t 0.1 _k3
+            if [ "$_k2" = '[' ]; then
+                case "$_k3" in
+                    A)  # Up arrow
+                        [ "$_cur" -gt 0 ] && _cur=$((_cur - 1))
+                        ;;
+                    B)  # Down arrow
+                        [ "$_cur" -lt $((_n - 1)) ] && _cur=$((_cur + 1))
+                        ;;
+                esac
+            fi
+        elif [ "$_k" = 'k' ] || [ "$_k" = 'K' ]; then  # vim up
+            [ "$_cur" -gt 0 ] && _cur=$((_cur - 1))
+        elif [ "$_k" = 'j' ] || [ "$_k" = 'J' ]; then  # vim down
+            [ "$_cur" -lt $((_n - 1)) ] && _cur=$((_cur + 1))
+        elif [ -z "$_k" ]; then  # Enter
+            break
+        fi
+        _draw_menu
+    done
+
+    tput cnorm 2>/dev/null || true  # Restore cursor
+    printf '\n'
+    eval "$_var=$_cur"
+}
+
 # Port selection — only relevant when no domain (direct port access).
 # With a domain, Nginx handles standard 80/443.
 if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
-    # Candidate ports in preference order. Port 80 is most universally open on
-    # cloud providers. We skip any port already bound by another process.
+    # Scan candidate ports; mark each as (available) or (in use)
     _CANDIDATES="80 8080 8443 3000 5000"
-    _CHOSEN=""
+    _MENU_ITEMS=()
+    _MENU_PORTS=()
     for _p in $_CANDIDATES; do
-        if ! ss -tlnp 2>/dev/null | grep -q ":${_p} "; then
-            _CHOSEN="$_p"
-            break
+        if ss -tlnp 2>/dev/null | grep -q ":${_p} "; then
+            _MENU_ITEMS+=("Port ${_p}  (in use — skip)")
+        else
+            _MENU_ITEMS+=("Port ${_p}  (available)")
+            _MENU_PORTS+=("$_p")
         fi
     done
-    _CHOSEN="${_CHOSEN:-8443}"  # fallback if all candidates busy
+    _MENU_ITEMS+=("Custom port...")
 
     if [ -t 0 ]; then
         echo ""
-        info "Auto-detected available port: ${_CHOSEN}"
-        read -rp "Panel port [default: ${_CHOSEN}]: " _port_input
-        _port_input="${_port_input// /}"
-        if [ -n "$_port_input" ]; then
-            if ! echo "$_port_input" | grep -qE '^[0-9]+$' || [ "$_port_input" -lt 1 ] || [ "$_port_input" -gt 65535 ]; then
-                die "Invalid port: $_port_input (must be 1-65535)"
-            fi
-            PANEL_PORT="$_port_input"
+        printf "\033[1m  Select panel port\033[0m (↑↓ or j/k to move, Enter to select):\n\n"
+        menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
+
+        if [ "$_SEL_IDX" -eq "${#_MENU_ITEMS[@]}" ] || \
+           [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
+            # Custom input
+            while true; do
+                read -rp "  Enter custom port number: " _port_input
+                _port_input="${_port_input// /}"
+                if echo "$_port_input" | grep -qE '^[0-9]+$' && \
+                   [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
+                    PANEL_PORT="$_port_input"
+                    break
+                fi
+                warn "Invalid port. Must be a number between 1 and 65535."
+            done
         else
-            PANEL_PORT="$_CHOSEN"
+            # Extract port number from the selected menu item label
+            PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE '^Port ([0-9]+)' | grep -oE '[0-9]+')
+            if [ -z "$PANEL_PORT" ]; then
+                # User picked an "in use" entry — pick first available as fallback
+                PANEL_PORT="${_MENU_PORTS[0]:-8443}"
+                warn "That port is in use. Falling back to ${PANEL_PORT}."
+            fi
         fi
     else
-        # Non-interactive: use auto-detected port
-        PANEL_PORT="$_CHOSEN"
+        # Non-interactive: use first available port
+        PANEL_PORT="${_MENU_PORTS[0]:-8443}"
     fi
 fi
 
