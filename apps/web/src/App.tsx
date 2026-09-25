@@ -108,7 +108,7 @@ export default function App() {
   if (controllerError) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-12">
-        <h1 className="text-lg font-semibold tracking-wide text-ink">JAWAKER</h1>
+        <img src="/header.png" alt="JAWAKER" className="h-8 w-auto" />
         <div className="mt-4">
           <ErrorNote
             error={controllerError}
@@ -123,7 +123,7 @@ export default function App() {
   if (state.kind === 'loading') {
     return (
       <main className="mx-auto max-w-2xl px-6 py-12">
-        <h1 className="text-lg font-semibold tracking-wide text-ink">JAWAKER</h1>
+        <img src="/header.png" alt="JAWAKER" className="h-8 w-auto" />
         <p role="status" className="mt-4 text-sm text-ink-secondary">
           Checking controller connection…
         </p>
@@ -147,8 +147,8 @@ export default function App() {
   return (
     <div className="min-h-full bg-canvas text-ink">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line bg-surface px-6 py-4">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-semibold tracking-wide">JAWAKER</h1>
+        <div className="flex items-center gap-3">
+          <img src="/header.png" alt="JAWAKER" className="h-8 w-auto" />
           <span className="font-mono text-xs text-ink-muted">control panel</span>
         </div>
         <div className="flex items-center gap-3">

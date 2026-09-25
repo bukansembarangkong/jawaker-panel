@@ -85,7 +85,7 @@ export function AuthGate({
 
   return (
     <main className="mx-auto max-w-md px-6 py-12">
-      <h1 className="text-lg font-semibold tracking-wide text-ink">JAWAKER</h1>
+      <img src="/header.png" alt="JAWAKER" className="h-10 w-auto" />
       <p className="mt-1 text-sm text-ink-secondary">
         {isBootstrap
           ? 'This installation has no owner yet. Create the platform owner to begin.'
