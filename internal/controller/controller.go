@@ -41,6 +41,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/projects"
 	"github.com/bukansembarangkong/jawaker-panel/internal/ratelimit"
 	"github.com/bukansembarangkong/jawaker-panel/internal/resourceprofile"
+	"github.com/bukansembarangkong/jawaker-panel/internal/revisions"
 	"github.com/bukansembarangkong/jawaker-panel/internal/secret"
 	"github.com/bukansembarangkong/jawaker-panel/internal/security"
 	"github.com/bukansembarangkong/jawaker-panel/internal/sites"
@@ -196,6 +197,8 @@ type Handler struct {
 	// ObserveEvaluator runs the metric-rule evaluation, retention pruning, and
 	// report-schedule loop. Nil when the observe store is not available.
 	ObserveEvaluator *observe.Evaluator
+	// GitSyncWorker is the background worker draining pending GitOps syncs (PRD §24).
+	GitSyncWorker *revisions.GitSyncWorker
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -527,6 +530,13 @@ func Build(opts Options) (*Handler, error) {
 			logger.With("component", "observe-evaluator"),
 			observe.EvaluatorConfig{},
 		)
+
+		// GitOps sync worker (PRD §24.3): drains pending revisions and records
+		// Git commit SHAs. Without a Syncer configured it marks pending revisions
+		// as not_required to prevent unbounded backlog growth.
+		out.GitSyncWorker = revisions.NewGitSyncWorker(
+			opts.DB, nil, /* ponytail: syncer=nil marks pending as not_required; add real git push when GitSyncURL is in config */
+			logger.With("component", "gitsync-worker"), 30*time.Second)
 
 		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
 			Pool:       opts.DB,
