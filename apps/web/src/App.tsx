@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GoeyToaster } from 'goey-toast';
 
 import { ErrorNote, StatusBadge, secondaryButtonClass } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
@@ -87,6 +88,10 @@ export default function App() {
   const { state, version, controllerError, refresh, signedIn, signOut } = useSession();
   const [route, setRoute] = useState<Route>(routeFromHash);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [servers, setServers] = useState<{ id: string; name: string }[]>([]);
+  const [selectedServerId, setSelectedServerId] = useState<string>(
+    () => localStorage.getItem('jawaker_selected_server') ?? '',
+  );
 
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash());
@@ -104,6 +109,25 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (state.kind !== 'authenticated') return;
+    import('./api/client').then(({ api }) => {
+      api.listServers().then((res) => {
+        setServers(res.servers);
+        if (res.servers.length > 0) {
+          const stored = localStorage.getItem('jawaker_selected_server');
+          const matched = res.servers.find((s) => s.id === stored);
+          if (matched) {
+            setSelectedServerId(matched.id);
+          } else {
+            setSelectedServerId(res.servers[0].id);
+            localStorage.setItem('jawaker_selected_server', res.servers[0].id);
+          }
+        }
+      }).catch(() => {});
+    });
+  }, [state.kind]);
 
   if (controllerError) {
     return (
@@ -153,6 +177,23 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge state="Healthy" detail={version?.version} />
+          {servers.length > 0 && (
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-elevated px-2.5 py-1 text-xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <select
+                value={selectedServerId}
+                onChange={(e) => {
+                  setSelectedServerId(e.target.value);
+                  localStorage.setItem('jawaker_selected_server', e.target.value);
+                }}
+                className="bg-transparent font-medium text-ink outline-none"
+              >
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             type="button"
             onClick={cycle}
@@ -598,6 +639,7 @@ export default function App() {
         </button>
       </footer>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <GoeyToaster position="bottom-right" />
     </div>
   );
 }

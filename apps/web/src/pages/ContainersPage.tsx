@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   containerApi,
@@ -41,6 +42,7 @@ function toError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
+
 export function ContainersPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -54,7 +56,12 @@ export function ContainersPage() {
   const [error, setError] = useState<Error | null>(null);
   const [stepUpPending, setStepUpPending] = useState(false);
   const [stepUpAction, setStepUpAction] = useState<(() => Promise<void>) | null>(null);
-  const [tab, setTab] = useState<'containers' | 'stacks' | 'registries' | 'volumes'>('containers');
+  const [tab, setTab] = useState<'containers' | 'catalog' | 'stacks' | 'registries' | 'volumes'>('containers');
+  const [catalogCategory, setCatalogCategory] = useState<string>('all');
+  const [installingApp, setInstallingApp] = useState<string | null>(null);
+  const [installModalApp, setInstallModalApp] = useState<{ id: string; name: string; icon: string; port: string; yaml: string; desc: string } | null>(null);
+  const [installName, setInstallName] = useState('');
+  const [installYaml, setInstallYaml] = useState('');
   const [logs, setLogs] = useState<string[] | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [showCreateRegistry, setShowCreateRegistry] = useState(false);
@@ -174,6 +181,51 @@ export function ContainersPage() {
     }
   }
 
+  const CATALOG_ITEMS = [
+    { id: 'redis', name: 'Redis', icon: '⚡', category: 'cache', desc: 'In-memory data store — cache & message broker.', port: '6379', yaml: `version: "3"\nservices:\n  redis:\n    image: redis:7-alpine\n    restart: unless-stopped\n    ports:\n      - "6379:6379"\n    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru` },
+    { id: 'mariadb', name: 'MariaDB', icon: '🐬', category: 'database', desc: 'Drop-in MySQL replacement with high performance.', port: '3306', yaml: `version: "3"\nservices:\n  mariadb:\n    image: mariadb:11\n    restart: unless-stopped\n    ports:\n      - "3306:3306"\n    environment:\n      MARIADB_ROOT_PASSWORD: changeme\n      MARIADB_DATABASE: app\n      MARIADB_USER: dbuser\n      MARIADB_PASSWORD: changeme` },
+    { id: 'minio', name: 'MinIO', icon: '🪣', category: 'storage', desc: 'S3-compatible object storage with web console.', port: '9000', yaml: `version: "3"\nservices:\n  minio:\n    image: minio/minio:latest\n    restart: unless-stopped\n    command: server /data --console-address ":9001"\n    ports:\n      - "9000:9000"\n      - "9001:9001"\n    environment:\n      MINIO_ROOT_USER: minioadmin\n      MINIO_ROOT_PASSWORD: changeme` },
+    { id: 'rabbitmq', name: 'RabbitMQ', icon: '🐇', category: 'cache', desc: 'Most widely deployed open-source message broker.', port: '5672', yaml: `version: "3"\nservices:\n  rabbitmq:\n    image: rabbitmq:3-management-alpine\n    restart: unless-stopped\n    ports:\n      - "5672:5672"\n      - "15672:15672"` },
+    { id: 'meilisearch', name: 'Meilisearch', icon: '🔍', category: 'devtools', desc: 'Lightning-fast, hyper-relevant search engine.', port: '7700', yaml: `version: "3"\nservices:\n  meilisearch:\n    image: getmeili/meilisearch:latest\n    restart: unless-stopped\n    ports:\n      - "7700:7700"\n    environment:\n      MEILI_NO_ANALYTICS: "true"` },
+    { id: 'wordpress', name: 'WordPress', icon: '📝', category: 'cms', desc: "World's most popular CMS platform.", port: '8080', yaml: `version: "3"\nservices:\n  wordpress:\n    image: wordpress:latest\n    restart: unless-stopped\n    ports:\n      - "8080:80"\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: wp\n      WORDPRESS_DB_PASSWORD: changeme\n      WORDPRESS_DB_NAME: wordpress\n  db:\n    image: mariadb:11\n    restart: unless-stopped\n    environment:\n      MARIADB_DATABASE: wordpress\n      MARIADB_USER: wp\n      MARIADB_PASSWORD: changeme\n      MARIADB_ROOT_PASSWORD: changeme` },
+    { id: 'n8n', name: 'n8n', icon: '🔄', category: 'devtools', desc: 'Fair-code workflow automation (Zapier alternative).', port: '5678', yaml: `version: "3"\nservices:\n  n8n:\n    image: n8nio/n8n:latest\n    restart: unless-stopped\n    ports:\n      - "5678:5678"\n    environment:\n      N8N_SECURE_COOKIE: "false"` },
+    { id: 'uptime-kuma', name: 'Uptime Kuma', icon: '📊', category: 'devtools', desc: 'Self-hosted monitoring tool with a fancy UI.', port: '3001', yaml: `version: "3"\nservices:\n  uptime-kuma:\n    image: louislam/uptime-kuma:latest\n    restart: unless-stopped\n    ports:\n      - "3001:3001"\n    volumes:\n      - uptime-kuma-data:/app/data\nvolumes:\n  uptime-kuma-data:` },
+  ];
+
+  const CATALOG_CATEGORIES = ['all', 'database', 'cache', 'storage', 'cms', 'devtools'] as const;
+
+  function openInstallModal(item: (typeof CATALOG_ITEMS)[number]) {
+    setInstallModalApp(item);
+    setInstallName(item.id + '-service');
+    setInstallYaml(item.yaml);
+  }
+
+  async function handleInstallFromCatalog() {
+    if (!installModalApp || !selectedProject) return;
+    const page = await import('../api/client').then(({ api }) => api.listServers());
+    const firstServer = page.servers[0];
+    if (!firstServer) {
+      goeyToast.error('No server enrolled in this project.');
+      return;
+    }
+    setInstallingApp(installModalApp.id);
+    try {
+      await containerApi.createStack(selectedProject.id, {
+        server_id: firstServer.id,
+        name: installName,
+        compose_yaml: installYaml,
+      });
+      goeyToast.success(installModalApp.name + ' installed as Docker stack!');
+      setInstallModalApp(null);
+      loadData();
+      setTab('stacks');
+    } catch (e: unknown) {
+      goeyToast.error('Install failed: ' + toError(e).message);
+    } finally {
+      setInstallingApp(null);
+    }
+  }
+
   if (stepUpPending && stepUpAction) {
     return (
       <StepUpPrompt
@@ -235,13 +287,13 @@ export function ContainersPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border">
-        {(['containers', 'stacks', 'registries', 'volumes'] as const).map((t) => (
+        {(['containers', 'catalog', 'stacks', 'registries', 'volumes'] as const).map((t) => (
           <button
             key={t}
             className={`px-4 py-2 text-sm font-medium capitalize ${tab === t ? 'border-b-2 border-accent text-accent' : 'text-ink-secondary hover:text-ink'}`}
             onClick={() => setTab(t)}
           >
-            {t}
+            {t === 'catalog' ? '🛒 App Store' : t}
           </button>
         ))}
       </div>
@@ -345,6 +397,127 @@ export function ContainersPage() {
                 ) : (
                   <span className="text-ink-secondary">No log output.</span>
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* App Catalog tab */}
+      {tab === 'catalog' && (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-ink">App Store — 1-Click Docker Catalog</h2>
+              <p className="text-xs text-ink-secondary">Deploy popular software as isolated Docker compose stacks with one click.</p>
+            </div>
+            {/* Category Pills */}
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {CATALOG_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCatalogCategory(cat)}
+                  className={`rounded-full px-3 py-1 font-medium capitalize transition ${
+                    catalogCategory === cat
+                      ? 'bg-accent text-white'
+                      : 'border border-border bg-surface text-ink-secondary hover:border-accent hover:text-ink'
+                  }`}
+                >
+                  {cat === 'all' ? 'All Apps' : cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {CATALOG_ITEMS.filter((item) => catalogCategory === 'all' || item.category === catalogCategory).map((item) => {
+              const isInstalled = stacks.some((s) => s.name === item.id + '-service' || s.name === item.id);
+              return (
+                <div
+                  key={item.id}
+                  className="flex flex-col justify-between rounded-xl border border-border bg-surface p-5 shadow-sm transition hover:border-accent/40 hover:shadow-md"
+                >
+                  <div>
+                    <div className="mb-3 flex items-start justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-elevated text-xl">
+                        {item.icon}
+                      </div>
+                      <span className="rounded bg-elevated px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
+                        Port :{item.port}
+                      </span>
+                    </div>
+                    <h3 className="mb-1 text-sm font-bold text-ink">{item.name}</h3>
+                    <p className="text-xs leading-relaxed text-ink-secondary">{item.desc}</p>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                    <span className="font-mono text-[10px] text-ink-muted">Docker Compose</span>
+                    {isInstalled ? (
+                      <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+                        ✓ Installed
+                      </span>
+                    ) : (
+                      <button
+                        className={primaryButtonClass}
+                        disabled={installingApp === item.id}
+                        onClick={() => openInstallModal(item)}
+                      >
+                        {installingApp === item.id ? 'Installing…' : 'Install'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Modal: Customize & Install */}
+          {installModalApp && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-elevated text-xl">
+                    {installModalApp.icon}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-ink">Install {installModalApp.name}</h3>
+                    <p className="text-xs text-ink-secondary">{installModalApp.desc}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <Field label="Stack / Container Name">
+                    <input
+                      type="text"
+                      value={installName}
+                      onChange={(e) => setInstallName(e.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Docker Compose YAML (Auto-generated)">
+                    <textarea
+                      rows={7}
+                      value={installYaml}
+                      onChange={(e) => setInstallYaml(e.target.value)}
+                      className={`${inputClass} font-mono text-[11px]`}
+                    />
+                  </Field>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    className={secondaryButtonClass}
+                    onClick={() => setInstallModalApp(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className={primaryButtonClass}
+                    disabled={installingApp != null || !installName.trim()}
+                    onClick={handleInstallFromCatalog}
+                  >
+                    {installingApp ? 'Deploying Stack…' : 'Deploy Stack'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
