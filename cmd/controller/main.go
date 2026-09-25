@@ -27,6 +27,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/logging"
 	"github.com/bukansembarangkong/jawaker-panel/internal/notify"
 	"github.com/bukansembarangkong/jawaker-panel/internal/version"
+	"github.com/bukansembarangkong/jawaker-panel/internal/webhook"
 	"github.com/bukansembarangkong/jawaker-panel/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -214,6 +215,9 @@ func run() error {
 				}
 			}
 		}()
+
+		// The outbound webhook delivery loop drains pending webhook events (PRD §26.4).
+		go webhook.Run(ctx, pool, logger, nil)
 	}
 
 	srv := &http.Server{
