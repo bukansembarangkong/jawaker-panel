@@ -508,11 +508,16 @@ mkdir -p "${CONF_DIR}"
 chmod 700 "${CONF_DIR}"
 
 # Controller always binds loopback; Nginx proxies when domain/SSL is configured.
-# Without SSL it binds 0.0.0.0 so the port is directly reachable.
+# Cloudflare Tunnel also requires loopback — cloudflared proxies http://127.0.0.1:PORT.
+# Without SSL/Cloudflare it binds 0.0.0.0 so the port is directly reachable.
 if $USE_SSL; then
     LISTEN_ADDR="127.0.0.1:${CONTROLLER_PORT}"
     COOKIE_SECURE="true"
     COOKIE_ALLOW_INSECURE="false"
+elif ${USE_CLOUDFLARE:-false}; then
+    LISTEN_ADDR="127.0.0.1:${PANEL_PORT}"
+    COOKIE_SECURE="false"
+    COOKIE_ALLOW_INSECURE="true"
 else
     LISTEN_ADDR=":${PANEL_PORT}"
     COOKIE_SECURE="false"
