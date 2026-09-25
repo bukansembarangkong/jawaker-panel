@@ -9,6 +9,7 @@ import {
   type ContainerStack,
   type ContainerVolume,
   type Project,
+  type Server,
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
 import {
@@ -30,7 +31,7 @@ function mapContainerState(c: Container): OperationalState {
 }
 
 function formatTs(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -51,6 +52,7 @@ export function ContainersPage() {
   const [stacks, setStacks] = useState<ContainerStack[]>([]);
   const [registries, setRegistries] = useState<ContainerRegistry[]>([]);
   const [volumes, setVolumes] = useState<ContainerVolume[]>([]);
+  const [servers, setServers] = useState<Server[]>([]);
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -62,14 +64,18 @@ export function ContainersPage() {
   const [installModalApp, setInstallModalApp] = useState<{ id: string; name: string; icon: string; port: string; yaml: string; desc: string } | null>(null);
   const [installName, setInstallName] = useState('');
   const [installYaml, setInstallYaml] = useState('');
+  const [installServerId, setInstallServerId] = useState('');
+  const [installPort, setInstallPort] = useState('');
+  const [installPassword, setInstallPassword] = useState('');
   const [logs, setLogs] = useState<string[] | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [showCreateRegistry, setShowCreateRegistry] = useState(false);
   const [newReg, setNewReg] = useState({ name: '', host: '', password: '' });
   const [lifecycleLoading, setLifecycleLoading] = useState<Record<string, boolean>>({});
 
-  // Load projects from the api.listProjects endpoint via the existing api object.
-  // ponytail: api object not imported here — use the same import pattern as DatabasesPage
+
+  // Load projects and servers from the api endpoints via dynamic import.
+  // ponytail: api object not imported directly — matches existing pattern
   useEffect(() => {
     import('../api/client').then(({ api }) => {
       api
@@ -79,6 +85,14 @@ export function ContainersPage() {
           if (r.projects?.length) setSelectedProject(r.projects[0]);
         })
         .catch((e: unknown) => setError(toError(e)));
+
+      api
+        .listServers()
+        .then((r) => {
+          setServers(r.servers ?? []);
+          if (r.servers?.length) setInstallServerId(r.servers[0].id);
+        })
+        .catch(() => {});
     });
   }, []);
 
@@ -194,33 +208,84 @@ export function ContainersPage() {
 
   const CATALOG_CATEGORIES = ['all', 'database', 'cache', 'storage', 'cms', 'devtools'] as const;
 
+  const STACK_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+  // Extract first host port mapping like "- \"6379:6379\"" → "6379"
+  function extractPort(yaml: string): string {
+    const m = yaml.match(/- ["']?(\d+):\d+["']?/);
+    return m ? m[1] : '';
+  }
+
+  // Extract first "changeme" password value from YAML
+  function extractPassword(yaml: string): string {
+    const m = yaml.match(/(?:PASSWORD|ROOT_PASSWORD|ROOT_USER):\s*(\S+)/i);
+    return m ? m[1] : '';
+  }
+
+  // Replace all host-port values in "- \"HOST:CONTAINER\"" lines
+  function applyPort(yaml: string, oldPort: string, newPort: string): string {
+    if (!oldPort || oldPort === newPort) return yaml;
+    return yaml.replace(
+      new RegExp(`(- ["']?)${oldPort}(:\\d+["']?)`, 'g'),
+      `$1${newPort}$2`,
+    );
+  }
+
+  // Replace occurrences of oldPw in YAML env values
+  function applyPassword(yaml: string, oldPw: string, newPw: string): string {
+    if (!oldPw || oldPw === newPw || !newPw) return yaml;
+    return yaml.split(oldPw).join(newPw);
+  }
+
   function openInstallModal(item: (typeof CATALOG_ITEMS)[number]) {
+    const port = extractPort(item.yaml);
+    const pw = extractPassword(item.yaml);
     setInstallModalApp(item);
     setInstallName(item.id + '-service');
     setInstallYaml(item.yaml);
+    setInstallPort(port);
+    setInstallPassword(pw);
+  }
+
+  function handleInstallPortChange(newPort: string) {
+    setInstallYaml((prev) => applyPort(prev, installPort, newPort));
+    setInstallPort(newPort);
+  }
+
+  function handleInstallPasswordChange(newPw: string) {
+    setInstallYaml((prev) => applyPassword(prev, installPassword, newPw));
+    setInstallPassword(newPw);
   }
 
   async function handleInstallFromCatalog() {
     if (!installModalApp || !selectedProject) return;
-    const page = await import('../api/client').then(({ api }) => api.listServers());
-    const firstServer = page.servers[0];
-    if (!firstServer) {
-      goeyToast.error('No server enrolled in this project.');
+    const name = installName.trim();
+    if (!name) {
+      goeyToast.error('Stack name is required.');
+      return;
+    }
+    if (!STACK_NAME_RE.test(name)) {
+      goeyToast.error('Stack name must be lowercase alphanumeric and hyphens only (e.g. my-redis).');
+      return;
+    }
+    const serverId = installServerId || servers[0]?.id;
+    if (!serverId) {
+      goeyToast.error('No server enrolled. Enroll a server first.');
       return;
     }
     setInstallingApp(installModalApp.id);
     try {
       await containerApi.createStack(selectedProject.id, {
-        server_id: firstServer.id,
-        name: installName,
+        server_id: serverId,
+        name,
         compose_yaml: installYaml,
       });
-      goeyToast.success(installModalApp.name + ' installed as Docker stack!');
+      goeyToast.success(`${installModalApp.name} deployed as stack "${name}"!`);
       setInstallModalApp(null);
       loadData();
       setTab('stacks');
     } catch (e: unknown) {
-      goeyToast.error('Install failed: ' + toError(e).message);
+      goeyToast.error(toError(e).message);
     } finally {
       setInstallingApp(null);
     }
@@ -330,7 +395,7 @@ export function ContainersPage() {
                         {c.privileged ? (
                           <span className="rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning-ink">⚠ privileged</span>
                         ) : (
-                          <span className="text-ink-muted">—</span>
+                          <span className="text-ink-muted">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-ink-secondary">{formatTs(c.started_at)}</td>
@@ -408,7 +473,7 @@ export function ContainersPage() {
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-semibold text-ink">App Store — 1-Click Docker Catalog</h2>
+              <h2 className="text-base font-semibold text-ink">App Store - 1-Click Docker Catalog</h2>
               <p className="text-xs text-ink-secondary">Deploy popular software as isolated Docker compose stacks with one click.</p>
             </div>
             {/* Category Pills */}
@@ -471,56 +536,120 @@ export function ContainersPage() {
           </div>
 
           {/* Modal: Customize & Install */}
-          {installModalApp && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-              <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-elevated text-xl">
-                    {installModalApp.icon}
+          {installModalApp && (() => {
+            const nameVal = installName.trim();
+            const nameInvalid = nameVal !== '' && !STACK_NAME_RE.test(nameVal);
+            const canDeploy = !installingApp && !!nameVal && !nameInvalid && !!installServerId;
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-elevated text-xl">
+                      {installModalApp.icon}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-ink">Install {installModalApp.name}</h3>
+                      <p className="text-xs text-ink-secondary">{installModalApp.desc}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-ink">Install {installModalApp.name}</h3>
-                    <p className="text-xs text-ink-secondary">{installModalApp.desc}</p>
+
+                  <div className="space-y-4 text-xs">
+                    {/* Server selector */}
+                    {servers.length > 0 ? (
+                      <Field label="Target Server">
+                        <select
+                          className={inputClass}
+                          value={installServerId}
+                          onChange={(e) => setInstallServerId(e.target.value)}
+                        >
+                          {servers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.address})
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : (
+                      <p className="rounded bg-warning/10 px-3 py-2 text-xs text-warning-ink">
+                        No servers enrolled. Enroll a server before deploying stacks.
+                      </p>
+                    )}
+
+                    {/* Stack name with validation */}
+                    <div>
+                      <Field label="Stack Name">
+                        <input
+                          type="text"
+                          value={installName}
+                          onChange={(e) => setInstallName(e.target.value)}
+                          className={inputClass}
+                          placeholder="my-redis"
+                          spellCheck={false}
+                        />
+                      </Field>
+                      {nameInvalid && (
+                        <p className="mt-1 text-[11px] text-danger">
+                          Lowercase letters, numbers, and hyphens only. Must start with a letter or digit.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Port */}
+                    {installPort && (
+                      <Field label="Host Port">
+                        <input
+                          type="text"
+                          value={installPort}
+                          onChange={(e) => handleInstallPortChange(e.target.value)}
+                          className={inputClass}
+                          placeholder="e.g. 6379"
+                        />
+                      </Field>
+                    )}
+
+                    {/* Password */}
+                    {installPassword && (
+                      <Field label="Admin Password">
+                        <input
+                          type="text"
+                          value={installPassword}
+                          onChange={(e) => handleInstallPasswordChange(e.target.value)}
+                          className={inputClass}
+                          placeholder="changeme"
+                          spellCheck={false}
+                        />
+                      </Field>
+                    )}
+
+                    <Field label="Docker Compose YAML">
+                      <textarea
+                        rows={7}
+                        value={installYaml}
+                        onChange={(e) => setInstallYaml(e.target.value)}
+                        className={`${inputClass} font-mono text-[11px]`}
+                      />
+                    </Field>
                   </div>
-                </div>
 
-                <div className="space-y-4 text-xs">
-                  <Field label="Stack / Container Name">
-                    <input
-                      type="text"
-                      value={installName}
-                      onChange={(e) => setInstallName(e.target.value)}
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="Docker Compose YAML (Auto-generated)">
-                    <textarea
-                      rows={7}
-                      value={installYaml}
-                      onChange={(e) => setInstallYaml(e.target.value)}
-                      className={`${inputClass} font-mono text-[11px]`}
-                    />
-                  </Field>
-                </div>
-
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    className={secondaryButtonClass}
-                    onClick={() => setInstallModalApp(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className={primaryButtonClass}
-                    disabled={installingApp != null || !installName.trim()}
-                    onClick={handleInstallFromCatalog}
-                  >
-                    {installingApp ? 'Deploying Stack…' : 'Deploy Stack'}
-                  </button>
+                  <div className="mt-6 flex justify-end gap-2">
+                    <button
+                      className={secondaryButtonClass}
+                      onClick={() => setInstallModalApp(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className={primaryButtonClass}
+                      disabled={!canDeploy}
+                      onClick={handleInstallFromCatalog}
+                    >
+                      {installingApp ? 'Deploying…' : 'Deploy Stack'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -681,7 +810,7 @@ export function ContainersPage() {
                       <td className="px-4 py-3 text-ink-secondary">{v.driver}</td>
                       <td className="px-4 py-3 font-mono text-xs text-ink-secondary">{v.mount_point}</td>
                       <td className="px-4 py-3 text-ink-secondary">
-                        {v.size_bytes != null ? `${(v.size_bytes / 1024 / 1024).toFixed(1)} MB` : '—'}
+                        {v.size_bytes != null ? `${(v.size_bytes / 1024 / 1024).toFixed(1)} MB` : '-'}
                       </td>
                     </tr>
                   ))}
