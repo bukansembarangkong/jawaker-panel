@@ -1,59 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
-/**
- * Theme preference persisted in localStorage. Values:
- *  - 'light' / 'dark': explicit override via <html data-theme>;
- *  - 'system' (default): follow the OS preference (CSS media query).
- *
- * Persistence uses localStorage — acceptable for a presentation preference,
- * never for credentials or tokens (SECURITY.md s8).
- */
+export type Theme = 'light';
 
-export type Theme = 'light' | 'dark' | 'system';
-
-const STORAGE_KEY = 'jawaker.theme';
-
-function readStoredTheme(): Theme {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (value === 'light' || value === 'dark' || value === 'system') {
-      return value;
-    }
-  } catch {
-    // Storage unavailable (private mode etc.): fall through to system.
-  }
-  return 'light';
-}
-
-function applyTheme(theme: Theme): void {
-  const root = document.documentElement;
-  if (theme === 'system') {
-    root.removeAttribute('data-theme');
-  } else {
-    root.setAttribute('data-theme', theme);
-  }
-}
-
-export function useTheme(): { theme: Theme; setTheme: (theme: Theme) => void; cycle: () => void } {
-  const [theme, setThemeState] = useState<Theme>(readStoredTheme);
-
+export function useTheme(): { theme: Theme } {
   useEffect(() => {
-    applyTheme(theme);
+    document.documentElement.removeAttribute('data-theme');
     try {
-      localStorage.setItem(STORAGE_KEY, theme);
+      localStorage.removeItem('jawaker.theme');
     } catch {
-      // Non-fatal: theme still applies for this session.
+      // ignore
     }
-  }, [theme]);
+  }, []);
 
-  const setTheme = useCallback((next: Theme) => setThemeState(next), []);
-  const cycle = useCallback(
-    () =>
-      setThemeState((current) =>
-        current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system',
-      ),
-    [],
-  );
-
-  return { theme, setTheme, cycle };
+  return { theme: 'light' };
 }

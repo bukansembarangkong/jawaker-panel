@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorNote, secondaryButtonClass } from '../components/ui';
 import { api, type ApiError, type ResourceBudget } from '../api/client';
-import { useTheme, type Theme } from '../theme/useTheme';
 
 type Tab = 'general' | 'security' | 'sessions' | 'audit';
 
@@ -10,7 +9,6 @@ export function SettingsPage() {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>('general');
   const [_error] = useState<ApiError | Error | null>(null);
-  const { theme, setTheme } = useTheme();
   const [profile, setProfile] = useState<ResourceBudget | null>(null);
 
   useEffect(() => {
@@ -94,26 +92,6 @@ export function SettingsPage() {
                   aria-pressed={i18n.language.startsWith(code)}
                 >
                   {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <h2 className="text-base font-medium text-ink">Appearance</h2>
-            <p className="text-xs text-ink-secondary">Choose the color theme for the JAWAKER Panel interface.</p>
-            <div className="flex gap-2">
-              {(['system', 'light', 'dark'] as Theme[]).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => setTheme(opt)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                    theme === opt
-                      ? 'bg-accent text-white border-accent'
-                      : 'border-border text-ink-secondary hover:text-ink hover:border-ink-secondary'
-                  }`}
-                  aria-pressed={theme === opt}
-                >
-                  {opt.charAt(0).toUpperCase() + opt.slice(1)}
                 </button>
               ))}
             </div>

@@ -84,7 +84,7 @@ function routeFromHash(): Route {
 }
 
 export default function App() {
-  const { theme, cycle } = useTheme();
+  useTheme();
   const { state, version, controllerError, refresh, signedIn, signOut } = useSession();
   const [route, setRoute] = useState<Route>(routeFromHash);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -357,14 +357,7 @@ export default function App() {
             {pageTitles[route]}
           </h2>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={cycle}
-              className="rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-              aria-label={`Theme: ${theme}. Activate to switch.`}
-            >
-              Theme: {theme}
-            </button>
+
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
