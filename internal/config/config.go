@@ -173,11 +173,6 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.CookieSecure = !cfg.CookieAllowInsecure
-	if cfg.CookieAllowInsecure && cfg.ListenAddr != "" && !isLoopbackHost(cfg.ListenAddr) {
-		errs = append(errs, fmt.Errorf(
-			"JAWAKER_COOKIE_ALLOW_INSECURE is set but JAWAKER_LISTEN_ADDR %q is not loopback; "+
-				"session cookies must not travel over plain HTTP on a reachable interface", cfg.ListenAddr))
-	}
 
 	if v := os.Getenv("JAWAKER_TRUSTED_ORIGINS"); v != "" {
 		for _, origin := range strings.Split(v, ",") {

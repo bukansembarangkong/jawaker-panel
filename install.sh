@@ -337,7 +337,7 @@ elif ${USE_CLOUDFLARE:-false}; then
 else
     LISTEN_ADDR=":${PANEL_PORT}"
     COOKIE_SECURE="false"
-    COOKIE_ALLOW_INSECURE="false"
+    COOKIE_ALLOW_INSECURE="true"
 fi
 
 cat >"${CONF_DIR}/jawaker.env" <<EOF
