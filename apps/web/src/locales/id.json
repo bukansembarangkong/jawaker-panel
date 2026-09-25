@@ -1,0 +1,51 @@
+{
+  "nav": {
+    "dashboard": "Dasbor",
+    "servers": "Server",
+    "sites": "Situs",
+    "apps": "Aplikasi",
+    "databases": "Database",
+    "containers": "Container",
+    "dns_tls": "DNS & TLS",
+    "mail": "Email",
+    "files": "File",
+    "backups": "Cadangan",
+    "network": "Jaringan",
+    "security": "Keamanan",
+    "observability": "Pemantauan",
+    "ha": "Ketersediaan Tinggi",
+    "updates": "Pembaruan",
+    "workers": "Worker",
+    "automation": "Otomasi",
+    "api_tokens": "Token API",
+    "users": "Pengguna",
+    "copilot": "Copilot",
+    "settings": "Pengaturan",
+    "logout": "Keluar"
+  },
+  "common": {
+    "loading": "Memuat…",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Hapus",
+    "edit": "Ubah",
+    "create": "Buat",
+    "refresh": "Muat ulang",
+    "actions": "Tindakan",
+    "status": "Status",
+    "name": "Nama",
+    "created": "Dibuat",
+    "dismiss": "tutup",
+    "search": "Cari…",
+    "language": "Bahasa",
+    "theme": "Tema"
+  },
+  "settings": {
+    "title": "Pengaturan",
+    "language_label": "Bahasa Antarmuka",
+    "language_help": "Beralih antara English dan Bahasa Indonesia. Perubahan langsung berlaku.",
+    "theme_label": "Tema Warna",
+    "theme_dark": "Gelap",
+    "theme_light": "Terang"
+  }
+}

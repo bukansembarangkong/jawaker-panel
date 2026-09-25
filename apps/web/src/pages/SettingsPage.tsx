@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ErrorNote, secondaryButtonClass } from '../components/ui';
 import { api, type ApiError, type ResourceBudget } from '../api/client';
 import { useTheme, type Theme } from '../theme/useTheme';
@@ -6,6 +7,7 @@ import { useTheme, type Theme } from '../theme/useTheme';
 type Tab = 'general' | 'security' | 'sessions' | 'audit';
 
 export function SettingsPage() {
+  const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>('general');
   const [_error] = useState<ApiError | Error | null>(null);
   const { theme, setTheme } = useTheme();
@@ -71,6 +73,29 @@ export function SettingsPage() {
                 placeholder="https://…"
                 className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
               />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-base font-medium text-ink">{t('settings.language_label', 'Interface Language (PRD §43)')}</h2>
+            <p className="text-xs text-ink-secondary">{t('settings.language_help', 'Switch between English and Bahasa Indonesia. Changes apply immediately.')}</p>
+            <div className="flex gap-2">
+              {[
+                { code: 'en', label: 'English' },
+                { code: 'id', label: 'Bahasa Indonesia' },
+              ].map(({ code, label }) => (
+                <button
+                  key={code}
+                  onClick={() => void i18n.changeLanguage(code)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    i18n.language.startsWith(code)
+                      ? 'bg-accent text-white border-accent'
+                      : 'border-border text-ink-secondary hover:text-ink hover:border-ink-secondary'
+                  }`}
+                  aria-pressed={i18n.language.startsWith(code)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
           <div className="space-y-3">
