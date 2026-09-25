@@ -71,6 +71,16 @@ type Config struct {
 	LoginAttemptsPerMinute int
 	// BootstrapAttemptsPerMinute bounds bootstrap attempts per client address.
 	BootstrapAttemptsPerMinute int
+
+	// GitOpsGitHubToken is the GitHub personal access token for GitOps push (PRD §24).
+	// Set via JAWAKER_GITOPS_GITHUB_TOKEN. Empty disables real git push (rule-based fallback).
+	GitOpsGitHubToken string
+	// GitOpsRepoURL is the target GitHub repository, e.g. "owner/repo" or full https URL.
+	// Set via JAWAKER_GITOPS_REPO_URL.
+	GitOpsRepoURL string
+	// GitOpsBranch is the branch to commit revisions to (default: "main").
+	// Set via JAWAKER_GITOPS_BRANCH.
+	GitOpsBranch string
 }
 
 // Load reads configuration from the process environment and validates it.
@@ -84,6 +94,9 @@ func Load() (*Config, error) {
 		MaxBodyBytes:          defaultMaxBodyBytes,
 		MaxHeaderBytes:        defaultMaxHeaderKB * 1024,
 		RequestTimeoutSeconds: 30,
+		GitOpsGitHubToken:     strings.TrimSpace(os.Getenv("JAWAKER_GITOPS_GITHUB_TOKEN")),
+		GitOpsRepoURL:         strings.TrimSpace(os.Getenv("JAWAKER_GITOPS_REPO_URL")),
+		GitOpsBranch:          envOr("JAWAKER_GITOPS_BRANCH", "main"),
 	}
 
 	var errs []error

@@ -536,11 +536,23 @@ func Build(opts Options) (*Handler, error) {
 			observe.EvaluatorConfig{},
 		)
 
-		// GitOps sync worker (PRD §24.3): drains pending revisions and records
-		// Git commit SHAs. Without a Syncer configured it marks pending revisions
-		// as not_required to prevent unbounded backlog growth.
+		// GitOps sync worker (PRD §24.3): drains pending revisions and pushes them
+		// to the configured GitHub repository. Falls back to not_required marking
+		// when no GitHub token / repo is configured.
+		var gitSyncer revisions.Syncer
+		if opts.Config != nil && opts.Config.GitOpsGitHubToken != "" && opts.Config.GitOpsRepoURL != "" {
+			ghSyncer := revisions.NewGitHubSyncer(revisions.GitHubSyncConfig{
+				Token:   opts.Config.GitOpsGitHubToken,
+				RepoURL: opts.Config.GitOpsRepoURL,
+				Branch:  opts.Config.GitOpsBranch,
+			})
+			if ghSyncer != nil {
+				gitSyncer = ghSyncer
+				logger.Info("gitops: GitHub syncer active", "repo", opts.Config.GitOpsRepoURL, "branch", opts.Config.GitOpsBranch)
+			}
+		}
 		out.GitSyncWorker = revisions.NewGitSyncWorker(
-			opts.DB, nil, /* ponytail: syncer=nil marks pending as not_required; add real git push when GitSyncURL is in config */
+			opts.DB, gitSyncer,
 			logger.With("component", "gitsync-worker"), 30*time.Second)
 
 		// Background retention & expiry cleaner (PRD §42): preview environments, terminal jobs.
