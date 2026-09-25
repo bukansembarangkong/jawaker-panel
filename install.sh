@@ -224,6 +224,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                     echo "  What would you like to do?"
                     echo ""
                     _BLOCK_OPTS=(
+                        "Continue anyway (I know my port is open / will open it later)"
                         "I've opened port ${PANEL_PORT} in my cloud dashboard — retry"
                         "Choose a different port"
                         "Use Cloudflare Tunnel (no port opening needed, free HTTPS URL)"
@@ -231,7 +232,11 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                     menu_select _BLOCK_SEL "${_BLOCK_OPTS[@]}"
 
                     case "$_BLOCK_SEL" in
-                        0)  # Retry
+                        0)  # Continue anyway
+                            ok "Continuing with port ${PANEL_PORT} as requested"
+                            break
+                            ;;
+                        1)  # Retry
                             info "Retrying port ${PANEL_PORT}..."
                             _REACH=$(_probe_port "$PANEL_PORT")
                             if [ -n "$_REACH" ] && [ "$_REACH" != "skip" ]; then
@@ -241,7 +246,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                                 warn "Still blocked. Try opening the port or choose another option."
                             fi
                             ;;
-                        1)  # Different port — ask directly
+                        2)  # Different port — ask directly
                             while true; do
                                 read -rp "  Enter new port number [8443]: " _port_input < /dev/tty
                                 _port_input="${_port_input// /}"
@@ -262,7 +267,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                                 warn "Port ${PANEL_PORT} is also blocked. Choose another option."
                             fi
                             ;;
-                        2)  # Cloudflare Tunnel
+                        3)  # Cloudflare Tunnel
                             USE_CLOUDFLARE=true
                             # Bind controller to loopback — Cloudflare proxies from outside
                             PANEL_PORT="8080"
