@@ -232,12 +232,20 @@ func (h *CopilotHandlers) handleInvokeTool(w http.ResponseWriter, r *http.Reques
 				return
 			}
 
-			// ponytail: actual AI engine invocation; add when AI provider integrated.
-			// For now: return a placeholder analysis result and audit the call.
+			// Execute through the deterministic advisor engine (PRD §28).
+			toolResult, execErr := copilot.ExecuteTool(req.ToolName, req.Input)
+			outcome := "ok"
+			errMsg := ""
+			if execErr != nil {
+				outcome = "error"
+				errMsg = execErr.Error()
+			}
+
 			output := map[string]any{
-				"result":  "analysis_placeholder",
-				"message": "Tool invocation recorded. AI engine integration pending.",
 				"tool":    req.ToolName,
+				"result":  toolResult,
+				"outcome": outcome,
+				"error":   errMsg,
 			}
 
 			tc, err := h.store.RecordToolCall(r.Context(), sessionID, req.ToolName,
