@@ -3,8 +3,13 @@
 #
 #   curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/install.sh | bash
 #
-# Requirements: Debian/Ubuntu/RHEL/Rocky/AlmaLinux VPS, run as root.
-# Installs: PostgreSQL, Go toolchain (if absent), JAWAKER binary, systemd unit.
+# Environment overrides (optional):
+#   JAWAKER_DOMAIN       - panel domain, e.g. "panel.example.com"  (skips interactive prompt)
+#   JAWAKER_SSL_EMAIL    - email for Let's Encrypt (required when JAWAKER_DOMAIN is set)
+#   JAWAKER_PORT         - panel port when no domain/SSL (default: 8443)
+#   JAWAKER_ADMIN_EMAIL  - initial admin account email (default: admin@jawaker.local)
+#
+# Requirements: Debian/Ubuntu/RHEL/Rocky/AlmaLinux, run as root.
 set -euo pipefail
 
 ###############################################################################
@@ -15,7 +20,8 @@ INSTALL_DIR="/opt/jawaker-panel"
 BIN_DIR="/usr/local/bin"
 CONF_DIR="/etc/jawaker"
 SERVICE="jawaker-controller"
-LISTEN_PORT="${JAWAKER_PORT:-8080}"
+# Controller always listens on 127.0.0.1:8443 (Nginx proxies if domain given)
+CONTROLLER_PORT="8443"
 DB_NAME="jawaker_panel"
 DB_USER="jawaker"
 
@@ -34,11 +40,10 @@ gen_pass()   { head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 32; }
 server_ip()  { hostname -I 2>/dev/null | awk '{print $1}'; }
 
 ###############################################################################
-# Preflight checks
+# Preflight
 ###############################################################################
 [ "$(id -u)" -eq 0 ] || die "Run as root (e.g. sudo bash install.sh)"
 
-# Detect OS and package manager
 if command -v apt-get &>/dev/null; then
     PKG_MANAGER="apt"
     PG_PKG="postgresql postgresql-client"
@@ -62,6 +67,33 @@ bold "╚═══════════════════════�
 echo ""
 
 ###############################################################################
+# Domain + SSL prompt
+###############################################################################
+DOMAIN="${JAWAKER_DOMAIN:-}"
+SSL_EMAIL="${JAWAKER_SSL_EMAIL:-}"
+USE_SSL=false
+
+# Only prompt when running interactively (stdin is a tty)
+if [ -t 0 ] && [ -z "$DOMAIN" ]; then
+    echo ""
+    info "Optional: bind a domain for HTTPS access (e.g. panel.example.com)"
+    info "  • Leave empty to access via IP on port ${CONTROLLER_PORT}"
+    info "  • DNS A record for the domain must already point to this server"
+    echo ""
+    read -rp "Panel domain [leave empty for IP-only]: " DOMAIN
+    DOMAIN="${DOMAIN// /}"  # trim spaces
+fi
+
+if [ -n "$DOMAIN" ]; then
+    USE_SSL=true
+    if [ -z "$SSL_EMAIL" ] && [ -t 0 ]; then
+        read -rp "Email for Let's Encrypt SSL certificate: " SSL_EMAIL
+    fi
+    [ -n "$SSL_EMAIL" ] || die "JAWAKER_SSL_EMAIL is required when a domain is provided"
+    info "Will configure HTTPS for: ${DOMAIN}"
+fi
+
+###############################################################################
 # System dependencies
 ###############################################################################
 info "Installing system dependencies..."
@@ -69,16 +101,20 @@ case "$PKG_MANAGER" in
     apt)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq $PG_PKG curl git tar build-essential
+        EXTRA_PKGS=""
+        $USE_SSL && EXTRA_PKGS="nginx certbot python3-certbot-nginx"
+        apt-get install -y -qq $PG_PKG curl git tar build-essential $EXTRA_PKGS
         ;;
     dnf)
         dnf install -y -q $PG_PKG curl git tar gcc
+        $USE_SSL && dnf install -y -q nginx certbot python3-certbot-nginx
         if ! systemctl is-enabled postgresql &>/dev/null; then
             postgresql-setup --initdb 2>/dev/null || true
         fi
         ;;
     yum)
         yum install -y -q $PG_PKG curl git tar gcc
+        $USE_SSL && yum install -y -q nginx certbot python3-certbot-nginx
         if ! systemctl is-enabled postgresql &>/dev/null; then
             service postgresql initdb 2>/dev/null || true
         fi
@@ -133,11 +169,8 @@ fi
 # PostgreSQL setup
 ###############################################################################
 info "Starting PostgreSQL..."
-case "$PKG_MANAGER" in
-    apt)  systemctl enable --now postgresql ;;
-    dnf)  systemctl enable --now postgresql ;;
-    yum)  systemctl enable --now postgresql ;;
-esac
+systemctl enable --now postgresql
+sleep 2
 
 DB_PASS=$(gen_pass)
 
@@ -189,10 +222,23 @@ ok "Binary installed at ${BIN_DIR}/jawaker-controller"
 ###############################################################################
 SECRET_KEY=$(gen_secret)
 ADMIN_PASS=$(gen_pass)
+ADMIN_EMAIL="${JAWAKER_ADMIN_EMAIL:-admin@jawaker.local}"
 DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}?sslmode=disable"
 
 mkdir -p "${CONF_DIR}"
 chmod 700 "${CONF_DIR}"
+
+# Controller always binds loopback; Nginx proxies when domain/SSL is configured.
+# Without SSL it binds 0.0.0.0 so the port is directly reachable.
+if $USE_SSL; then
+    LISTEN_ADDR="127.0.0.1:${CONTROLLER_PORT}"
+    COOKIE_SECURE="true"
+    COOKIE_ALLOW_INSECURE="false"
+else
+    LISTEN_ADDR=":${JAWAKER_PORT:-${CONTROLLER_PORT}}"
+    COOKIE_SECURE="false"
+    COOKIE_ALLOW_INSECURE="true"
+fi
 
 cat >"${CONF_DIR}/jawaker.env" <<EOF
 # JAWAKER Panel configuration — generated by install.sh
@@ -200,13 +246,13 @@ cat >"${CONF_DIR}/jawaker.env" <<EOF
 
 JAWAKER_DATABASE_URL=${DATABASE_URL}
 JAWAKER_SECRET_KEY_V1=${SECRET_KEY}
-JAWAKER_LISTEN_ADDR=:${LISTEN_PORT}
+JAWAKER_LISTEN_ADDR=${LISTEN_ADDR}
 JAWAKER_RUN_MIGRATIONS=true
-JAWAKER_COOKIE_SECURE=false
-JAWAKER_COOKIE_ALLOW_INSECURE=true
+JAWAKER_COOKIE_SECURE=${COOKIE_SECURE}
+JAWAKER_COOKIE_ALLOW_INSECURE=${COOKIE_ALLOW_INSECURE}
 JAWAKER_LOG_LEVEL=info
 JAWAKER_LOG_FORMAT=json
-JAWAKER_BOOTSTRAP_ADMIN_EMAIL=admin@jawaker.local
+JAWAKER_BOOTSTRAP_ADMIN_EMAIL=${ADMIN_EMAIL}
 JAWAKER_BOOTSTRAP_ADMIN_PASSWORD=${ADMIN_PASS}
 EOF
 chmod 600 "${CONF_DIR}/jawaker.env"
@@ -238,12 +284,115 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now ${SERVICE}
-ok "Service started: ${SERVICE}"
+ok "Service ${SERVICE} started"
 
 ###############################################################################
-# Run migrations
+# SSL + Nginx reverse proxy (only when domain is provided)
 ###############################################################################
-info "Waiting for service to run migrations..."
+if $USE_SSL; then
+    info "Obtaining Let's Encrypt SSL certificate for ${DOMAIN}..."
+
+    # Temporarily stop nginx if running (port 80 must be free for standalone challenge)
+    systemctl stop nginx 2>/dev/null || true
+
+    certbot certonly \
+        --standalone \
+        --non-interactive \
+        --agree-tos \
+        --email "${SSL_EMAIL}" \
+        -d "${DOMAIN}" \
+        --quiet
+
+    ok "SSL certificate obtained"
+
+    # Write Nginx vhost
+    NGINX_CONF="/etc/nginx/sites-available/jawaker"
+    mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+
+    cat >"${NGINX_CONF}" <<NGINX
+# JAWAKER Panel — generated by install.sh
+# Managed by: edit + nginx -t && systemctl reload nginx
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    # Redirect HTTP → HTTPS
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # WebSocket support (terminal, SSE)
+    location / {
+        proxy_pass         http://127.0.0.1:${CONTROLLER_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade \$http_upgrade;
+        proxy_set_header   Connection \$connection_upgrade;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering    off;
+    }
+}
+NGINX
+
+    # Nginx map block for upgrade header (add to http context if not present)
+    HTTP_CONF="/etc/nginx/conf.d/jawaker-upgrade.conf"
+    if ! grep -q "connection_upgrade" /etc/nginx/nginx.conf 2>/dev/null; then
+        cat >"${HTTP_CONF}" <<'MAP'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+MAP
+    fi
+
+    # Enable site (Debian/Ubuntu style; RHEL uses conf.d directly)
+    if [ -d /etc/nginx/sites-enabled ]; then
+        ln -sf "${NGINX_CONF}" /etc/nginx/sites-enabled/jawaker
+        # Disable default vhost if present (it conflicts on port 80)
+        rm -f /etc/nginx/sites-enabled/default
+    else
+        # RHEL: copy to conf.d
+        cp "${NGINX_CONF}" /etc/nginx/conf.d/jawaker.conf
+    fi
+
+    nginx -t && systemctl enable --now nginx
+    ok "Nginx started with SSL for ${DOMAIN}"
+
+    # Auto-renewal via systemd timer (preferred) or cron fallback
+    if systemctl list-timers --all | grep -q certbot; then
+        ok "Certbot auto-renewal timer already active"
+    else
+        # Add cron job: renew twice daily (Let's Encrypt recommendation)
+        CRON_LINE="0 3,15 * * * root certbot renew --quiet --deploy-hook 'systemctl reload nginx'"
+        if ! grep -qF "certbot renew" /etc/crontab 2>/dev/null; then
+            echo "${CRON_LINE}" >> /etc/crontab
+            ok "Auto-renewal cron installed (runs at 03:00 and 15:00)"
+        else
+            ok "Auto-renewal cron already present"
+        fi
+    fi
+fi
+
+###############################################################################
+# Wait for service to be healthy
+###############################################################################
+info "Waiting for JAWAKER to initialize..."
 sleep 5
 if systemctl is-active --quiet ${SERVICE}; then
     ok "Service is running"
@@ -254,18 +403,25 @@ fi
 ###############################################################################
 # Done — print access info
 ###############################################################################
-IP=$(server_ip)
 echo ""
 bold "╔══════════════════════════════════════════════════════╗"
 bold "║              JAWAKER Panel is ready! 🎉              ║"
 bold "╠══════════════════════════════════════════════════════╣"
 bold "║                                                      ║"
-printf  "║  URL:      \033[1mhttp://%-36s\033[0m║\n" "${IP}:${LISTEN_PORT}/"
-printf  "║  Email:    %-42s║\n" "admin@jawaker.local"
+if $USE_SSL; then
+    printf  "║  URL:      \033[1mhttps://%-35s\033[0m║\n" "${DOMAIN}/"
+else
+    IP=$(server_ip)
+    printf  "║  URL:      \033[1mhttp://%-36s\033[0m║\n" "${IP}:${JAWAKER_PORT:-${CONTROLLER_PORT}}/"
+fi
+printf  "║  Email:    %-42s║\n" "${ADMIN_EMAIL}"
 printf  "║  Password: \033[1m%-42s\033[0m║\n" "${ADMIN_PASS}"
 bold "║                                                      ║"
 bold "║  Config:   /etc/jawaker/jawaker.env                  ║"
 bold "║  Logs:     journalctl -u jawaker-controller -f       ║"
+if $USE_SSL; then
+bold "║  SSL:      auto-renews via cron (certbot renew)      ║"
+fi
 bold "║                                                      ║"
 bold "╚══════════════════════════════════════════════════════╝"
 echo ""

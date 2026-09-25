@@ -44,18 +44,43 @@ Install JAWAKER on any fresh Debian/Ubuntu/RHEL/Rocky/Alma Linux VPS as root:
 curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/install.sh | bash
 ```
 
-The installer:
+The installer **asks interactively** for an optional custom domain, then:
+
 1. Detects your OS (apt/dnf/yum)
 2. Installs PostgreSQL, Go, Node.js
 3. Creates `jawaker_panel` database with a generated password
-4. Clones the repo, builds the frontend, compiles the binary
+4. Clones the repo, builds the frontend, compiles the binary (frontend embedded in binary)
 5. Writes configuration to `/etc/jawaker/jawaker.env`
 6. Installs and starts a systemd service (`jawaker-controller`)
-7. Prints the admin panel URL, email, and password
+7. **If a domain is provided:** installs Nginx + obtains a free Let's Encrypt SSL certificate, sets up auto-renewal
+8. Prints the panel URL, admin email, and one-time password
 
-After install, the panel is available at `http://<server-ip>:8080`.
+### With custom domain + HTTPS (recommended)
 
-Useful commands post-install:
+Make sure your DNS `A` record points to the VPS first, then:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/install.sh | bash
+# When prompted: enter your domain and email for Let's Encrypt
+```
+
+Panel accessible at `https://panel.example.com`.
+SSL auto-renews via cron every 12 hours.
+
+### Non-interactive / automated
+
+```bash
+JAWAKER_DOMAIN=panel.example.com \
+JAWAKER_SSL_EMAIL=admin@example.com \
+JAWAKER_ADMIN_EMAIL=admin@example.com \
+  bash <(curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/install.sh)
+```
+
+### IP-only (no domain)
+
+Leave the domain prompt empty — panel accessible at `http://<server-ip>:8443`.
+
+### Post-install commands
 
 ```bash
 # View logs
@@ -66,9 +91,13 @@ systemctl restart jawaker-controller
 
 # Edit configuration
 nano /etc/jawaker/jawaker.env
+
+# Force SSL renewal
+certbot renew --force-renewal && systemctl reload nginx
 ```
 
 ---
+
 
 ## Local Development Quickstart
 
