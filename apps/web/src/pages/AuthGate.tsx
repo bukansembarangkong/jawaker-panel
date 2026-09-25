@@ -85,12 +85,14 @@ export function AuthGate({
 
   return (
     <main className="mx-auto max-w-md px-6 py-12">
-      <img src="/header.png" alt="JAWAKER" className="h-10 w-auto" />
-      <p className="mt-1 text-sm text-ink-secondary">
-        {isBootstrap
-          ? 'This installation has no owner yet. Create the platform owner to begin.'
-          : 'Sign in to the control panel.'}
-      </p>
+      <div className="flex flex-col items-center text-center">
+        <img src="/header.png" alt="JAWAKER" className="h-10 w-auto mx-auto" />
+        <p className="mt-2 text-sm text-ink-secondary">
+          {isBootstrap
+            ? 'This installation has no owner yet. Create the platform owner to begin.'
+            : 'Sign in to the control panel.'}
+        </p>
+      </div>
 
       <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
         <Field label="Email address">

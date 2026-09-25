@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JAWAKER Panel — Interactive UI/UX Prototype</title>
+  <link rel="icon" type="image/png" href="apps/web/public/icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.3); border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.5); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- ============================================================== -->
+  <!-- SCREEN 1: AUTH GATE (LOGIN / BOOTSTRAP) -->
+  <!-- ============================================================== -->
+  <div id="screen-auth" class="min-h-screen flex flex-col justify-center items-center p-6 bg-slate-950 relative overflow-hidden">
+    <!-- Background glow -->
+    <div class="absolute w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none -top-20 -left-20"></div>
+    <div class="absolute w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none -bottom-20 -right-20"></div>
+
+    <div class="w-full max-w-md bg-slate-900/80 border border-slate-800 rounded-2xl p-8 shadow-2xl backdrop-blur relative z-10">
+      <!-- Logo Header -->
+      <div class="mb-6 flex flex-col items-center text-center">
+        <img src="apps/web/public/header.png" alt="JAWAKER" class="h-9 w-auto object-contain mx-auto mb-2" onerror="this.outerHTML='<h1 class=\'text-2xl font-bold text-white tracking-wider text-center\'>JAWAKER<span class=\'text-indigo-400\'>.</span></h1>'" />
+        <p id="auth-subtitle" class="text-xs text-slate-400">Sign in to access your server control plane.</p>
+      </div>
+
+      <!-- Mode Switcher Tabs (Login vs Bootstrap) -->
+      <div class="flex rounded-lg bg-slate-950 p-1 mb-5 border border-slate-800 text-xs font-semibold">
+        <button onclick="setAuthMode('login')" id="tab-login" class="flex-1 py-1.5 rounded-md bg-indigo-600 text-white transition">Sign In</button>
+        <button onclick="setAuthMode('bootstrap')" id="tab-bootstrap" class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">First-Time Setup</button>
+      </div>
+
+      <!-- Login Form -->
+      <form onsubmit="handleAuthSubmit(event)" class="space-y-4 text-xs">
+        <div id="field-displayname" class="hidden">
+          <label class="block font-semibold text-slate-300 mb-1">Display Name</label>
+          <input id="auth-name" type="text" placeholder="Administrator" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Email address</label>
+          <input id="auth-email" type="email" value="admin@jawaker.local" required class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Password</label>
+          <input id="auth-pass" type="password" value="P7XstahQOeXYqWnDw5jbEvpgr4lpgt6" required class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500 font-mono" />
+          <p id="auth-hint" class="text-[10px] text-slate-400 mt-1">Preset with credentials from your VPS installation.</p>
+        </div>
+
+        <!-- 2FA Box (simulated) -->
+        <div id="field-2fa" class="hidden rounded-lg border border-slate-800 bg-slate-950 p-3 space-y-2">
+          <label class="block font-semibold text-slate-300">Two-Factor Authentication Code</label>
+          <input id="auth-2fa" type="text" placeholder="6-digit code" maxlength="6" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-white font-mono text-center tracking-widest text-sm outline-none" />
+          <p class="text-[10px] text-slate-400">Open Google Authenticator or your TOTP app.</p>
+        </div>
+
+        <button type="submit" id="auth-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
+          <span>Sign In to Panel</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+      </form>
+
+      <!-- Bottom Hint -->
+      <div class="mt-6 pt-4 border-t border-slate-800/60 text-center text-[11px] text-slate-400">
+        Demo Mode • Klik <strong>Sign In</strong> langsung untuk masuk ke Dashboard.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- SCREEN 2: MAIN PANEL (SIDEBAR + CONTENT) -->
+  <!-- ============================================================== -->
+  <div id="screen-panel" class="hidden flex-1 flex flex-col min-h-screen">
+    <!-- Top Banner: Prototype Notice -->
+    <div class="bg-gradient-to-r from-indigo-900/60 via-purple-900/40 to-slate-900 border-b border-indigo-500/20 px-4 py-2 text-xs flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">UI Prototype</span>
+        <span class="text-slate-300">Interactive Preview — Semua menu sidebar & action buttons bisa diklik.</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-1.5 text-slate-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Node: prod-node-01 (172.104.187.228)
+        </span>
+        <button onclick="logout()" class="text-rose-400 hover:text-rose-300 px-2 py-0.5 rounded border border-rose-500/30 text-[11px]">
+          Sign Out
+        </button>
+      </div>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Sidebar -->
+      <aside class="w-64 bg-slate-900/80 border-r border-slate-800/80 flex flex-col justify-between shrink-0">
+        <div>
+          <!-- Logo / Brand -->
+          <div class="h-16 flex items-center gap-3 px-5 border-b border-slate-800/80">
+            <img src="apps/web/public/header.png" alt="JAWAKER" class="h-7 w-auto object-contain" onerror="this.outerHTML='<span class=\'font-bold text-lg tracking-wider text-white\'>JAWAKER<span class=\'text-indigo-400\'>.</span></span>'" />
+          </div>
+
+          <!-- Server Selector -->
+          <div class="p-3 border-b border-slate-800/60">
+            <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-2 flex items-center justify-between cursor-pointer hover:border-slate-700">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                <div>
+                  <div class="text-xs font-semibold text-slate-200">prod-node-01</div>
+                  <div class="text-[10px] text-slate-400">Ubuntu 24.04 LTS</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+
+          <!-- Navigation Menu -->
+          <nav class="p-3 space-y-1 text-sm font-medium">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1">Core Hosting</div>
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+              <span>Dashboard</span>
+            </button>
+            <button onclick="switchTab('sites')" id="nav-sites" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+              <span>Websites / Sites</span>
+              <span id="badge-sites" class="ml-auto text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">3</span>
+            </button>
+            <button onclick="switchTab('apps')" id="nav-apps" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              <span>Deployments (Git)</span>
+            </button>
+            <button onclick="switchTab('databases')" id="nav-databases" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+              <span>Databases</span>
+            </button>
+            <button onclick="switchTab('files')" id="nav-files" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              <span>File Manager</span>
+            </button>
+
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-3 py-1">Infrastructure</div>
+            <button onclick="switchTab('dns')" id="nav-dns" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <span>DNS & SSL / TLS</span>
+            </button>
+            <button onclick="switchTab('backups')" id="nav-backups" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+              <span>Backups & DR</span>
+            </button>
+            <button onclick="switchTab('security')" id="nav-security" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              <span>Security Center</span>
+            </button>
+            <button onclick="switchTab('terminal')" id="nav-terminal" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <span>Terminal</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- User footer -->
+        <div class="p-3 border-t border-slate-800/80">
+          <div class="flex items-center gap-3 p-2 rounded-lg bg-slate-950/40 border border-slate-800/60">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-xs text-white">
+              AD
+            </div>
+            <div class="flex-1 min-w-0">
+              <div id="user-display-email" class="text-xs font-semibold text-slate-200 truncate">admin@jawaker.local</div>
+              <div class="text-[10px] text-emerald-400">Super Administrator</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 flex flex-col overflow-y-auto custom-scrollbar bg-slate-950">
+        
+        <!-- Top header -->
+        <header class="h-16 border-b border-slate-800/80 px-8 flex items-center justify-between shrink-0 bg-slate-950/60 backdrop-blur">
+          <div class="flex items-center gap-4">
+            <h1 id="page-title" class="text-xl font-bold tracking-tight text-white">Dashboard Overview</h1>
+          </div>
+          <div class="flex items-center gap-3">
+            <button onclick="openModal('new-site-modal')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm shadow-indigo-500/20">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span>Create Website</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Content Views Container -->
+        <div class="p-8 flex-1">
+
+          <!-- TAB: DASHBOARD -->
+          <div id="view-dashboard" class="tab-view space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start text-slate-400 text-xs font-medium">
+                  <span>CPU Usage</span>
+                  <span class="text-emerald-400">12%</span>
+                </div>
+                <div class="mt-2 text-2xl font-bold text-white">1 Core / 2.4 GHz</div>
+                <div class="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                  <div class="bg-indigo-500 h-full rounded-full" style="width: 12%"></div>
+                </div>
+              </div>
+
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start text-slate-400 text-xs font-medium">
+                  <span>Memory</span>
+                  <span class="text-emerald-400">548 MB / 2.0 GB</span>
+                </div>
+                <div class="mt-2 text-2xl font-bold text-white">27%</div>
+                <div class="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                  <div class="bg-emerald-500 h-full rounded-full" style="width: 27%"></div>
+                </div>
+              </div>
+
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start text-slate-400 text-xs font-medium">
+                  <span>Disk Storage</span>
+                  <span class="text-emerald-400">8.4 GB / 50 GB</span>
+                </div>
+                <div class="mt-2 text-2xl font-bold text-white">16%</div>
+                <div class="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                  <div class="bg-cyan-500 h-full rounded-full" style="width: 16%"></div>
+                </div>
+              </div>
+
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start text-slate-400 text-xs font-medium">
+                  <span>Active Sites</span>
+                  <span class="text-indigo-400 font-semibold">Healthy</span>
+                </div>
+                <div id="stat-sites-count" class="mt-2 text-2xl font-bold text-white">3 Sites</div>
+                <div class="mt-2 text-xs text-slate-400">All SSL active, 0 alerts</div>
+              </div>
+            </div>
+
+            <!-- Managed Websites Preview -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div class="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <div class="p-5 border-b border-slate-800 flex justify-between items-center">
+                  <div>
+                    <h3 class="font-bold text-sm text-white">Managed Websites</h3>
+                    <p class="text-xs text-slate-400">Active vhosts served on this node</p>
+                  </div>
+                  <button onclick="switchTab('sites')" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold">View all →</button>
+                </div>
+                <div id="dashboard-sites-list" class="divide-y divide-slate-800/60">
+                  <!-- Injected by JS -->
+                </div>
+              </div>
+
+              <!-- Quick Server Info -->
+              <div class="space-y-6">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                  <h3 class="font-bold text-sm text-white mb-3">System Information</h3>
+                  <div class="space-y-2.5 text-xs">
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                      <span class="text-slate-400">Control Panel</span>
+                      <span class="text-slate-200 font-semibold">JAWAKER v1.2.0</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                      <span class="text-slate-400">Web Server</span>
+                      <span class="text-slate-200 font-semibold">Nginx 1.24.0</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                      <span class="text-slate-400">Database</span>
+                      <span class="text-slate-200 font-semibold">PostgreSQL 16.3</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                      <span class="text-slate-400">Firewall (UFW)</span>
+                      <span class="text-emerald-400 font-semibold">Active (3 ports)</span>
+                    </div>
+                    <div class="flex justify-between py-1">
+                      <span class="text-slate-400">Uptime</span>
+                      <span class="text-slate-200">14 days, 6 hours</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/20 rounded-xl p-5">
+                  <div class="flex items-center gap-2 mb-2">
+                    <div class="w-2 h-2 rounded-full bg-indigo-400"></div>
+                    <h3 class="font-bold text-sm text-white">Cloudflare Tunnel Active</h3>
+                  </div>
+                  <p class="text-xs text-slate-300 leading-relaxed mb-3">
+                    Semua traffic di-proxy aman melalui Cloudflare tunnel tanpa perlu membuka port firewall publik.
+                  </p>
+                  <div class="text-[11px] font-mono bg-slate-950 p-2 rounded border border-indigo-500/30 text-indigo-300 break-all">
+                    https://bugs-chapters-award-distances.trycloudflare.com
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB: WEBSITES / SITES -->
+          <div id="view-sites" class="tab-view hidden space-y-6">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-lg font-bold text-white">Websites & Virtual Hosts</h2>
+                <p class="text-xs text-slate-400">Nginx configuration candidate/validate/apply with atomic rollbacks</p>
+              </div>
+              <button onclick="openModal('new-site-modal')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                + New Website
+              </button>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th class="p-4">Domain / Slug</th>
+                    <th class="p-4">Mode / Runtime</th>
+                    <th class="p-4">Root Path</th>
+                    <th class="p-4">SSL / TLS</th>
+                    <th class="p-4">Status</th>
+                    <th class="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sites-table-body" class="divide-y divide-slate-800/60 text-slate-300">
+                  <!-- Injected by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB: DATABASES -->
+          <div id="view-databases" class="tab-view hidden space-y-6">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-lg font-bold text-white">Database Management</h2>
+                <p class="text-xs text-slate-400">PostgreSQL 16 & MariaDB provisioner, user grants, automated backups</p>
+              </div>
+              <button onclick="alert('Feature wired to: POST /api/v1/projects/{id}/databases')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                + Create Database
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs">PG</div>
+                    <div>
+                      <h3 class="text-sm font-bold text-white">jawaker_panel</h3>
+                      <p class="text-xs text-slate-400">System database (42 tables, 18.2 MB)</p>
+                    </div>
+                  </div>
+                  <span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 border border-slate-700">Protected</span>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                  <span class="text-slate-400 font-mono text-[11px]">User: jawaker</span>
+                  <div class="space-x-2">
+                    <button onclick="alert('Starting pg_dump to /var/backups/jawaker_panel.sql...')" class="text-indigo-400 hover:underline">Dump SQL</button>
+                    <button onclick="alert('Tables: users, sessions, sites, site_domains, nodes, jobs, audit_events...')" class="text-indigo-400 hover:underline">Inspect</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+                <div class="flex justify-between items-start">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs">PG</div>
+                    <div>
+                      <h3 class="text-sm font-bold text-white">app_production</h3>
+                      <p class="text-xs text-slate-400">Web App DB (128 tables, 142.6 MB)</p>
+                    </div>
+                  </div>
+                  <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Online</span>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                  <span class="text-slate-400 font-mono text-[11px]">User: app_user</span>
+                  <div class="space-x-2">
+                    <button onclick="alert('Exporting app_production database...')" class="text-indigo-400 hover:underline">Dump SQL</button>
+                    <button onclick="alert('Rescue mode enabled: read-only access with single connection.')" class="text-indigo-400 hover:underline">Rescue Mode</button>
+                    <button onclick="alert('Are you sure you want to drop app_production?')" class="text-rose-400 hover:underline">Drop</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB: TERMINAL -->
+          <div id="view-terminal" class="tab-view hidden space-y-4">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-lg font-bold text-white">Web Terminal & Bounded Task Runner</h2>
+                <p class="text-xs text-slate-400">Real WebSocket terminal in production panel (PRD §17.4)</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-emerald-400 flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Connected (root@prod-node-01)
+                </span>
+              </div>
+            </div>
+
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300 h-96 overflow-y-auto custom-scrollbar flex flex-col justify-between shadow-2xl">
+              <div id="terminal-output" class="space-y-1 overflow-y-auto pr-2">
+                <div class="text-slate-400">Linux prod-node-01 6.8.0-linode #1 SMP PREEMPT_DYNAMIC x86_64</div>
+                <div class="text-slate-400">Ketik command: 'uptime', 'status', 'ports', 'sites', 'clear', atau 'help'.</div>
+                <div class="text-slate-400">────────────────────────────────────────────────────────────────</div>
+                <div><span class="text-emerald-400 font-bold">root@prod-node-01</span>:<span class="text-indigo-400">~</span># systemctl status jawaker-controller</div>
+                <div class="text-emerald-300">● jawaker-controller.service - JAWAKER Control Plane Controller</div>
+                <div class="text-slate-400 pl-4">Active: <span class="text-emerald-400 font-bold">active (running)</span> since Thu 2026-09-25 21:04:12 UTC</div>
+                <div class="text-slate-400 pl-4">Main PID: 84920 (jawaker-control)</div>
+                <div class="text-slate-400 pl-4">Memory: 42.1M (pgx + http + embed dist)</div>
+              </div>
+              <form onsubmit="handleTerminalCmd(event)" class="pt-3 border-t border-slate-800/80 flex items-center gap-2">
+                <span class="text-emerald-400 font-bold">root@prod-node-01:~#</span>
+                <input id="terminal-input" type="text" autocomplete="off" placeholder="Ketik command..." class="bg-transparent flex-1 outline-none text-white text-xs font-mono" />
+              </form>
+            </div>
+          </div>
+
+          <!-- TAB: FILES -->
+          <div id="view-files" class="tab-view hidden space-y-4">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-lg font-bold text-white">File Manager</h2>
+                <p class="text-xs text-slate-400">Direct file browser with permission audits and safe chroot</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="alert('Upload file simulated.')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-700">Upload File</button>
+                <button onclick="alert('New folder created.')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded-lg font-semibold">+ New Folder</button>
+              </div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+              <div class="p-3 bg-slate-950 border-b border-slate-800 flex items-center gap-2 text-xs font-mono text-slate-400">
+                <span class="text-slate-200 font-semibold">/var/www/app.company.id</span>
+              </div>
+              <div class="divide-y divide-slate-800/60 text-xs font-mono">
+                <div class="p-3 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer">
+                  <div class="flex items-center gap-3 text-indigo-400">📁 <span class="text-slate-200 font-medium font-sans">public/</span></div>
+                  <span class="text-slate-400 text-[11px]">drwxr-xr-x • www-data</span>
+                </div>
+                <div class="p-3 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer">
+                  <div class="flex items-center gap-3 text-indigo-400">📁 <span class="text-slate-200 font-medium font-sans">storage/</span></div>
+                  <span class="text-slate-400 text-[11px]">drwxrwxr-x • www-data</span>
+                </div>
+                <div class="p-3 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer">
+                  <div class="flex items-center gap-3 text-slate-300">📄 <span class="text-slate-200 font-medium font-sans">.env</span></div>
+                  <span class="text-slate-400 text-[11px]">1.2 KB • -rw-r----- • www-data</span>
+                </div>
+                <div class="p-3 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer">
+                  <div class="flex items-center gap-3 text-slate-300">📄 <span class="text-slate-200 font-medium font-sans">composer.json</span></div>
+                  <span class="text-slate-400 text-[11px]">2.8 KB • -rw-r--r-- • www-data</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB: OTHER (DNS, APPS, BACKUPS, SECURITY) -->
+          <div id="view-dns" class="tab-view hidden space-y-4">
+            <h2 class="text-lg font-bold text-white">DNS & SSL/TLS Management</h2>
+            <p class="text-xs text-slate-400">Cloudflare API integration + Let's Encrypt HTTP-01 / DNS-01 wildcard certificates.</p>
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-xs text-slate-300">
+              <div class="font-semibold text-white mb-2">Active Certificates:</div>
+              <ul class="list-disc pl-5 space-y-1 text-slate-400">
+                <li><span class="text-white">app.company.id</span> — Let's Encrypt (valid until 2026-12-03)</li>
+                <li><span class="text-white">api.backend.net</span> — Let's Encrypt (valid until 2026-11-15)</li>
+                <li><span class="text-white">landing.shop.com</span> — Let's Encrypt (valid until 2026-12-01)</li>
+              </ul>
+            </div>
+          </div>
+
+          <div id="view-apps" class="tab-view hidden space-y-4">
+            <h2 class="text-lg font-bold text-white">Git Deployments & Pipelines</h2>
+            <p class="text-xs text-slate-400">Connect GitHub/GitLab repositories with zero-downtime atomic symlink releases.</p>
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-xs text-slate-400">
+              <span class="text-emerald-400 font-semibold">Ready.</span> Webhook receiver registered at <code class="text-indigo-300">/api/v1/webhooks/git/{token}</code>
+            </div>
+          </div>
+
+          <div id="view-backups" class="tab-view hidden space-y-4">
+            <h2 class="text-lg font-bold text-white">Backups & Disaster Recovery</h2>
+            <p class="text-xs text-slate-400">Automated file + database backups with S3/R2 remote upload and verified restore tests.</p>
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-xs text-slate-400">
+              <span class="text-emerald-400 font-semibold">Automated schedule active:</span> Daily 02:00 UTC (Retention: 7 daily, 4 weekly).
+            </div>
+          </div>
+
+          <div id="view-security" class="tab-view hidden space-y-4">
+            <h2 class="text-lg font-bold text-white">Security Center & Firewall</h2>
+            <p class="text-xs text-slate-400">Fail2ban / CrowdSec integration, brute-force protection, UFW firewall rules.</p>
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-xs text-slate-400">
+              <span class="text-emerald-400 font-semibold">UFW Status:</span> Active • Blocked 142 brute-force attempts in the last 24h.
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal: New Website -->
+  <div id="new-site-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-base font-bold text-white">Create New Website</h3>
+        <button onclick="closeModal('new-site-modal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Primary Domain Name</label>
+          <input id="input-domain" type="text" placeholder="mywebsite.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Hosting Mode</label>
+          <select id="input-mode" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500">
+            <option value="PHP 8.3">PHP 8.3-FPM (Laravel / WordPress)</option>
+            <option value="Node.js (:3000)">Node.js Reverse Proxy (:3000)</option>
+            <option value="Static HTML">Static HTML / SPA (React/Vue)</option>
+            <option value="Python WSGI">Python WSGI / ASGI (FastAPI)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Document Root</label>
+          <input id="input-root" type="text" value="/var/www/mywebsite.com/public" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-300 outline-none" />
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <input type="checkbox" id="auto-ssl" checked class="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0" />
+          <label for="auto-ssl" class="text-slate-300 font-medium">Issue Let's Encrypt SSL automatically</label>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button onclick="closeModal('new-site-modal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
+        <button onclick="handleCreateSite()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold">Create Website</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let currentAuthMode = 'login';
+    let sites = [
+      { domain: 'app.company.id', mode: 'PHP 8.3-FPM', root: '/var/www/app.company.id/public', ssl: 'Let\'s Encrypt (68d)', status: 'Active' },
+      { domain: 'api.backend.net', mode: 'Reverse Proxy (:3000)', root: 'upstream: 127.0.0.1:3000', ssl: 'Let\'s Encrypt (42d)', status: 'Active' },
+      { domain: 'landing.shop.com', mode: 'Static HTML', root: '/var/www/landing.shop.com', ssl: 'Let\'s Encrypt (85d)', status: 'Active' }
+    ];
+
+    function setAuthMode(mode) {
+      currentAuthMode = mode;
+      const isLogin = mode === 'login';
+      document.getElementById('tab-login').className = isLogin
+        ? 'flex-1 py-1.5 rounded-md bg-indigo-600 text-white transition'
+        : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+      document.getElementById('tab-bootstrap').className = !isLogin
+        ? 'flex-1 py-1.5 rounded-md bg-indigo-600 text-white transition'
+        : 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+
+      document.getElementById('field-displayname').classList.toggle('hidden', isLogin);
+      document.getElementById('auth-subtitle').innerText = isLogin
+        ? 'Sign in to access your server control plane.'
+        : 'First-time setup: Create the platform super administrator.';
+      document.getElementById('auth-btn').querySelector('span').innerText = isLogin
+        ? 'Sign In to Panel'
+        : 'Create Administrator Account';
+    }
+
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+      const email = document.getElementById('auth-email').value;
+      const btn = document.getElementById('auth-btn');
+      btn.querySelector('span').innerText = 'Authenticating...';
+
+      setTimeout(() => {
+        document.getElementById('user-display-email').innerText = email;
+        document.getElementById('screen-auth').classList.add('hidden');
+        document.getElementById('screen-panel').classList.remove('hidden');
+        renderSites();
+      }, 400);
+    }
+
+    function logout() {
+      document.getElementById('screen-panel').classList.add('hidden');
+      document.getElementById('screen-auth').classList.remove('hidden');
+      document.getElementById('auth-btn').querySelector('span').innerText = 'Sign In to Panel';
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
+      const activeView = document.getElementById('view-' + tabName);
+      if (activeView) activeView.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.remove('bg-indigo-600/10', 'text-indigo-400', 'font-semibold');
+        el.classList.add('text-slate-300');
+      });
+      const activeNav = document.getElementById('nav-' + tabName);
+      if (activeNav) {
+        activeNav.classList.add('bg-indigo-600/10', 'text-indigo-400', 'font-semibold');
+        activeNav.classList.remove('text-slate-300');
+      }
+
+      const titles = {
+        dashboard: 'Dashboard Overview',
+        sites: 'Websites & Virtual Hosts',
+        apps: 'Git Deployments & Pipelines',
+        databases: 'Database Platform (Postgres/MySQL)',
+        files: 'Server File Manager',
+        dns: 'DNS Zones & SSL Certificates',
+        backups: 'Backups & Disaster Recovery',
+        security: 'Security Center & Firewall',
+        terminal: 'Web Shell Terminal'
+      };
+      document.getElementById('page-title').innerText = titles[tabName] || 'JAWAKER Panel';
+    }
+
+    function renderSites() {
+      // Sites count
+      document.getElementById('stat-sites-count').innerText = sites.length + ' Sites';
+      document.getElementById('badge-sites').innerText = sites.length;
+
+      // Dashboard list
+      const dashList = document.getElementById('dashboard-sites-list');
+      dashList.innerHTML = sites.map(s => `
+        <div class="p-4 flex items-center justify-between hover:bg-slate-800/30 transition">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">${s.mode.slice(0, 3)}</div>
+            <div>
+              <div class="text-sm font-semibold text-white flex items-center gap-2">
+                ${s.domain}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">SSL Active</span>
+              </div>
+              <div class="text-xs text-slate-400">${s.mode} • ${s.root}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="alert('Viewing access.log for ${s.domain}...')" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Logs</button>
+            <button onclick="alert('Editing Nginx vhost config for ${s.domain}...')" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Config</button>
+          </div>
+        </div>
+      `).join('');
+
+      // Sites table
+      const tbody = document.getElementById('sites-table-body');
+      tbody.innerHTML = sites.map((s, idx) => `
+        <tr class="hover:bg-slate-800/30">
+          <td class="p-4 font-semibold text-white">${s.domain}</td>
+          <td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 font-mono text-[11px]">${s.mode}</span></td>
+          <td class="p-4 font-mono text-[11px] text-slate-400">${s.root}</td>
+          <td class="p-4 text-emerald-400 font-medium">✓ ${s.ssl}</td>
+          <td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">${s.status}</span></td>
+          <td class="p-4 text-right space-x-1">
+            <button onclick="alert('Nginx config for ${s.domain}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded">Config</button>
+            <button onclick="deleteSite(${idx})" class="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function handleCreateSite() {
+      const domain = document.getElementById('input-domain').value.trim();
+      const mode = document.getElementById('input-mode').value;
+      const root = document.getElementById('input-root').value.trim();
+      if (!domain) { alert('Domain name wajib diisi'); return; }
+
+      sites.push({
+        domain,
+        mode,
+        root,
+        ssl: 'Let\'s Encrypt (90d)',
+        status: 'Active'
+      });
+      closeModal('new-site-modal');
+      renderSites();
+      alert('✓ Website ' + domain + ' berhasil dibuat! Nginx reload + SSL issued.');
+    }
+
+    function deleteSite(idx) {
+      if (confirm('Delete website ' + sites[idx].domain + '?')) {
+        sites.splice(idx, 1);
+        renderSites();
+      }
+    }
+
+    function handleTerminalCmd(e) {
+      e.preventDefault();
+      const input = document.getElementById('terminal-input');
+      const cmd = input.value.trim();
+      if (!cmd) return;
+      input.value = '';
+
+      const out = document.getElementById('terminal-output');
+      const line = document.createElement('div');
+      line.innerHTML = `<span class="text-emerald-400 font-bold">root@prod-node-01</span>:<span class="text-indigo-400">~</span># ${cmd}`;
+      out.appendChild(line);
+
+      const resp = document.createElement('div');
+      resp.className = 'text-slate-300';
+
+      const lower = cmd.toLowerCase();
+      if (lower === 'uptime') {
+        resp.innerText = ' 04:25:12 up 14 days,  6:18,  1 user,  load average: 0.08, 0.04, 0.01';
+      } else if (lower === 'ports' || lower === 'netstat') {
+        resp.innerText = 'Proto Recv-Q Send-Q Local Address           Foreign Address         State\ntcp        0      0 127.0.0.1:8080          0.0.0.0:*               LISTEN\ntcp        0      0 127.0.0.1:5432          0.0.0.0:*               LISTEN\ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN';
+      } else if (lower === 'status') {
+        resp.innerText = 'jawaker-controller: ACTIVE (PID 84920)\njawaker-tunnel:     ACTIVE (trycloudflare.com)\npostgresql:         ACTIVE (Port 5432)';
+      } else if (lower === 'sites') {
+        resp.innerText = sites.map(s => ` - ${s.domain} (${s.mode}) -> ${s.root}`).join('\n');
+      } else if (lower === 'clear') {
+        out.innerHTML = '';
+        return;
+      } else {
+        resp.innerText = `bash: ${cmd}: command executed (exit code 0)`;
+      }
+
+      out.appendChild(resp);
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+    function toggleTheme() { document.documentElement.classList.toggle('dark'); }
+
+    // Init
+    document.getElementById('input-domain').addEventListener('input', (e) => {
+      document.getElementById('input-root').value = '/var/www/' + (e.target.value || 'mywebsite.com') + '/public';
+    });
+  </script>
+</body>
+</html>
