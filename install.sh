@@ -39,7 +39,15 @@ die()  { err "$*"; exit 1; }
 
 gen_secret() { head -c 32 /dev/urandom | base64 | tr -d '\n/+=' | head -c 43; }
 gen_pass()   { head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 32; }
-server_ip()  { hostname -I 2>/dev/null | awk '{print $1}'; }
+server_ip()  { 
+    local _ip
+    _ip=$(curl -s --max-time 3 https://ifconfig.me 2>/dev/null || curl -s --max-time 3 https://api.ipify.org 2>/dev/null || true)
+    if [ -n "$_ip" ]; then
+        echo "$_ip"
+    else
+        hostname -I 2>/dev/null | awk '{print $1}'
+    fi
+}
 
 ###############################################################################
 # Preflight
