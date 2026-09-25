@@ -160,15 +160,28 @@ menu_select() {
 # Port selection — only relevant when no domain (direct port access).
 # With a domain, Nginx handles standard 80/443.
 if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
-    # Scan candidate ports; mark each as (available) or (in use)
-    _CANDIDATES="80 8080 8443 3000 5000"
+
+    # Port labels: describe CLOUD DEFAULT reachability, not just local bind status.
+    # Port 80/443 are open by default on almost all VPS providers.
+    # Higher ports usually need a manual cloud firewall/security-group rule.
+    declare -A _PORT_DESC
+    _PORT_DESC[80]="Port 80   — Standard HTTP, open by default on all clouds ✓"
+    _PORT_DESC[443]="Port 443  — Standard HTTPS (needs SSL cert), open by default ✓"
+    _PORT_DESC[8080]="Port 8080 — Alternative HTTP, may need cloud firewall rule"
+    _PORT_DESC[8443]="Port 8443 — Alternative HTTPS, may need cloud firewall rule"
+    _PORT_DESC[3000]="Port 3000 — Development port, may need cloud firewall rule"
+
+    _CANDIDATES="80 443 8080 8443 3000"
     _MENU_ITEMS=()
     _MENU_PORTS=()
+
     for _p in $_CANDIDATES; do
+        # Skip port 443 without domain (no SSL cert)
+        [ "$_p" -eq 443 ] && continue
         if ss -tlnp 2>/dev/null | grep -q ":${_p} "; then
-            _MENU_ITEMS+=("Port ${_p}  (in use — skip)")
+            _MENU_ITEMS+=("${_PORT_DESC[$_p]}  [already in use by another process]")
         else
-            _MENU_ITEMS+=("Port ${_p}  (available)")
+            _MENU_ITEMS+=("${_PORT_DESC[$_p]}")
             _MENU_PORTS+=("$_p")
         fi
     done
@@ -176,12 +189,13 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
 
     if has_tty; then
         echo ""
-        printf "\033[1m  Select panel port\033[0m (↑↓ or j/k to move, Enter to select):\n\n"
+        printf "\033[1m  Select panel port\033[0m\n"
+        printf "  \033[0;33mNote: ports 80 is open by default on most cloud VPS.\033[0m\n"
+        printf "  \033[0;33mOther ports may require a firewall rule in your cloud dashboard.\033[0m\n"
+        printf "  (↑↓ or j/k to move, Enter to select)\n\n"
         menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
 
-        if [ "$_SEL_IDX" -eq "${#_MENU_ITEMS[@]}" ] || \
-           [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
-            # Custom input
+        if [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
             while true; do
                 read -rp "  Enter custom port number: " _port_input < /dev/tty
                 _port_input="${_port_input// /}"
@@ -193,23 +207,63 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                 warn "Invalid port. Must be a number between 1 and 65535."
             done
         else
-            # Extract port number from the selected menu item label
-            PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE '^Port ([0-9]+)' | grep -oE '[0-9]+')
+            PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE 'Port ([0-9]+)' | grep -oE '[0-9]+' | head -1)
             if [ -z "$PANEL_PORT" ]; then
-                # User picked an "in use" entry — pick first available as fallback
-                PANEL_PORT="${_MENU_PORTS[0]:-8443}"
-                warn "That port is in use. Falling back to ${PANEL_PORT}."
+                PANEL_PORT="${_MENU_PORTS[0]:-80}"
+                warn "Could not parse port. Defaulting to ${PANEL_PORT}."
+            fi
+        fi
+
+        # Test real external reachability by temporarily binding to the port and
+        # asking an external service to probe it. Uses portchecker.io public API.
+        _SERVER_IP=$(server_ip)
+        if [ -n "$_SERVER_IP" ] && command -v curl &>/dev/null; then
+            info "Testing if port ${PANEL_PORT} is reachable from the internet..."
+            _PROBE_PID=""
+            if command -v python3 &>/dev/null; then
+                python3 -c "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('', ${PANEL_PORT})); s.listen(1); time.sleep(8)" &>/dev/null &
+                _PROBE_PID=$!
+            elif command -v nc &>/dev/null; then
+                nc -l -p "${PANEL_PORT}" &>/dev/null &
+                _PROBE_PID=$!
+            fi
+
+            if [ -n "$_PROBE_PID" ]; then
+                sleep 1
+                _REACH=$(curl -s --max-time 6 \
+                    "https://portchecker.io/api/v2/query" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"host\":\"${_SERVER_IP}\",\"ports\":[\"${PANEL_PORT}\"]}" 2>/dev/null \
+                    | grep -o '"isOpen":true' || true)
+                kill $_PROBE_PID 2>/dev/null || true
+                wait $_PROBE_PID 2>/dev/null || true
+
+                if [ -n "$_REACH" ]; then
+                    ok "Port ${PANEL_PORT} is confirmed reachable from the internet ✓"
+                else
+                    echo ""
+                    warn "⚠  Port ${PANEL_PORT} appears to be BLOCKED by your cloud firewall."
+                    warn "   The panel will install on port ${PANEL_PORT}, but won't be reachable until"
+                    warn "   you open port ${PANEL_PORT} in your cloud provider dashboard:"
+                    warn "   • Linode:       Cloud Manager → Firewalls → Add Inbound Rule → TCP ${PANEL_PORT}"
+                    warn "   • DigitalOcean: Networking → Firewalls → Inbound → TCP ${PANEL_PORT}"
+                    warn "   • AWS:          EC2 → Security Groups → Inbound Rules → TCP ${PANEL_PORT}"
+                    echo ""
+                    if has_tty; then
+                        read -rp "  Continue anyway? [Y/n]: " _cont < /dev/tty
+                        _cont="${_cont:-Y}"
+                        [ "$_cont" = "n" ] || [ "$_cont" = "N" ] && die "Aborted. Open port ${PANEL_PORT} or re-run and pick Port 80."
+                    fi
+                fi
             fi
         fi
     else
-        # Non-interactive: use first available port
-        PANEL_PORT="${_MENU_PORTS[0]:-8443}"
+        PANEL_PORT="${_MENU_PORTS[0]:-80}"
     fi
 fi
 
-
 # Resolve final panel port
-PANEL_PORT="${PANEL_PORT:-${CONTROLLER_PORT}}"
+PANEL_PORT="${PANEL_PORT:-80}"
 
 # Auto-open port in local firewall if active (won't help cloud Security Groups,
 # but handles ufw/firewalld on bare-metal and some providers).
