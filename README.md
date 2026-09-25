@@ -36,7 +36,41 @@ jawaker-panel/
 └── docs/                Public engineering documentation
 ```
 
-## Quickstart
+## VPS Installation (one command)
+
+Install JAWAKER on any fresh Debian/Ubuntu/RHEL/Rocky/Alma Linux VPS as root:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/install.sh | bash
+```
+
+The installer:
+1. Detects your OS (apt/dnf/yum)
+2. Installs PostgreSQL, Go, Node.js
+3. Creates `jawaker_panel` database with a generated password
+4. Clones the repo, builds the frontend, compiles the binary
+5. Writes configuration to `/etc/jawaker/jawaker.env`
+6. Installs and starts a systemd service (`jawaker-controller`)
+7. Prints the admin panel URL, email, and password
+
+After install, the panel is available at `http://<server-ip>:8080`.
+
+Useful commands post-install:
+
+```bash
+# View logs
+journalctl -u jawaker-controller -f
+
+# Restart after config change
+systemctl restart jawaker-controller
+
+# Edit configuration
+nano /etc/jawaker/jawaker.env
+```
+
+---
+
+## Local Development Quickstart
 
 Prerequisites: Go 1.26+, Node 24+, Docker (for the dev database), GNU Make optional.
 

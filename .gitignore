@@ -49,8 +49,14 @@ coverage/
 .vite/
 *.tsbuildinfo
 
+# Exception: the embed stub must be tracked so the Go build succeeds without
+# a prior frontend build. install.sh and CI overwrite it with the real build.
+!cmd/controller/webdist/dist/
+!cmd/controller/webdist/dist/**
+
 # Go
 bin/
+*.exe
 *.test
 *.out
 coverage.out
