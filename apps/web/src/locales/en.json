@@ -1,0 +1,51 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "servers": "Servers",
+    "sites": "Sites",
+    "apps": "Apps",
+    "databases": "Databases",
+    "containers": "Containers",
+    "dns_tls": "DNS & TLS",
+    "mail": "Mail",
+    "files": "Files",
+    "backups": "Backups",
+    "network": "Networking",
+    "security": "Security",
+    "observability": "Observability",
+    "ha": "High Availability",
+    "updates": "Updates",
+    "workers": "Workers",
+    "automation": "Automation",
+    "api_tokens": "API Tokens",
+    "users": "Users",
+    "copilot": "Copilot",
+    "settings": "Settings",
+    "logout": "Sign out"
+  },
+  "common": {
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "refresh": "Refresh",
+    "actions": "Actions",
+    "status": "Status",
+    "name": "Name",
+    "created": "Created",
+    "dismiss": "dismiss",
+    "search": "Search…",
+    "language": "Language",
+    "theme": "Theme"
+  },
+  "settings": {
+    "title": "Settings",
+    "language_label": "Interface Language",
+    "language_help": "Switch between English and Bahasa Indonesia. Changes apply immediately.",
+    "theme_label": "Color Theme",
+    "theme_dark": "Dark",
+    "theme_light": "Light"
+  }
+}
