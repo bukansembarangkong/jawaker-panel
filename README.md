@@ -96,6 +96,27 @@ nano /etc/jawaker/jawaker.env
 certbot renew --force-renewal && systemctl reload nginx
 ```
 
+### Uninstallation
+
+```bash
+# Interactive — prompts whether to drop the database
+curl -sSL https://raw.githubusercontent.com/bukansembarangkong/jawaker-panel/main/uninstall.sh | bash
+
+# Or if the panel is still installed locally:
+bash /opt/jawaker-panel/uninstall.sh
+
+# Non-interactive + delete database
+bash /opt/jawaker-panel/uninstall.sh --force --purge-db
+```
+
+What gets removed:
+- `jawaker-controller` and `jawaker-tunnel` systemd services
+- `/usr/local/bin/jawaker-controller` and `cloudflared` (if installed by JAWAKER)
+- `/etc/jawaker/` (config directory)
+- `/opt/jawaker-panel/` (application files)
+- Nginx vhost configuration
+- (Optional) `jawaker_panel` PostgreSQL database and `jawaker` user
+
 ---
 
 
