@@ -214,47 +214,101 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
             fi
         fi
 
-        # Test real external reachability by temporarily binding to the port and
-        # asking an external service to probe it. Uses portchecker.io public API.
+        # ── Test real external reachability ────────────────────────────────
         _SERVER_IP=$(server_ip)
-        if [ -n "$_SERVER_IP" ] && command -v curl &>/dev/null; then
-            info "Testing if port ${PANEL_PORT} is reachable from the internet..."
+        USE_CLOUDFLARE=false
+
+        _probe_port() {
+            local _p="$1"
             _PROBE_PID=""
             if command -v python3 &>/dev/null; then
-                python3 -c "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('', ${PANEL_PORT})); s.listen(1); time.sleep(8)" &>/dev/null &
+                python3 -c "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('', ${_p})); s.listen(1); time.sleep(8)" &>/dev/null &
                 _PROBE_PID=$!
             elif command -v nc &>/dev/null; then
-                nc -l -p "${PANEL_PORT}" &>/dev/null &
+                nc -l -p "${_p}" &>/dev/null &
                 _PROBE_PID=$!
             fi
+            if [ -z "$_PROBE_PID" ]; then echo "skip"; return; fi
+            sleep 1
+            local _r
+            _r=$(curl -s --max-time 6 \
+                "https://portchecker.io/api/v2/query" \
+                -H "Content-Type: application/json" \
+                -d "{\"host\":\"${_SERVER_IP}\",\"ports\":[\"${_p}\"]}" 2>/dev/null \
+                | grep -o '"isOpen":true' || true)
+            kill $_PROBE_PID 2>/dev/null || true
+            wait $_PROBE_PID 2>/dev/null || true
+            echo "$_r"
+        }
 
-            if [ -n "$_PROBE_PID" ]; then
-                sleep 1
-                _REACH=$(curl -s --max-time 6 \
-                    "https://portchecker.io/api/v2/query" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"host\":\"${_SERVER_IP}\",\"ports\":[\"${PANEL_PORT}\"]}" 2>/dev/null \
-                    | grep -o '"isOpen":true' || true)
-                kill $_PROBE_PID 2>/dev/null || true
-                wait $_PROBE_PID 2>/dev/null || true
+        if [ -n "$_SERVER_IP" ] && command -v curl &>/dev/null; then
+            info "Testing if port ${PANEL_PORT} is reachable from the internet..."
+            _REACH=$(_probe_port "$PANEL_PORT")
 
-                if [ -n "$_REACH" ]; then
-                    ok "Port ${PANEL_PORT} is confirmed reachable from the internet ✓"
-                else
+            if [ -n "$_REACH" ] && [ "$_REACH" != "skip" ]; then
+                ok "Port ${PANEL_PORT} is confirmed reachable from the internet ✓"
+            else
+                # ── Port is blocked — show options ──────────────────────────
+                while true; do
                     echo ""
-                    warn "⚠  Port ${PANEL_PORT} appears to be BLOCKED by your cloud firewall."
-                    warn "   The panel will install on port ${PANEL_PORT}, but won't be reachable until"
-                    warn "   you open port ${PANEL_PORT} in your cloud provider dashboard:"
-                    warn "   • Linode:       Cloud Manager → Firewalls → Add Inbound Rule → TCP ${PANEL_PORT}"
-                    warn "   • DigitalOcean: Networking → Firewalls → Inbound → TCP ${PANEL_PORT}"
-                    warn "   • AWS:          EC2 → Security Groups → Inbound Rules → TCP ${PANEL_PORT}"
+                    printf "\033[1;33m  ✗ Port ${PANEL_PORT} is BLOCKED by your cloud firewall.\033[0m\n"
                     echo ""
-                    if has_tty; then
-                        read -rp "  Continue anyway? [Y/n]: " _cont < /dev/tty
-                        _cont="${_cont:-Y}"
-                        [ "$_cont" = "n" ] || [ "$_cont" = "N" ] && die "Aborted. Open port ${PANEL_PORT} or re-run and pick Port 80."
-                    fi
-                fi
+                    echo "  What would you like to do?"
+                    echo ""
+                    _BLOCK_OPTS=(
+                        "I've opened port ${PANEL_PORT} in my cloud dashboard — retry"
+                        "Choose a different port"
+                        "Use Cloudflare Tunnel (no port opening needed, free HTTPS URL)"
+                    )
+                    menu_select _BLOCK_SEL "${_BLOCK_OPTS[@]}"
+
+                    case "$_BLOCK_SEL" in
+                        0)  # Retry
+                            info "Retrying port ${PANEL_PORT}..."
+                            _REACH=$(_probe_port "$PANEL_PORT")
+                            if [ -n "$_REACH" ] && [ "$_REACH" != "skip" ]; then
+                                ok "Port ${PANEL_PORT} is now reachable ✓"
+                                break
+                            else
+                                warn "Still blocked. Try opening the port or choose another option."
+                            fi
+                            ;;
+                        1)  # Different port — re-show port menu
+                            echo ""
+                            printf "\033[1m  Select a different port\033[0m (↑↓ / j/k, Enter to select):\n\n"
+                            menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
+                            if [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
+                                while true; do
+                                    read -rp "  Enter custom port number: " _port_input < /dev/tty
+                                    _port_input="${_port_input// /}"
+                                    if echo "$_port_input" | grep -qE '^[0-9]+$' && \
+                                       [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
+                                        PANEL_PORT="$_port_input"; break
+                                    fi
+                                    warn "Invalid port."
+                                done
+                            else
+                                PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE 'Port ([0-9]+)' | grep -oE '[0-9]+' | head -1)
+                                PANEL_PORT="${PANEL_PORT:-80}"
+                            fi
+                            info "Testing port ${PANEL_PORT}..."
+                            _REACH=$(_probe_port "$PANEL_PORT")
+                            if [ -n "$_REACH" ] && [ "$_REACH" != "skip" ]; then
+                                ok "Port ${PANEL_PORT} is reachable ✓"
+                                break
+                            else
+                                warn "Port ${PANEL_PORT} is also blocked. Choose another option."
+                            fi
+                            ;;
+                        2)  # Cloudflare Tunnel
+                            USE_CLOUDFLARE=true
+                            # Bind controller to loopback — Cloudflare proxies from outside
+                            PANEL_PORT="8080"
+                            ok "Cloudflare Tunnel selected — no port opening needed"
+                            break
+                            ;;
+                    esac
+                done
             fi
         fi
     else
@@ -618,6 +672,61 @@ MAP
 fi
 
 ###############################################################################
+# Cloudflare Tunnel setup (only when user chose option 3)
+###############################################################################
+CF_URL=""
+if ${USE_CLOUDFLARE:-false}; then
+    info "Setting up Cloudflare Tunnel (no port opening needed)..."
+    _CF_ARCH="amd64"
+    [ "$(uname -m)" = "aarch64" ] && _CF_ARCH="arm64"
+    CF_BIN="/usr/local/bin/cloudflared"
+    if ! command -v cloudflared &>/dev/null; then
+        info "Downloading cloudflared..."
+        curl -sSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_CF_ARCH}" -o "${CF_BIN}"
+        chmod +x "${CF_BIN}"
+        ok "cloudflared installed"
+    fi
+
+    cat >/etc/systemd/system/jawaker-tunnel.service <<EOF
+[Unit]
+Description=JAWAKER Cloudflare Quick Tunnel
+After=network.target jawaker-controller.service
+Requires=jawaker-controller.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=${CF_BIN} tunnel --url http://127.0.0.1:${PANEL_PORT}
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jawaker-tunnel
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable --now jawaker-tunnel
+    ok "Cloudflare Tunnel service started"
+
+    info "Waiting for public Cloudflare HTTPS URL (this takes ~10 seconds)..."
+    for _i in $(seq 1 12); do
+        sleep 2
+        CF_URL=$(journalctl -u jawaker-tunnel -n 50 --no-pager 2>/dev/null \
+            | grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+        [ -n "$CF_URL" ] && break
+    done
+    if [ -n "$CF_URL" ]; then
+        ok "Cloudflare URL: ${CF_URL}"
+    else
+        CF_URL="check: journalctl -u jawaker-tunnel | grep trycloudflare"
+        warn "Tunnel URL not yet ready. ${CF_URL}"
+    fi
+fi
+
+###############################################################################
 # Wait for service to be healthy
 ###############################################################################
 info "Waiting for JAWAKER to initialize..."
@@ -636,7 +745,10 @@ bold "╔═══════════════════════�
 bold "║              JAWAKER Panel is ready! 🎉              ║"
 bold "╠══════════════════════════════════════════════════════╣"
 bold "║                                                      ║"
-if $USE_SSL; then
+if ${USE_CLOUDFLARE:-false} && [ -n "$CF_URL" ]; then
+    printf  "║  URL:      \033[1m%-42s\033[0m║\n" "${CF_URL}"
+    bold "║  Tunnel:   Cloudflare Quick Tunnel (free HTTPS)      ║"
+elif $USE_SSL; then
     printf  "║  URL:      \033[1mhttps://%-35s\033[0m║\n" "${DOMAIN}/"
 else
     IP=$(server_ip)
@@ -650,11 +762,14 @@ bold "║  Logs:     journalctl -u jawaker-controller -f       ║"
 if $USE_SSL; then
 bold "║  SSL:      auto-renews via cron (certbot renew)      ║"
 fi
+if ${USE_CLOUDFLARE:-false}; then
+bold "║  Tunnel:   systemctl status jawaker-tunnel            ║"
+fi
 bold "║                                                      ║"
 bold "╚══════════════════════════════════════════════════════╝"
 echo ""
 warn "Save your admin password now — it will not be shown again!"
-if ! $USE_SSL; then
+if ! $USE_SSL && ! ${USE_CLOUDFLARE:-false}; then
     echo ""
     warn "If the panel is not reachable, open port ${PANEL_PORT} in your cloud provider"
     warn "firewall/Security Group (Linode, DigitalOcean, AWS, GCP, etc.):"
@@ -663,3 +778,4 @@ if ! $USE_SSL; then
     warn "  AWS EC2:        Security Groups → Inbound Rules → TCP ${PANEL_PORT}"
 fi
 echo ""
+
