@@ -691,14 +691,16 @@ if ${USE_CLOUDFLARE:-false}; then
 [Unit]
 Description=JAWAKER Cloudflare Quick Tunnel
 After=network.target jawaker-controller.service
-Requires=jawaker-controller.service
+Wants=jawaker-controller.service
 
 [Service]
 Type=simple
 User=root
+# Wait briefly for the controller to bind before cloudflared tries to proxy it
+ExecStartPre=/bin/sleep 3
 ExecStart=${CF_BIN} tunnel --url http://127.0.0.1:${PANEL_PORT}
-Restart=always
-RestartSec=5s
+Restart=on-failure
+RestartSec=10s
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=jawaker-tunnel
@@ -708,8 +710,16 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable --now jawaker-tunnel
-    ok "Cloudflare Tunnel service started"
+    systemctl enable jawaker-tunnel
+
+    # Give controller time to start before tunnel tries to connect
+    info "Waiting for controller to be ready..."
+    sleep 8
+
+    systemctl start jawaker-tunnel && ok "Cloudflare Tunnel service started" || \
+        warn "Tunnel service failed to start — retrying in 5s..."
+    sleep 5
+    systemctl is-active --quiet jawaker-tunnel || systemctl restart jawaker-tunnel || true
 
     info "Waiting for public Cloudflare HTTPS URL (this takes ~10 seconds)..."
     for _i in $(seq 1 12); do
