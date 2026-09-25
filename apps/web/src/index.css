@@ -64,35 +64,7 @@
   color-scheme: dark;
 }
 
-/* System theme: follow OS preference unless explicitly overridden. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --bg-canvas: oklch(17% 0.012 265);
-    --bg-surface: oklch(21% 0.014 265);
-    --bg-elevated: oklch(25% 0.015 265);
-    --bg-subtle: oklch(19% 0.013 265);
 
-    --text-primary: oklch(95% 0.005 85);
-    --text-secondary: oklch(78% 0.01 85);
-    --text-muted: oklch(62% 0.012 85);
-
-    --border-default: oklch(32% 0.015 265);
-    --border-strong: oklch(45% 0.015 265);
-
-    --action-primary: oklch(75% 0.13 80);
-    --action-primary-hover: oklch(82% 0.13 80);
-    --action-destructive: oklch(65% 0.2 25);
-
-    --status-success: oklch(72% 0.16 150);
-    --status-warning: oklch(80% 0.15 85);
-    --status-danger: oklch(70% 0.19 25);
-    --status-info: oklch(75% 0.1 240);
-
-    --focus-ring: oklch(75% 0.13 80);
-
-    color-scheme: dark;
-  }
-}
 
 /* Map tokens onto Tailwind v4 theme variables so utilities like
  * bg-[--bg-surface] and text-[--text-primary] resolve consistently. */
