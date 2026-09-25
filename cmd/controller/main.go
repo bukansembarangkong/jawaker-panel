@@ -208,6 +208,13 @@ func run() error {
 		go gsw.Run(ctx)
 	}
 
+	// Background cleanup worker (PRD §42): retention enforcement for preview
+	// environments, terminal jobs, and temporary records.
+	if assembled.BackgroundCleaner != nil {
+		bc := assembled.BackgroundCleaner
+		go bc.Run(ctx)
+	}
+
 	// The notification delivery loop drains the pending email and Telegram
 	// channel deliveries. It runs only when a database pool is available;
 	// without a pool there are no deliveries to drain.
