@@ -521,6 +521,7 @@ func Build(opts Options) (*Handler, error) {
 		out.Observe = observe.NewStore(opts.DB, now)
 		observeHandlers, observeErr := NewObserveHandlers(ObserveHandlerOptions{
 			Observe: out.Observe,
+			Pool:    opts.DB,
 			Logger:  logger,
 			Audit:   opts.DB,
 			Now:     now,
