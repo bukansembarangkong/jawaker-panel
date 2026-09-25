@@ -160,59 +160,19 @@ menu_select() {
 # Port selection — only relevant when no domain (direct port access).
 # With a domain, Nginx handles standard 80/443.
 if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
-
-    # Port labels: describe CLOUD DEFAULT reachability, not just local bind status.
-    # Port 80/443 are open by default on almost all VPS providers.
-    # Higher ports usually need a manual cloud firewall/security-group rule.
-    declare -A _PORT_DESC
-    _PORT_DESC[80]="Port 80   — Standard HTTP, open by default on all clouds ✓"
-    _PORT_DESC[443]="Port 443  — Standard HTTPS (needs SSL cert), open by default ✓"
-    _PORT_DESC[8080]="Port 8080 — Alternative HTTP, may need cloud firewall rule"
-    _PORT_DESC[8443]="Port 8443 — Alternative HTTPS, may need cloud firewall rule"
-    _PORT_DESC[3000]="Port 3000 — Development port, may need cloud firewall rule"
-
-    _CANDIDATES="80 443 8080 8443 3000"
-    _MENU_ITEMS=()
-    _MENU_PORTS=()
-
-    for _p in $_CANDIDATES; do
-        # Skip port 443 without domain (no SSL cert)
-        [ "$_p" -eq 443 ] && continue
-        if ss -tlnp 2>/dev/null | grep -q ":${_p} "; then
-            _MENU_ITEMS+=("${_PORT_DESC[$_p]}  [already in use by another process]")
-        else
-            _MENU_ITEMS+=("${_PORT_DESC[$_p]}")
-            _MENU_PORTS+=("$_p")
-        fi
-    done
-    _MENU_ITEMS+=("Custom port...")
-
     if has_tty; then
         echo ""
-        printf "\033[1m  Select panel port\033[0m\n"
-        printf "  \033[0;33mNote: ports 80 is open by default on most cloud VPS.\033[0m\n"
-        printf "  \033[0;33mOther ports may require a firewall rule in your cloud dashboard.\033[0m\n"
-        printf "  (↑↓ or j/k to move, Enter to select)\n\n"
-        menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
-
-        if [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
-            while true; do
-                read -rp "  Enter custom port number: " _port_input < /dev/tty
-                _port_input="${_port_input// /}"
-                if echo "$_port_input" | grep -qE '^[0-9]+$' && \
-                   [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
-                    PANEL_PORT="$_port_input"
-                    break
-                fi
-                warn "Invalid port. Must be a number between 1 and 65535."
-            done
-        else
-            PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE 'Port ([0-9]+)' | grep -oE '[0-9]+' | head -1)
-            if [ -z "$PANEL_PORT" ]; then
-                PANEL_PORT="${_MENU_PORTS[0]:-80}"
-                warn "Could not parse port. Defaulting to ${PANEL_PORT}."
+        while true; do
+            read -rp "  Panel port [8443]: " _port_input < /dev/tty
+            _port_input="${_port_input// /}"
+            _port_input="${_port_input:-8443}"
+            if echo "$_port_input" | grep -qE '^[0-9]+$' && \
+               [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
+                PANEL_PORT="$_port_input"
+                break
             fi
-        fi
+            warn "Invalid port. Must be a number between 1 and 65535."
+        done
 
         # ── Test real external reachability ────────────────────────────────
         _SERVER_IP=$(server_ip)
@@ -273,24 +233,18 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                                 warn "Still blocked. Try opening the port or choose another option."
                             fi
                             ;;
-                        1)  # Different port — re-show port menu
-                            echo ""
-                            printf "\033[1m  Select a different port\033[0m (↑↓ / j/k, Enter to select):\n\n"
-                            menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
-                            if [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
-                                while true; do
-                                    read -rp "  Enter custom port number: " _port_input < /dev/tty
-                                    _port_input="${_port_input// /}"
-                                    if echo "$_port_input" | grep -qE '^[0-9]+$' && \
-                                       [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
-                                        PANEL_PORT="$_port_input"; break
-                                    fi
-                                    warn "Invalid port."
-                                done
-                            else
-                                PANEL_PORT=$(echo "${_MENU_ITEMS[$_SEL_IDX]}" | grep -oE 'Port ([0-9]+)' | grep -oE '[0-9]+' | head -1)
-                                PANEL_PORT="${PANEL_PORT:-80}"
-                            fi
+                        1)  # Different port — ask directly
+                            while true; do
+                                read -rp "  Enter new port number [8443]: " _port_input < /dev/tty
+                                _port_input="${_port_input// /}"
+                                _port_input="${_port_input:-8443}"
+                                if echo "$_port_input" | grep -qE '^[0-9]+$' && \
+                                   [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
+                                    PANEL_PORT="$_port_input"
+                                    break
+                                fi
+                                warn "Invalid port. Must be a number between 1 and 65535."
+                            done
                             info "Testing port ${PANEL_PORT}..."
                             _REACH=$(_probe_port "$PANEL_PORT")
                             if [ -n "$_REACH" ] && [ "$_REACH" != "skip" ]; then
@@ -311,8 +265,6 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
                 done
             fi
         fi
-    else
-        PANEL_PORT="${_MENU_PORTS[0]:-80}"
     fi
 fi
 
