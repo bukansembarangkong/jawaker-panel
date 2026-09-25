@@ -75,21 +75,24 @@ DOMAIN="${JAWAKER_DOMAIN:-}"
 SSL_EMAIL="${JAWAKER_SSL_EMAIL:-}"
 USE_SSL=false
 
-# Only prompt when running interactively (stdin is a tty)
-if [ -t 0 ] && [ -z "$DOMAIN" ]; then
+# Check if an interactive terminal is attached (even when piped via curl ... | bash)
+has_tty() { [ -c /dev/tty ]; }
+
+# Only prompt when a real terminal is attached and domain is not pre-set via env
+if has_tty && [ -z "$DOMAIN" ]; then
     echo ""
     info "Optional: bind a domain for HTTPS access (e.g. panel.example.com)"
     info "  • Leave empty to access via IP on a custom port"
     info "  • DNS A record for the domain must already point to this server"
     echo ""
-    read -rp "Panel domain [leave empty for IP-only]: " DOMAIN
+    read -rp "Panel domain [leave empty for IP-only]: " DOMAIN < /dev/tty
     DOMAIN="${DOMAIN// /}"  # trim spaces
 fi
 
 if [ -n "$DOMAIN" ]; then
     USE_SSL=true
-    if [ -z "$SSL_EMAIL" ] && [ -t 0 ]; then
-        read -rp "Email for Let's Encrypt SSL certificate: " SSL_EMAIL
+    if [ -z "$SSL_EMAIL" ] && has_tty; then
+        read -rp "Email for Let's Encrypt SSL certificate: " SSL_EMAIL < /dev/tty
     fi
     [ -n "$SSL_EMAIL" ] || die "JAWAKER_SSL_EMAIL is required when a domain is provided"
     info "Will configure HTTPS for: ${DOMAIN}"
@@ -97,7 +100,7 @@ fi
 
 # ── Interactive port selector (arrow keys / vim keys / Enter) ─────────────────
 # menu_select <selected_var> <item1> [item2 ...] — sets selected_var to the
-# index (0-based) of the chosen item. Requires a real TTY.
+# index (0-based) of the chosen item. Reads directly from /dev/tty.
 menu_select() {
     local _var="$1"; shift
     local _items=("$@")
@@ -124,11 +127,11 @@ menu_select() {
     _draw_menu
 
     while true; do
-        # Read one or more bytes (handles escape sequences)
-        IFS= read -rsn1 _k
+        # Read from /dev/tty directly (handles curl ... | bash piping)
+        IFS= read -rsn1 _k < /dev/tty
         if [ "$_k" = $'\x1b' ]; then
-            IFS= read -rsn1 -t 0.1 _k2
-            IFS= read -rsn1 -t 0.1 _k3
+            IFS= read -rsn1 -t 0.1 _k2 < /dev/tty
+            IFS= read -rsn1 -t 0.1 _k3 < /dev/tty
             if [ "$_k2" = '[' ]; then
                 case "$_k3" in
                     A)  # Up arrow
@@ -171,7 +174,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
     done
     _MENU_ITEMS+=("Custom port...")
 
-    if [ -t 0 ]; then
+    if has_tty; then
         echo ""
         printf "\033[1m  Select panel port\033[0m (↑↓ or j/k to move, Enter to select):\n\n"
         menu_select _SEL_IDX "${_MENU_ITEMS[@]}"
@@ -180,7 +183,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
            [ "${_MENU_ITEMS[$_SEL_IDX]}" = "Custom port..." ]; then
             # Custom input
             while true; do
-                read -rp "  Enter custom port number: " _port_input
+                read -rp "  Enter custom port number: " _port_input < /dev/tty
                 _port_input="${_port_input// /}"
                 if echo "$_port_input" | grep -qE '^[0-9]+$' && \
                    [ "$_port_input" -ge 1 ] && [ "$_port_input" -le 65535 ]; then
@@ -203,6 +206,7 @@ if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
         PANEL_PORT="${_MENU_PORTS[0]:-8443}"
     fi
 fi
+
 
 # Resolve final panel port
 PANEL_PORT="${PANEL_PORT:-${CONTROLLER_PORT}}"
