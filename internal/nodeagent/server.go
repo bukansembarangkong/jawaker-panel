@@ -210,6 +210,7 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpSecBanList] = true
 		served[nodewire.OpSecBanAdd] = true
 		served[nodewire.OpSecBanRemove] = true
+		served[nodewire.OpSecWAFApply] = true
 		served[nodewire.OpUpdateNodeAgent] = true
 	}
 	return served
@@ -824,6 +825,20 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.SecBanRemove(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSecWAFApply:
+		in, err := nodewire.DecodeInput[nodewire.SecWAFApplyInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.SecWAFApply(ctx, in)
 		if err != nil {
 			return nil, err
 		}

@@ -940,6 +940,27 @@ func (d *Dispatcher) SecBanRemove(ctx context.Context, serverID, requestID strin
 	return out, nil
 }
 
+// SecWAFApply sends the full WAF rule list to the node and triggers nginx WAF reload (PRD §20).
+func (d *Dispatcher) SecWAFApply(ctx context.Context, serverID, requestID string, in nodewire.SecWAFApplyInput) (nodewire.SecWAFApplyResult, error) {
+	var out nodewire.SecWAFApplyResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid sec waf apply input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSecWAFApply,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode sec waf apply result: %w", err)
+	}
+	return out, nil
+}
+
 // UpdateNodeAgent instructs the node agent to download and atomically replace
 // its own binary. The artifact URL must be a verified github.com release URL.
 func (d *Dispatcher) UpdateNodeAgent(ctx context.Context, serverID, requestID string, in nodewire.UpdateNodeAgentInput) (nodewire.UpdateNodeAgentResult, error) {
