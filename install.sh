@@ -114,39 +114,40 @@ fi
 PANEL_PORT="${PANEL_PORT:-${CONTROLLER_PORT}}"
 
 ###############################################################################
-# System dependencies
+# System dependencies  [1/7]
 ###############################################################################
-info "Installing system dependencies..."
+step() { printf "\033[1;36m\n[%s/7] %s\033[0m\n" "$1" "$2"; }
+step 1 "Installing system packages"
 case "$PKG_MANAGER" in
     apt)
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq
+        apt-get update
         EXTRA_PKGS=""
         $USE_SSL && EXTRA_PKGS="nginx certbot python3-certbot-nginx"
-        apt-get install -y -qq $PG_PKG curl git tar build-essential $EXTRA_PKGS
+        apt-get install -y $PG_PKG curl git tar build-essential $EXTRA_PKGS
         ;;
     dnf)
-        dnf install -y -q $PG_PKG curl git tar gcc
-        $USE_SSL && dnf install -y -q nginx certbot python3-certbot-nginx
+        dnf install -y $PG_PKG curl git tar gcc
+        $USE_SSL && dnf install -y nginx certbot python3-certbot-nginx
         if ! systemctl is-enabled postgresql &>/dev/null; then
             postgresql-setup --initdb 2>/dev/null || true
         fi
         ;;
     yum)
-        yum install -y -q $PG_PKG curl git tar gcc
-        $USE_SSL && yum install -y -q nginx certbot python3-certbot-nginx
+        yum install -y $PG_PKG curl git tar gcc
+        $USE_SSL && yum install -y nginx certbot python3-certbot-nginx
         if ! systemctl is-enabled postgresql &>/dev/null; then
             service postgresql initdb 2>/dev/null || true
         fi
         ;;
 esac
-ok "System packages ready"
+ok "System packages installed"
 
 ###############################################################################
-# Go toolchain
+# Go toolchain  [2/7]
 ###############################################################################
+step 2 "Setting up Go toolchain"
 if ! command -v go &>/dev/null; then
-    info "Installing Go 1.23..."
     GO_VER="1.23.4"
     ARCH=$(uname -m)
     case "$ARCH" in
@@ -155,7 +156,9 @@ if ! command -v go &>/dev/null; then
         *)        die "Unsupported CPU arch: $ARCH" ;;
     esac
     GO_TAR="go${GO_VER}.linux-${GO_ARCH}.tar.gz"
-    curl -sSL "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
+    info "Downloading Go ${GO_VER} (${GO_ARCH})..."
+    curl --progress-bar -L "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
+    info "Extracting Go..."
     tar -C /usr/local -xzf "/tmp/${GO_TAR}"
     rm -f "/tmp/${GO_TAR}"
     export PATH="/usr/local/go/bin:$PATH"
@@ -166,18 +169,18 @@ fi
 export PATH="/usr/local/go/bin:$PATH"
 
 ###############################################################################
-# Node/npm (for frontend build)
+# Node/npm  [2/7 continued]
 ###############################################################################
 if ! command -v node &>/dev/null; then
     info "Installing Node.js 20..."
     case "$PKG_MANAGER" in
         apt)
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
-            apt-get install -y -qq nodejs
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+            apt-get install -y nodejs
             ;;
         dnf|yum)
-            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
-            $PKG_MANAGER install -y -q nodejs npm
+            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+            $PKG_MANAGER install -y nodejs npm
             ;;
     esac
     ok "Node.js $(node --version) installed"
@@ -186,60 +189,72 @@ else
 fi
 
 ###############################################################################
-# PostgreSQL setup
+# PostgreSQL setup  [3/7]
 ###############################################################################
-info "Starting PostgreSQL..."
+step 3 "Configuring PostgreSQL"
+info "Starting PostgreSQL service..."
 systemctl enable --now postgresql
 sleep 2
 
 DB_PASS=$(gen_pass)
 
-info "Creating database user and database..."
+info "Creating database user '${DB_USER}'..."
 if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null | grep -q 1; then
-    info "User '${DB_USER}' already exists — resetting password"
+    info "  User already exists — resetting password"
     sudo -u postgres psql -c "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" >/dev/null
 else
     sudo -u postgres psql -c "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';" >/dev/null
+    ok "  User '${DB_USER}' created"
 fi
 
+info "Creating database '${DB_NAME}'..."
 if sudo -u postgres psql -lqt 2>/dev/null | cut -d'|' -f1 | grep -qw "${DB_NAME}"; then
-    ok "Database '${DB_NAME}' already exists"
+    ok "  Database '${DB_NAME}' already exists"
 else
     sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" >/dev/null
-    ok "Database '${DB_NAME}' created"
+    ok "  Database '${DB_NAME}' created"
 fi
 ok "PostgreSQL configured"
 
 ###############################################################################
-# Fetch and build JAWAKER
+# Fetch JAWAKER source  [4/7]
 ###############################################################################
-info "Cloning JAWAKER Panel..."
+step 4 "Cloning JAWAKER Panel source"
 if [ -d "${INSTALL_DIR}/.git" ]; then
-    git -C "${INSTALL_DIR}" pull --quiet
+    info "Updating existing installation..."
+    git -C "${INSTALL_DIR}" pull
 else
-    git clone --quiet --depth=1 "${REPO}" "${INSTALL_DIR}"
+    git clone --depth=1 "${REPO}" "${INSTALL_DIR}"
 fi
-ok "Source code ready"
+ok "Source code ready at ${INSTALL_DIR}"
 
-info "Building frontend..."
+###############################################################################
+# Build JAWAKER  [5/7]
+###############################################################################
+step 5 "Building JAWAKER Panel"
+
+info "Installing frontend dependencies (npm ci)..."
 cd "${INSTALL_DIR}/apps/web"
-npm ci --silent
-npm run build --silent
-ok "Frontend built"
+npm ci
 
-info "Copying frontend build into embed directory..."
+info "Building frontend assets..."
+npm run build
+
+info "Copying frontend into embed directory..."
 rm -rf "${INSTALL_DIR}/cmd/controller/webdist/dist"
 cp -r "${INSTALL_DIR}/apps/web/dist" "${INSTALL_DIR}/cmd/controller/webdist/dist"
-ok "Frontend embedded"
+ok "Frontend built and embedded"
 
-info "Compiling jawaker-controller..."
+info "Compiling jawaker-controller binary..."
 cd "${INSTALL_DIR}"
-go build -ldflags="-s -w" -o "${BIN_DIR}/jawaker-controller" ./cmd/controller
-ok "Binary installed at ${BIN_DIR}/jawaker-controller"
+go build -v -ldflags="-s -w" -o "${BIN_DIR}/jawaker-controller" ./cmd/controller
+ok "Binary installed: ${BIN_DIR}/jawaker-controller"
+
 
 ###############################################################################
-# Configuration
+# Configuration  [6/7]
 ###############################################################################
+step 6 "Writing configuration"
 SECRET_KEY=$(gen_secret)
 ADMIN_PASS=$(gen_pass)
 ADMIN_EMAIL="${JAWAKER_ADMIN_EMAIL:-admin@jawaker.local}"
@@ -281,8 +296,9 @@ chmod 600 "${CONF_DIR}/jawaker.env"
 ok "Configuration written to ${CONF_DIR}/jawaker.env"
 
 ###############################################################################
-# Systemd service
+# Systemd service & SSL  [7/7]
 ###############################################################################
+step 7 "Starting services"
 cat >/etc/systemd/system/${SERVICE}.service <<EOF
 [Unit]
 Description=JAWAKER Control Plane
