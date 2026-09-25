@@ -2204,6 +2204,12 @@ export interface CopilotApproval {
   updated_at: string;
 }
 
+export interface CopilotProviderConfig {
+  type: 'openai_compatible' | 'gemini';
+  endpoint: string;
+  model: string;
+}
+
 export const copilotApi = {
   listSessions(projectId: string): Promise<{ sessions: CopilotSession[]; total: number; request_id: string }> {
     return request(`/api/v1/projects/${encodeURIComponent(projectId)}/copilot/sessions`);
@@ -2251,6 +2257,13 @@ export const copilotApi = {
       `/api/v1/projects/${encodeURIComponent(projectId)}/copilot/plans/${encodeURIComponent(planId)}/approvals/${encodeURIComponent(id)}/review`,
       { method: 'POST', body: { state, comment } },
     );
+  },
+
+  getProvider(): Promise<{ provider: CopilotProviderConfig; request_id: string }> {
+    return request('/api/v1/copilot/provider');
+  },
+  setProvider(input: { type: string; endpoint: string; api_key?: string; model: string }): Promise<{ provider: CopilotProviderConfig; request_id: string }> {
+    return request('/api/v1/copilot/provider', { method: 'PUT', body: input });
   },
 };
 

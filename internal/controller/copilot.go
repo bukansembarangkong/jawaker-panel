@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -84,6 +85,10 @@ func (h *CopilotHandlers) Routes(mux *http.ServeMux) {
 	// Approvals
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/copilot/plans/{plan_id}/approvals", h.handleListApprovals)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/copilot/plans/{plan_id}/approvals/{id}/review", h.handleReviewApproval)
+
+	// LLM Provider Configuration (PRD §28: endpoint, apiKey, model settings)
+	mux.HandleFunc("GET /api/v1/copilot/provider", h.handleGetProvider)
+	mux.HandleFunc("PUT /api/v1/copilot/provider", h.handleSetProvider)
 }
 
 // ── Audit helper ─────────────────────────────────────────────────────────────
@@ -232,10 +237,22 @@ func (h *CopilotHandlers) handleInvokeTool(w http.ResponseWriter, r *http.Reques
 				return
 			}
 
-			// Execute through the deterministic advisor engine (PRD §28).
+			// Execute through LLM provider when configured, otherwise rule-based advisor (PRD §28).
 			toolResult, execErr := copilot.ExecuteTool(req.ToolName, req.Input)
 			outcome := "ok"
 			errMsg := ""
+
+			// Attempt LLM completion — augments/replaces rule-based result.
+			if llmCfg, cfgErr := h.store.GetProviderConfig(r.Context()); cfgErr == nil && llmCfg.Endpoint != "" {
+				llm := copilot.NewLLMClient(llmCfg)
+				system := "You are JAWAKER infrastructure copilot. Respond in structured JSON analysis format."
+				user, _ := json.Marshal(map[string]any{"tool": req.ToolName, "input": req.Input})
+				if llmText, llmErr := llm.Complete(r.Context(), system, string(user)); llmErr == nil {
+					toolResult.Details = llmText
+					toolResult.Source = "llm"
+				}
+			}
+
 			if execErr != nil {
 				outcome = "error"
 				errMsg = execErr.Error()
@@ -449,6 +466,74 @@ func (h *CopilotHandlers) handleReviewApproval(w http.ResponseWriter, r *http.Re
 			})
 			writeJSONResponse(w, http.StatusOK, map[string]any{
 				"approval":   approval,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// ── LLM Provider ──────────────────────────────────────────────────────────────
+
+// handleGetProvider returns the current LLM provider config (API key redacted).
+func (h *CopilotHandlers) handleGetProvider(w http.ResponseWriter, r *http.Request) {
+	authsession.RequirePermission(h.now, "copilot.run", rbac.GlobalScope(), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cfg, err := h.store.GetProviderConfig(r.Context())
+			if err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
+				return
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"provider":   cfg.RedactedCopy(),
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleSetProvider updates the LLM provider configuration.
+func (h *CopilotHandlers) handleSetProvider(w http.ResponseWriter, r *http.Request) {
+	authsession.RequirePermission(h.now, "copilot.run", rbac.GlobalScope(), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req struct {
+				ProviderType string `json:"type"`
+				Endpoint     string `json:"endpoint"`
+				APIKey       string `json:"api_key"`
+				Model        string `json:"model"`
+			}
+			if err := decodeJSONStrict(r, &req); err != nil {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(err.Error(), nil))
+				return
+			}
+			if req.Endpoint == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("endpoint is required", nil))
+				return
+			}
+			if req.Model == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("model is required", nil))
+				return
+			}
+			ptype := copilot.ProviderType(req.ProviderType)
+			if ptype == "" {
+				ptype = copilot.ProviderOpenAICompat
+			}
+			cfg := copilot.ProviderConfig{
+				Type:     ptype,
+				Endpoint: req.Endpoint,
+				APIKey:   req.APIKey,
+				Model:    req.Model,
+			}
+			if err := h.store.SetProviderConfig(r.Context(), cfg); err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, apierr.Internal(err))
+				return
+			}
+			p, _ := auth.PrincipalFrom(r.Context())
+			h.recordAudit(r, audit.Event{
+				ActorID: p.UserID, Action: "copilot.provider.update",
+				ResourceType: "copilot_provider", ResourceID: "default",
+				Result:  audit.ResultSuccess,
+				Context: map[string]any{"type": req.ProviderType, "model": req.Model},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"provider":   cfg.RedactedCopy(),
 				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)

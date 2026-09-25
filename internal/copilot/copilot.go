@@ -348,3 +348,36 @@ func (s *Store) ListApprovals(ctx context.Context, planID string) ([]Approval, e
 	}
 	return out, rows.Err()
 }
+
+// ── LLM Provider Config ───────────────────────────────────────────────────────
+
+// GetProviderConfig returns the current LLM provider configuration (PRD §28).
+// Returns a zero-value config if not yet configured.
+func (s *Store) GetProviderConfig(ctx context.Context) (ProviderConfig, error) {
+	var cfg ProviderConfig
+	var ptype string
+	err := s.pool.QueryRow(ctx,
+		`SELECT provider_type, endpoint, api_key, model FROM copilot_provider_configs WHERE id = 'default'`).
+		Scan(&ptype, &cfg.Endpoint, &cfg.APIKey, &cfg.Model)
+	if err != nil {
+		// No row yet — return empty config (rule-based fallback applies).
+		return ProviderConfig{}, nil
+	}
+	cfg.Type = ProviderType(ptype)
+	return cfg, nil
+}
+
+// SetProviderConfig upserts the LLM provider configuration.
+func (s *Store) SetProviderConfig(ctx context.Context, cfg ProviderConfig) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO copilot_provider_configs (id, provider_type, endpoint, api_key, model, updated_at)
+		VALUES ('default', $1, $2, $3, $4, NOW())
+		ON CONFLICT (id) DO UPDATE
+		SET provider_type = EXCLUDED.provider_type,
+		    endpoint      = EXCLUDED.endpoint,
+		    api_key       = EXCLUDED.api_key,
+		    model         = EXCLUDED.model,
+		    updated_at    = EXCLUDED.updated_at`,
+		string(cfg.Type), cfg.Endpoint, cfg.APIKey, cfg.Model)
+	return err
+}
