@@ -201,6 +201,13 @@ func run() error {
 		go probeWorker.Run(ctx)
 	}
 
+	// GitOps sync worker (PRD §24): drains revision backlog, records commit
+	// SHAs on success or marks sync_state=failed with error context.
+	if assembled.GitSyncWorker != nil {
+		gsw := assembled.GitSyncWorker
+		go gsw.Run(ctx)
+	}
+
 	// The notification delivery loop drains the pending email and Telegram
 	// channel deliveries. It runs only when a database pool is available;
 	// without a pool there are no deliveries to drain.
