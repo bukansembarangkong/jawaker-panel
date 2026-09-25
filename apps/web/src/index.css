@@ -11,28 +11,28 @@
 
 :root {
   /* Light theme */
-  --bg-canvas: oklch(97.5% 0.005 85);
+  --bg-canvas: oklch(97% 0.004 264);
   --bg-surface: oklch(100% 0 0);
-  --bg-elevated: oklch(100% 0 0);
-  --bg-subtle: oklch(95.5% 0.006 85);
+  --bg-elevated: oklch(98% 0.003 264);
+  --bg-subtle: oklch(94% 0.005 264);
 
-  --text-primary: oklch(24% 0.02 60);
-  --text-secondary: oklch(45% 0.015 60);
-  --text-muted: oklch(58% 0.012 60);
+  --text-primary: oklch(18% 0.01 264);    /* ~#1e2228 — near black, 16:1 on white */
+  --text-secondary: oklch(32% 0.012 264); /* ~#3d4452 — dark slate, 8:1 on white */
+  --text-muted: oklch(48% 0.012 264);     /* ~#646e82 — medium slate, 4.5:1 on white */
 
-  --border-default: oklch(88% 0.008 85);
-  --border-strong: oklch(75% 0.012 85);
+  --border-default: oklch(87% 0.006 264);
+  --border-strong: oklch(72% 0.01 264);
 
-  --action-primary: oklch(62% 0.115 75);
-  --action-primary-hover: oklch(55% 0.12 75);
-  --action-destructive: oklch(55% 0.19 25);
+  --action-primary: oklch(46% 0.18 264);
+  --action-primary-hover: oklch(38% 0.18 264);
+  --action-destructive: oklch(45% 0.2 25);
 
-  --status-success: oklch(55% 0.14 150);
-  --status-warning: oklch(70% 0.15 85);
-  --status-danger: oklch(55% 0.19 25);
-  --status-info: oklch(58% 0.11 240);
+  --status-success: oklch(42% 0.14 150);
+  --status-warning: oklch(52% 0.15 75);
+  --status-danger: oklch(45% 0.2 25);
+  --status-info: oklch(44% 0.13 240);
 
-  --focus-ring: oklch(62% 0.115 75);
+  --focus-ring: oklch(46% 0.18 264);
 
   color-scheme: light;
 }
