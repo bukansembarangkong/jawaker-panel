@@ -22,7 +22,7 @@ function readStoredTheme(): Theme {
   } catch {
     // Storage unavailable (private mode etc.): fall through to system.
   }
-  return 'system';
+  return 'light';
 }
 
 function applyTheme(theme: Theme): void {
