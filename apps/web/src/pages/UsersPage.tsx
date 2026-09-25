@@ -60,6 +60,23 @@ export function UsersPage() {
     }
   }
 
+  const [impersonationBanner, setImpersonationBanner] = useState<{ email: string; sessionId: string; expiresAt: string } | null>(null);
+
+  async function handleImpersonate(user: PlatformUser) {
+    const reason = window.prompt(`Impersonation reason / ticket ID required (PRD §5.4):`);
+    if (!reason?.trim()) return;
+    try {
+      const res = await userApi.impersonate(user.id, reason.trim());
+      setImpersonationBanner({
+        email: res.user.email,
+        sessionId: res.session_id,
+        expiresAt: res.expires_at,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
   return (
     <div className="p-6 space-y-8">
       <div>
@@ -69,6 +86,23 @@ export function UsersPage() {
 
       {error && (
         <ErrorNote error={error} title="Failed to load users" onRetry={() => void load()} />
+      )}
+
+      {/* Impersonation banner (PRD §5.4: clearly bannered) */}
+      {impersonationBanner && (
+        <div className="rounded-md border border-purple-400 bg-purple-50 dark:bg-purple-950/40 px-4 py-3 flex items-center gap-3">
+          <span className="rounded bg-purple-600 px-1.5 py-0.5 text-xs font-bold text-white uppercase">Impersonation</span>
+          <p className="text-sm text-purple-800 dark:text-purple-200 flex-1">
+            Session created for <strong>{impersonationBanner.email}</strong> — read-only, expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
+            Session ID: <code className="text-xs">{impersonationBanner.sessionId.slice(0, 8)}…</code>
+          </p>
+          <button
+            onClick={() => setImpersonationBanner(null)}
+            className="text-xs text-purple-600 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       <section>
@@ -161,14 +195,23 @@ export function UsersPage() {
                         {u.state}
                       </span>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 flex items-center gap-2">
                       {!u.is_owner && (
-                        <button
-                          onClick={() => void handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
-                          className={secondaryButtonClass}
-                        >
-                          {u.state === 'active' ? 'Suspend' : 'Activate'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => void handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
+                            className={secondaryButtonClass}
+                          >
+                            {u.state === 'active' ? 'Suspend' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => void handleImpersonate(u)}
+                            className="rounded-md border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100"
+                            title="Impersonate read-only session (PRD §5.4)"
+                          >
+                            Impersonate
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>

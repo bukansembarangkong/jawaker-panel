@@ -2435,6 +2435,15 @@ export const userApi = {
   unbindRole(id: string, bindingId: string): Promise<{ unbound: boolean; request_id: string }> {
     return request(`/api/v1/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
   },
+  impersonate(id: string, reason: string): Promise<{
+    impersonated: boolean;
+    user: { id: string; email: string; display_name: string };
+    session_id: string;
+    expires_at: string;
+    request_id: string;
+  }> {
+    return request(`/api/v1/users/${encodeURIComponent(id)}/impersonate`, { method: 'POST', body: { reason } });
+  },
 };
 
 export interface NotificationChannel {
