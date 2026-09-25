@@ -21,6 +21,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/authsession"
 	"github.com/bukansembarangkong/jawaker-panel/internal/backups"
 	"github.com/bukansembarangkong/jawaker-panel/internal/certs"
+	"github.com/bukansembarangkong/jawaker-panel/internal/cleanup"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/containers"
 	"github.com/bukansembarangkong/jawaker-panel/internal/copilot"
@@ -199,6 +200,9 @@ type Handler struct {
 	ObserveEvaluator *observe.Evaluator
 	// GitSyncWorker is the background worker draining pending GitOps syncs (PRD §24).
 	GitSyncWorker *revisions.GitSyncWorker
+	// BackgroundCleaner handles scheduled retention/expiry cleanup (PRD §42):
+	// expired preview environments, terminal job pruning, temp records.
+	BackgroundCleaner *cleanup.Cleaner
 	// Authority is the installation's certificate authority, nil when the node
 	// subsystem is disabled. Exposed so main can report fingerprints at startup
 	// and so the node-agent listener can reuse it instead of loading the
@@ -537,6 +541,9 @@ func Build(opts Options) (*Handler, error) {
 		out.GitSyncWorker = revisions.NewGitSyncWorker(
 			opts.DB, nil, /* ponytail: syncer=nil marks pending as not_required; add real git push when GitSyncURL is in config */
 			logger.With("component", "gitsync-worker"), 30*time.Second)
+
+		// Background retention & expiry cleaner (PRD §42): preview environments, terminal jobs.
+		out.BackgroundCleaner = cleanup.New(opts.DB, logger.With("component", "cleaner"), 1*time.Hour)
 
 		appWorker, appWorkerErr := NewAppDeployWorker(AppWorkerOptions{
 			Pool:       opts.DB,
