@@ -24,6 +24,7 @@ import (
 	"github.com/bukansembarangkong/jawaker-panel/internal/controller"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db/migrate"
+	"github.com/bukansembarangkong/jawaker-panel/internal/ha"
 	"github.com/bukansembarangkong/jawaker-panel/internal/logging"
 	"github.com/bukansembarangkong/jawaker-panel/internal/notify"
 	"github.com/bukansembarangkong/jawaker-panel/internal/version"
@@ -191,6 +192,13 @@ func run() error {
 	if assembled.ObserveEvaluator != nil {
 		ev := assembled.ObserveEvaluator
 		go ev.Run(ctx)
+	}
+
+	// HA health-probe worker (PRD §23): monitors node reachability in active
+	// server pools, transitions failing members, and updates pool status.
+	if assembled.HA != nil && assembled.Dispatcher != nil {
+		probeWorker := ha.NewProbeWorker(assembled.HA, assembled.Dispatcher, logger, 30*time.Second)
+		go probeWorker.Run(ctx)
 	}
 
 	// The notification delivery loop drains the pending email and Telegram
