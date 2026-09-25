@@ -13,13 +13,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/bukansembarangkong/jawaker-panel/cmd/controller/webdist"
 	"github.com/bukansembarangkong/jawaker-panel/internal/config"
 	"github.com/bukansembarangkong/jawaker-panel/internal/controller"
 	"github.com/bukansembarangkong/jawaker-panel/internal/db"
@@ -114,7 +117,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	handler := assembled.HTTP
+	handler := spaHandler(assembled.HTTP)
 
 	// The node-facing mutual-TLS listener runs on its OWN port, separate from the
 	// public API. It is started only when the node subsystem came up: without an
@@ -297,4 +300,50 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 		logger.Debug("migrations up to date")
 	}
 	return nil
+}
+
+// spaHandler wraps the API handler to serve embedded frontend assets and provide
+// client-side routing fallback for React Single Page Application (SPA).
+func spaHandler(apiHandler http.Handler) http.Handler {
+	distFS, err := fs.Sub(webdist.FS, "dist")
+	if err != nil {
+		return apiHandler
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// API routes and health endpoints must always hit the API handler.
+		if strings.HasPrefix(path, "/api/") || path == "/healthz" {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+
+		// Only GET and HEAD requests can serve static files or the SPA fallback.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+
+		// Check if the requested file exists in distFS.
+		trimmed := strings.TrimPrefix(path, "/")
+		if trimmed == "" {
+			trimmed = "index.html"
+		}
+
+		f, err := distFS.Open(trimmed)
+		if err == nil {
+			stat, statErr := f.Stat()
+			_ = f.Close()
+			if statErr == nil && !stat.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Fallback: serve index.html for client-side routing.
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
