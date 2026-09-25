@@ -221,7 +221,7 @@ export function AuditLogPage() {
                           detail={ev.result}
                         />
                       </td>
-                      <td className="px-3 py-2 text-ink-muted">{ev.source_ip || '—'}</td>
+                      <td className="px-3 py-2 text-ink-muted">{ev.source_ip || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -335,7 +335,7 @@ export function AuditLogPage() {
                       <td className="px-3 py-2 text-ink-muted">{rev.candidate_hash.slice(0, 12)}…</td>
                       <td className="px-3 py-2 font-sans">{new Date(rev.created_at).toLocaleString()}</td>
                       <td className="px-3 py-2 font-sans text-ink-muted">
-                        {rev.applied_at ? new Date(rev.applied_at).toLocaleString() : '—'}
+                        {rev.applied_at ? new Date(rev.applied_at).toLocaleString() : '-'}
                       </td>
                     </tr>
                   ))}

@@ -243,7 +243,7 @@ function JobsTab() {
 
           {selectedJob && (
             <div className="mt-4 rounded-md border border-border p-4">
-              <h3 className="text-sm font-medium text-ink mb-2">Canary rollout — job {selectedJob.slice(0, 8)}…</h3>
+              <h3 className="text-sm font-medium text-ink mb-2">Canary rollout - job {selectedJob.slice(0, 8)}…</h3>
               {canary.length === 0 ? (
                 <p className="text-xs text-ink-secondary">No canary entries yet.</p>
               ) : (
@@ -311,7 +311,7 @@ function ModulesTab() {
               <tr key={m.id}>
                 <td className="py-2 pr-4 font-mono text-xs">{m.module_name}</td>
                 <td className="py-2 pr-4 text-ink-secondary">{m.current_ver}</td>
-                <td className="py-2 pr-4">{m.latest_ver ?? '—'}</td>
+                <td className="py-2 pr-4">{m.latest_ver ?? '-'}</td>
                 <td className="py-2"><StateBadge state={m.state} /></td>
               </tr>
             ))}

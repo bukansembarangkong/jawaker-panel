@@ -24,7 +24,7 @@ import {
 type Tab = 'firewall' | 'forwards' | 'zones' | 'wireguard' | 'diag' | 'applylog';
 
 function formatTs(v: string | null | undefined): string {
-  if (!v) return '—';
+  if (!v) return '-';
   try { return new Date(v).toLocaleString(); } catch { return v; }
 }
 
@@ -141,7 +141,7 @@ export function NetworkPage() {
     try {
       const r = await networkApi.getLiveFirewall(serverId);
       const text = (r.chains ?? []).map((c) =>
-        `Table: ${c.table}  Chain: ${c.chain}  Policy: ${c.policy ?? '—'}\n` +
+        `Table: ${c.table}  Chain: ${c.chain}  Policy: ${c.policy ?? '-'}\n` +
         (c.rules ?? []).map((rule) =>
           `  ${rule.num}  ${rule.target}  ${rule.protocol}  ${rule.source}  ${rule.destination}  ${rule.options ?? ''}`
         ).join('\n')
@@ -387,9 +387,9 @@ export function NetworkPage() {
                   <tr key={rule.id} className="border-b border-line">
                     <td className="py-2 pr-4 font-mono text-xs">{rule.chain}</td>
                     <td className="py-2 pr-4">{rule.protocol}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{rule.source_cidr || '—'}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{rule.source_cidr || '-'}</td>
                     <td className="py-2 pr-4 font-mono text-xs">
-                      {rule.dest_port_min > 0 ? `${rule.dest_port_min}–${rule.dest_port_max}` : '—'}
+                      {rule.dest_port_min > 0 ? `${rule.dest_port_min}–${rule.dest_port_max}` : '-'}
                     </td>
                     <td className="py-2 pr-4">{rule.action}</td>
                     <td className="py-2 pr-4">{rule.state}</td>
@@ -545,7 +545,7 @@ export function NetworkPage() {
                   <tr key={z.id} className="border-b border-line">
                     <td className="py-2 pr-4">{z.name}</td>
                     <td className="py-2 pr-4">{z.kind}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{z.interfaces || '—'}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{z.interfaces || '-'}</td>
                     <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(z.created_at)}</td>
                     <td className="py-2">
                       <button type="button" className={secondaryButtonClass}
@@ -623,10 +623,10 @@ export function NetworkPage() {
               <tbody>
                 {peers.map((p) => (
                   <tr key={p.id} className="border-b border-line">
-                    <td className="py-2 pr-4">{p.label || '—'}</td>
+                    <td className="py-2 pr-4">{p.label || '-'}</td>
                     <td className="py-2 pr-4 font-mono text-xs max-w-[10rem] truncate">{p.public_key}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{p.allowed_ips || '—'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{p.endpoint || '—'}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{p.allowed_ips || '-'}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{p.endpoint || '-'}</td>
                     <td className="py-2 pr-4">{p.enabled ? 'Yes' : 'No'}</td>
                     <td className="py-2">
                       <button type="button" className={secondaryButtonClass}
@@ -672,7 +672,7 @@ export function NetworkPage() {
           {diagResult && (
             <div className="space-y-1">
               <p className="text-xs text-ink-secondary">
-                {diagResult.mode} → {diagResult.target} — {diagResult.success ? 'success' : 'failed'} — {formatTs(diagResult.observed_at)}
+                {diagResult.mode} → {diagResult.target} - {diagResult.success ? 'success' : 'failed'} - {formatTs(diagResult.observed_at)}
               </p>
               <pre className="overflow-auto rounded-md bg-elevated p-3 text-xs text-ink">{diagResult.output}</pre>
             </div>
@@ -702,7 +702,7 @@ export function NetworkPage() {
                       <td className="py-2 pr-4">{p.protocol}</td>
                       <td className="py-2 pr-4 font-mono text-xs">{p.local_address}</td>
                       <td className="py-2 pr-4 font-mono text-xs">{p.local_port}</td>
-                      <td className="py-2 pr-4 text-xs">{p.process_name ?? '—'}</td>
+                      <td className="py-2 pr-4 text-xs">{p.process_name ?? '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -733,7 +733,7 @@ export function NetworkPage() {
                     <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(log.created_at)}</td>
                     <td className="py-2 pr-4 font-mono text-xs">{log.applied_by}</td>
                     <td className="py-2 pr-4">{log.outcome}</td>
-                    <td className="py-2 text-xs text-ink-secondary">{log.error_message || '—'}</td>
+                    <td className="py-2 text-xs text-ink-secondary">{log.error_message || '-'}</td>
                   </tr>
                 ))}
               </tbody>

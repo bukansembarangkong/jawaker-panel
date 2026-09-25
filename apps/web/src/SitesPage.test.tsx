@@ -143,7 +143,7 @@ describe('Sites page', () => {
     await userEvent.click(validateBtn);
 
     // Verdict shown
-    expect(await screen.findByText(/Valid — nginx 1.24.0/)).toBeInTheDocument();
+    expect(await screen.findByText(/Valid - nginx 1.24.0/)).toBeInTheDocument();
 
     // GATE 2: Apply becomes enabled after passing validation
     expect(applyBtn).toBeEnabled();
@@ -231,7 +231,7 @@ describe('Sites page', () => {
     await userEvent.click(applyBtn);
 
     // Job progress appears
-    expect(await screen.findByText(/Apply job —/)).toBeInTheDocument();
+    expect(await screen.findByText(/Apply job -/)).toBeInTheDocument();
     expect(await screen.findByText('validate')).toBeInTheDocument();
   });
 

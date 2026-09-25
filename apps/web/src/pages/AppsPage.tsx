@@ -44,7 +44,7 @@ function mapDeployState(state: string): OperationalState {
 }
 
 function formatTs(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -663,7 +663,7 @@ function JobProgress({ job }: { job: JobStatus }) {
             <li key={s.index} className="flex items-center gap-2 text-sm">
               <StatusBadge state={jobStateLabel(s.state)} />
               <span className="font-medium text-ink">{s.name}</span>
-              {s.error_summary && <span className="text-red-600 text-xs">— {s.error_summary}</span>}
+              {s.error_summary && <span className="text-red-600 text-xs">- {s.error_summary}</span>}
             </li>
           ))}
         </ul>
@@ -880,7 +880,7 @@ function WebhooksTab({
       {newToken && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="text-sm font-medium text-amber-900 mb-1">
-            Copy this webhook token now — it will not be shown again.
+            Copy this webhook token now - it will not be shown again.
           </p>
           <code className="block font-mono text-xs break-all text-amber-800 bg-amber-100 rounded p-2 mb-2">
             {newToken}

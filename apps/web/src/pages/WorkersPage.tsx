@@ -55,7 +55,7 @@ export function WorkersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Workers & Jobs</h1>
-          <p className="text-sm text-ink-secondary mt-1">Background job queue — refreshes every 10s.</p>
+          <p className="text-sm text-ink-secondary mt-1">Background job queue - refreshes every 10s.</p>
         </div>
         <button onClick={() => void load()} className={secondaryButtonClass}>Refresh</button>
       </div>
@@ -115,7 +115,7 @@ function JobTable({
               <td className="px-4 py-2">
                 <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${stateColor(j.state)}`}>{j.state}</span>
               </td>
-              <td className="px-4 py-2 text-ink-secondary text-xs">{j.current_step ?? '—'}</td>
+              <td className="px-4 py-2 text-ink-secondary text-xs">{j.current_step ?? '-'}</td>
               <td className="px-4 py-2 text-ink-secondary text-xs">
                 {j.progress_total != null ? `${j.progress_current}/${j.progress_total}` : `${j.progress_current}`}
               </td>

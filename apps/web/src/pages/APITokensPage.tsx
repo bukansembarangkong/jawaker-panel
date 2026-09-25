@@ -71,7 +71,7 @@ export function APITokensPage() {
 
       {created && (
         <div className="rounded-md border border-line bg-elevated p-4">
-          <p className="text-sm font-medium text-ok">Token created. Copy it now — it will not be shown again.</p>
+          <p className="text-sm font-medium text-ok">Token created. Copy it now - it will not be shown again.</p>
           <code className="mt-2 block break-all rounded bg-canvas p-2 font-mono text-xs">{created.plaintext}</code>
           <button type="button" className="mt-2 text-xs text-ink-muted underline" onClick={() => setCreated(null)}>
             Dismiss
@@ -131,7 +131,7 @@ export function APITokensPage() {
                 <td className="py-2 font-medium">{t.name}</td>
                 <td>{t.kind}</td>
                 <td className="font-mono text-xs">{t.token_prefix}…</td>
-                <td>{t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '—'}</td>
+                <td>{t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '-'}</td>
                 <td>{t.revoked_at ? 'revoked' : 'active'}</td>
                 <td className="text-right">
                   {!t.revoked_at && (

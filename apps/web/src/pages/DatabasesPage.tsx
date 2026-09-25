@@ -29,7 +29,7 @@ function mapDbState(db: ManagedDatabase): OperationalState {
 }
 
 function formatTs(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   try {
     return new Date(value).toLocaleString();
   } catch {

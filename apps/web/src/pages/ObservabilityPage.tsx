@@ -30,7 +30,7 @@ function ruleState(r: AlertRule): OperationalState {
 }
 
 function formatTs(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   try { return new Date(value).toLocaleString(); } catch { return value; }
 }
 
@@ -287,7 +287,7 @@ export function ObservabilityPage() {
                     value={newRule.server_id}
                     onChange={(e) => setNewRule({ ...newRule, server_id: e.target.value })}
                   >
-                    <option value="">— select server —</option>
+                    <option value="">- select server -</option>
                     {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </Field>

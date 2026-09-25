@@ -26,7 +26,7 @@ import {
 type Tab = 'hardening' | 'ssh' | 'events' | 'bans' | 'waf';
 
 function formatTs(v: string | null | undefined): string {
-  if (!v) return '—';
+  if (!v) return '-';
   try { return new Date(v).toLocaleString(); } catch { return v; }
 }
 
@@ -49,7 +49,7 @@ function statusIcon(s: string): string {
     case 'pass': return '✓';
     case 'fail': return '✗';
     case 'warn': return '⚠';
-    default:     return '—';
+    default:     return '-';
   }
 }
 
@@ -239,7 +239,7 @@ export function SecurityCenterPage() {
       }`}>
         <div>
           <p className={`text-sm font-semibold ${attackMode?.enabled ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>
-            {attackMode?.enabled ? '🚨 Under Attack Mode — ACTIVE' : 'Under Attack Mode (PRD §21.4)'}
+            {attackMode?.enabled ? '🚨 Under Attack Mode - ACTIVE' : 'Under Attack Mode (PRD §21.4)'}
           </p>
           <p className="text-xs text-ink-secondary mt-0.5">
             {attackMode?.enabled
@@ -293,7 +293,7 @@ export function SecurityCenterPage() {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Scan results ({findings.length} findings)</h3>
               {findings.length === 0 ? (
-                <p className="text-sm text-ink-secondary">No findings — all checks passed.</p>
+                <p className="text-sm text-ink-secondary">No findings - all checks passed.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -312,7 +312,7 @@ export function SecurityCenterPage() {
                         <td className={`py-2 pr-4 ${severityClass(f.severity)}`}>{f.severity}</td>
                         <td className="py-2 pr-4 font-mono text-xs">{f.check_name}</td>
                         <td className="py-2 pr-4">{f.title}</td>
-                        <td className="py-2 text-xs text-ink-secondary">{f.remediation || '—'}</td>
+                        <td className="py-2 text-xs text-ink-secondary">{f.remediation || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -409,8 +409,8 @@ export function SecurityCenterPage() {
                     <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(e.observed_at)}</td>
                     <td className="py-2 pr-4">{e.kind}</td>
                     <td className="py-2 pr-4">{e.source}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{e.remote_ip || '—'}</td>
-                    <td className="py-2 text-xs">{e.service || '—'}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{e.remote_ip || '-'}</td>
+                    <td className="py-2 text-xs">{e.service || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -477,7 +477,7 @@ export function SecurityCenterPage() {
                       <tr key={i} className="border-b border-line">
                         <td className="py-2 pr-4 font-mono text-xs">{b.ip}</td>
                         <td className="py-2 pr-4">{b.source}</td>
-                        <td className="py-2 text-xs">{b.jail || '—'}</td>
+                        <td className="py-2 text-xs">{b.jail || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -504,7 +504,7 @@ export function SecurityCenterPage() {
                   <tr key={b.id} className="border-b border-line">
                     <td className="py-2 pr-4 font-mono text-xs">{b.ip}</td>
                     <td className="py-2 pr-4">{b.source}</td>
-                    <td className="py-2 pr-4 text-xs">{b.reason || '—'}</td>
+                    <td className="py-2 pr-4 text-xs">{b.reason || '-'}</td>
                     <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(b.banned_at)}</td>
                     <td className="py-2">
                       <button type="button" className={secondaryButtonClass}

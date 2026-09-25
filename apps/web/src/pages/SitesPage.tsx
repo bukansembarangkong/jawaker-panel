@@ -86,7 +86,7 @@ function mapSiteState(site: Site): OperationalState {
 }
 
 function formatTs(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
@@ -516,7 +516,7 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
         </div>
         <div>
           <dt className="text-ink-muted">Applied revision</dt>
-          <dd className="font-mono text-xs text-ink">{site.applied_revision_id ? site.applied_revision_id.slice(0, 8) + '…' : '—'}</dd>
+          <dd className="font-mono text-xs text-ink">{site.applied_revision_id ? site.applied_revision_id.slice(0, 8) + '…' : '-'}</dd>
         </div>
         {site.doc_root && (
           <div>
@@ -800,7 +800,7 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
         </button>
 
         {validationStale && (
-          <span className="text-xs text-ink-muted">Edit invalidated the verdict — re-validate to enable Apply.</span>
+          <span className="text-xs text-ink-muted">Edit invalidated the verdict - re-validate to enable Apply.</span>
         )}
       </div>
 
@@ -813,7 +813,7 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
           <div className="flex items-center gap-2">
             <StatusBadge state={validateResult.valid ? 'Healthy' : 'Critical'} />
             <span className="text-sm font-medium text-ink">
-              {validateResult.valid ? 'Valid' : 'Invalid'} — {validateResult.tool} {validateResult.tool_version}
+              {validateResult.valid ? 'Valid' : 'Invalid'} - {validateResult.tool} {validateResult.tool_version}
             </span>
           </div>
           {validateResult.output && (
@@ -851,7 +851,7 @@ function JobProgress({ job }: { job: JobStatus }) {
       <div className="flex items-center gap-2">
         <StatusBadge state={jobStateLabel(job.job.state)} />
         <span className="text-sm font-medium text-ink">
-          Apply job — {job.job.state}
+          Apply job - {job.job.state}
         </span>
         {!isTerminal && (
           <span className="text-xs text-ink-muted animate-pulse">polling…</span>
@@ -939,7 +939,7 @@ function LogsTab({ site, project }: { site: Site; project: Project }) {
       {tail && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-ink-muted">{tail.lines.length} lines — {formatTs(tail.observed_at)}</span>
+            <span className="text-xs text-ink-muted">{tail.lines.length} lines - {formatTs(tail.observed_at)}</span>
             {tail.truncated && <span className="text-xs text-amber-600">Truncated</span>}
           </div>
           <pre className="overflow-auto rounded-md border border-line bg-elevated p-3 text-xs font-mono text-ink max-h-96 whitespace-pre">

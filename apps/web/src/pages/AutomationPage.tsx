@@ -387,7 +387,7 @@ export function AutomationPage() {
                               {d.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2 font-mono text-ink-secondary">{d.status_code ?? '—'}</td>
+                          <td className="px-3 py-2 font-mono text-ink-secondary">{d.status_code ?? '-'}</td>
                           <td className="px-3 py-2 text-ink-secondary">{d.attempt_count}/{d.max_attempts}</td>
                           <td className="px-3 py-2 text-ink-secondary">{new Date(d.created_at).toLocaleString()}</td>
                         </tr>

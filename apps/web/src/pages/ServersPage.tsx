@@ -87,7 +87,7 @@ function tokenState(token: EnrollmentToken): OperationalState {
 }
 
 function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }

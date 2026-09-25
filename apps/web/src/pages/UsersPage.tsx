@@ -93,7 +93,7 @@ export function UsersPage() {
         <div className="rounded-md border border-purple-400 bg-purple-50 dark:bg-purple-950/40 px-4 py-3 flex items-center gap-3">
           <span className="rounded bg-purple-600 px-1.5 py-0.5 text-xs font-bold text-white uppercase">Impersonation</span>
           <p className="text-sm text-purple-800 dark:text-purple-200 flex-1">
-            Session created for <strong>{impersonationBanner.email}</strong> — read-only, expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
+            Session created for <strong>{impersonationBanner.email}</strong> - read-only, expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
             Session ID: <code className="text-xs">{impersonationBanner.sessionId.slice(0, 8)}…</code>
           </p>
           <button
