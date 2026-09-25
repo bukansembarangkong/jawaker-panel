@@ -41,6 +41,7 @@ export function AuthGate({
     setBusy(true);
     try {
       if (mode === 'bootstrap') {
+        await primeCsrf();
         await api.bootstrap({ email, display_name: displayName, password });
         // Bootstrap deliberately does not create a session: there is exactly
         // one way to obtain one. Move to the login form with the email kept.
