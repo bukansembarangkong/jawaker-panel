@@ -6,6 +6,7 @@ import {
   type AlertRule,
   type ReportSchedule,
   type Server,
+  type SLOSummary,
 } from '../api/client';
 import {
   EmptyState,
@@ -68,20 +69,24 @@ export function ObservabilityPage() {
   // Incident filter
   const [incidentStateFilter, setIncidentStateFilter] = useState<'' | 'open' | 'resolved'>('open');
 
+  const [slo, setSlo] = useState<SLOSummary | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [srvRes, rulesRes, incsRes, schedsRes] = await Promise.all([
+      const [srvRes, rulesRes, incsRes, schedsRes, sloRes] = await Promise.all([
         api.listServers(),
         observeApi.listRules(),
         observeApi.listIncidents(undefined, incidentStateFilter || undefined),
         observeApi.listSchedules(),
+        observeApi.getSLOSummary().catch(() => null),
       ]);
       setServers(srvRes.servers ?? []);
       setRules(rulesRes.rules ?? []);
       setIncidents(incsRes.incidents ?? []);
       setSchedules(schedsRes.schedules ?? []);
+      setSlo(sloRes?.slo ?? null);
     } catch (e) {
       setError(toError(e));
     } finally {
@@ -164,6 +169,35 @@ export function ObservabilityPage() {
         <div className="rounded-md bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-800">
           {msg}
           <button className="ml-2 text-green-600 underline" onClick={() => setMsg(null)}>dismiss</button>
+        </div>
+      )}
+
+      {/* SLO Summary (PRD §40) */}
+      {slo && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Service Level Objectives</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {([
+              { label: 'Controller availability', value: slo.controller_availability_pct, unit: '%', warn: 99 },
+              { label: 'Node connectivity', value: slo.node_connectivity_pct, unit: '%', warn: 90 },
+              { label: 'Backup success rate', value: slo.backup_success_rate_pct, unit: '%', warn: 95 },
+              { label: 'Deploy success rate', value: slo.deployment_success_rate_pct, unit: '%', warn: 90 },
+              { label: 'Job latency avg', value: slo.job_latency_avg_ms, unit: ' ms', warn: Infinity },
+              { label: 'Error budget remaining', value: slo.error_budget_remaining_pct, unit: '%', warn: 50 },
+              { label: 'Active incidents', value: slo.active_incidents, unit: '', warn: 0 },
+            ] as { label: string; value: number; unit: string; warn: number }[]).map(({ label, value, unit, warn }) => {
+              const bad = unit === '' ? value > warn : value < warn;
+              return (
+                <div key={label} className="flex flex-col">
+                  <span className="text-xs text-gray-500">{label}</span>
+                  <span className={`text-lg font-semibold ${bad ? 'text-red-600' : 'text-green-700'}`}>
+                    {typeof value === 'number' && unit !== ' ms' ? value.toFixed(1) : Math.round(value)}{unit}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-2">Evaluated: {formatTs(slo.evaluated_at)}</p>
         </div>
       )}
 

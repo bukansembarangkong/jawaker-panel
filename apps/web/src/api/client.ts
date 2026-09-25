@@ -1288,6 +1288,17 @@ export interface SchedulePage {
   request_id: string;
 }
 
+export interface SLOSummary {
+  controller_availability_pct: number;
+  node_connectivity_pct: number;
+  backup_success_rate_pct: number;
+  deployment_success_rate_pct: number;
+  job_latency_avg_ms: number;
+  error_budget_remaining_pct: number;
+  active_incidents: number;
+  evaluated_at: string;
+}
+
 export interface CreateScheduleInput {
   name: string;
   cadence: 'daily' | 'weekly' | 'monthly';
@@ -1336,6 +1347,9 @@ export const observeApi = {
   },
   deleteSchedule(id: string): Promise<{ status: string; request_id: string }> {
     return request<{ status: string; request_id: string }>(`/api/v1/report-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  getSLOSummary(): Promise<{ slo: SLOSummary; request_id: string }> {
+    return request<{ slo: SLOSummary; request_id: string }>('/api/v1/slo/summary');
   },
 };
 
