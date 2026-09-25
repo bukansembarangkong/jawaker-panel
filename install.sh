@@ -95,23 +95,71 @@ if [ -n "$DOMAIN" ]; then
     info "Will configure HTTPS for: ${DOMAIN}"
 fi
 
-# Port prompt — only relevant when no domain (direct port access).
-# With a domain, Nginx handles standard ports 80/443.
-if ! $USE_SSL && [ -z "$PANEL_PORT" ] && [ -t 0 ]; then
-    echo ""
-    read -rp "Panel port [default: ${CONTROLLER_PORT}]: " _port_input
-    _port_input="${_port_input// /}"
-    if [ -n "$_port_input" ]; then
-        # Validate: must be a number 1-65535
-        if ! echo "$_port_input" | grep -qE '^[0-9]+$' || [ "$_port_input" -lt 1 ] || [ "$_port_input" -gt 65535 ]; then
-            die "Invalid port: $_port_input (must be 1-65535)"
+# Port selection — only relevant when no domain (direct port access).
+# With a domain, Nginx handles standard 80/443.
+if ! $USE_SSL && [ -z "$PANEL_PORT" ]; then
+    # Candidate ports in preference order. Port 80 is most universally open on
+    # cloud providers. We skip any port already bound by another process.
+    _CANDIDATES="80 8080 8443 3000 5000"
+    _CHOSEN=""
+    for _p in $_CANDIDATES; do
+        if ! ss -tlnp 2>/dev/null | grep -q ":${_p} "; then
+            _CHOSEN="$_p"
+            break
         fi
-        PANEL_PORT="$_port_input"
+    done
+    _CHOSEN="${_CHOSEN:-8443}"  # fallback if all candidates busy
+
+    if [ -t 0 ]; then
+        echo ""
+        info "Auto-detected available port: ${_CHOSEN}"
+        read -rp "Panel port [default: ${_CHOSEN}]: " _port_input
+        _port_input="${_port_input// /}"
+        if [ -n "$_port_input" ]; then
+            if ! echo "$_port_input" | grep -qE '^[0-9]+$' || [ "$_port_input" -lt 1 ] || [ "$_port_input" -gt 65535 ]; then
+                die "Invalid port: $_port_input (must be 1-65535)"
+            fi
+            PANEL_PORT="$_port_input"
+        else
+            PANEL_PORT="$_CHOSEN"
+        fi
+    else
+        # Non-interactive: use auto-detected port
+        PANEL_PORT="$_CHOSEN"
     fi
 fi
 
 # Resolve final panel port
 PANEL_PORT="${PANEL_PORT:-${CONTROLLER_PORT}}"
+
+# Auto-open port in local firewall if active (won't help cloud Security Groups,
+# but handles ufw/firewalld on bare-metal and some providers).
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    if $USE_SSL; then
+        info "Opening ports 80/tcp and 443/tcp in ufw..."
+        ufw allow 80/tcp >/dev/null
+        ufw allow 443/tcp >/dev/null
+        ok "ufw: ports 80, 443 allowed"
+    else
+        info "Opening port ${PANEL_PORT}/tcp in ufw..."
+        ufw allow "${PANEL_PORT}/tcp" >/dev/null
+        ok "ufw: port ${PANEL_PORT} allowed"
+    fi
+elif command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+    if $USE_SSL; then
+        info "Opening ports 80/tcp and 443/tcp in firewalld..."
+        firewall-cmd --permanent --add-port=80/tcp >/dev/null
+        firewall-cmd --permanent --add-port=443/tcp >/dev/null
+        firewall-cmd --reload >/dev/null
+        ok "firewalld: ports 80, 443 allowed"
+    else
+        info "Opening port ${PANEL_PORT}/tcp in firewalld..."
+        firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp" >/dev/null
+        firewall-cmd --reload >/dev/null
+        ok "firewalld: port ${PANEL_PORT} allowed"
+    fi
+fi
+
 
 ###############################################################################
 # System dependencies  [1/7]
@@ -473,4 +521,12 @@ bold "║                                                      ║"
 bold "╚══════════════════════════════════════════════════════╝"
 echo ""
 warn "Save your admin password now — it will not be shown again!"
+if ! $USE_SSL; then
+    echo ""
+    warn "If the panel is not reachable, open port ${PANEL_PORT} in your cloud provider"
+    warn "firewall/Security Group (Linode, DigitalOcean, AWS, GCP, etc.):"
+    warn "  Linode:         Linodes → Firewall → Add Inbound Rule → TCP ${PANEL_PORT}"
+    warn "  DigitalOcean:   Networking → Firewalls → Inbound → TCP ${PANEL_PORT}"
+    warn "  AWS EC2:        Security Groups → Inbound Rules → TCP ${PANEL_PORT}"
+fi
 echo ""
