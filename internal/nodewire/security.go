@@ -159,3 +159,41 @@ type SecBanRemoveResult struct {
 	IP      string `json:"ip"`
 	Source  string `json:"source"`
 }
+
+// ── sec.waf.apply ─────────────────────────────────────────────────────────────
+
+// WAFRule describes a single WAF entry to apply on the node.
+type WAFRule struct {
+	Kind     string `json:"kind"`     // ip | cidr | path | ua | header
+	Pattern  string `json:"pattern"`  // the match value
+	Action   string `json:"action"`   // deny | allow | rate_limit
+	Priority int    `json:"priority"` // lower number = checked first
+}
+
+// SecWAFApplyInput is the input for sec.waf.apply.
+// The controller sends the FULL rule list; the agent replaces waf.conf atomically.
+type SecWAFApplyInput struct {
+	Rules []WAFRule `json:"rules"`
+}
+
+func (in SecWAFApplyInput) Validate() error {
+	for i, r := range in.Rules {
+		if strings.TrimSpace(r.Pattern) == "" {
+			return fmt.Errorf("nodewire: rule %d: pattern is required", i)
+		}
+		switch r.Action {
+		case "deny", "allow", "rate_limit", "":
+			// valid; empty defaults to deny at apply time
+		default:
+			return fmt.Errorf("nodewire: rule %d: action must be deny, allow, or rate_limit", i)
+		}
+	}
+	return nil
+}
+
+// SecWAFApplyResult is the result of sec.waf.apply.
+type SecWAFApplyResult struct {
+	Applied    bool   `json:"applied"`
+	RulesCount int    `json:"rules_count"`
+	Message    string `json:"message,omitempty"`
+}

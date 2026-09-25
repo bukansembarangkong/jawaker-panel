@@ -209,6 +209,9 @@ const (
 	// OpSecBanRemove lifts an active ban from the node (PRD §21).
 	OpSecBanRemove Operation = "sec.ban.remove"
 
+	// OpSecWAFApply writes the WAF deny/allow nginx snippet and reloads nginx (PRD §20).
+	OpSecWAFApply Operation = "sec.waf.apply"
+
 	// OpUpdateNodeAgent downloads a signed node-agent binary from the given URL,
 	// verifies its SHA-256 checksum, and atomically replaces the running agent.
 	// The agent restarts itself after the swap; it does NOT restart the host.

@@ -721,6 +721,27 @@ var Operations = map[Operation]Descriptor{
 		Mutating:    true,
 	},
 
+	OpSecWAFApply: {
+		Operation:  OpSecWAFApply,
+		Permission: "security.manage",
+		InputSchema: "{rules: [{kind, pattern, action, priority}]} — full replacement of " +
+			"/etc/nginx/jawaker/waf.conf with generated deny/allow blocks",
+		Validation: "each rule's pattern must be non-empty; action must be deny, allow, or rate_limit; " +
+			"a zero-length rules slice clears the WAF config (no active rules)",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemWrite: []string{"/etc/nginx/jawaker"},
+			Services:        []string{"nginx"},
+			Network:         "none",
+		},
+		Timeout:     30 * time.Second,
+		AuditAction: "sec.waf.apply",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 1},
+		Rollback: "the agent writes waf.conf.bak before applying; a failed nginx reload causes " +
+			"the agent to restore the backup and retry nginx reload with the old config",
+		Mutating: true,
+	},
+
 	OpUpdateNodeAgent: {
 		Operation:  OpUpdateNodeAgent,
 		Permission: "updates.manage",

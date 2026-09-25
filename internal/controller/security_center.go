@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -434,6 +435,8 @@ func (h *SecurityCenterHandlers) handleCreateWAFRule(w http.ResponseWriter, r *h
 				return
 			}
 			h.recordSecAudit(r, audit.Event{Action: "security.waf_rule.create", ResourceID: rule.ID})
+			// Push rules to node (best-effort; DB is source of truth).
+			go h.syncWAFRulesToNode(r.Context(), serverID, httpserver.RequestIDFromRequest(r))
 			writeJSONResponse(w, http.StatusCreated, map[string]any{
 				"rule":       rule,
 				"request_id": httpserver.RequestIDFromRequest(r),
@@ -457,11 +460,41 @@ func (h *SecurityCenterHandlers) handleDeleteWAFRule(w http.ResponseWriter, r *h
 				return
 			}
 			h.recordSecAudit(r, audit.Event{Action: "security.waf_rule.delete", ResourceID: id})
+			// Push rules to node (best-effort; DB is source of truth).
+			go h.syncWAFRulesToNode(r.Context(), serverID, httpserver.RequestIDFromRequest(r))
 			writeJSONResponse(w, http.StatusOK, map[string]any{
 				"deleted":    true,
 				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
+}
+
+// syncWAFRulesToNode loads all enabled WAF rules for the server and pushes them
+// to the nodeagent via sec.waf.apply. Best-effort: errors are logged, not fatal.
+func (h *SecurityCenterHandlers) syncWAFRulesToNode(ctx context.Context, serverID, requestID string) {
+	if h.dispatcher == nil {
+		return
+	}
+	rules, err := h.store.ListWAFRules(ctx, serverID)
+	if err != nil {
+		h.logger.Warn("syncWAFRulesToNode: list rules failed", "server_id", serverID, "error", err)
+		return
+	}
+	wire := make([]nodewire.WAFRule, 0, len(rules))
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		wire = append(wire, nodewire.WAFRule{
+			Kind:     r.Kind,
+			Pattern:  r.Pattern,
+			Action:   r.Action,
+			Priority: r.Priority,
+		})
+	}
+	if _, err := h.dispatcher.SecWAFApply(ctx, serverID, requestID, nodewire.SecWAFApplyInput{Rules: wire}); err != nil {
+		h.logger.Warn("syncWAFRulesToNode: push failed", "server_id", serverID, "error", err)
+	}
 }
 
 // ── Under Attack Mode Handlers (PRD §21.4) ───────────────────────────────────
