@@ -121,6 +121,15 @@ step 1 "Installing system packages"
 case "$PKG_MANAGER" in
     apt)
         export DEBIAN_FRONTEND=noninteractive
+        # Release stale locks if a previous install was interrupted
+        if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            warn "Stale package manager lock detected — clearing..."
+            killall -9 apt-get apt dpkg 2>/dev/null || true
+            sleep 1
+            rm -f /var/lib/dpkg/lock* /var/lib/apt/lists/lock* /var/cache/apt/archives/lock* 2>/dev/null || true
+            dpkg --configure -a 2>/dev/null || true
+            ok "Lock cleared"
+        fi
         apt-get update
         EXTRA_PKGS=""
         $USE_SSL && EXTRA_PKGS="nginx certbot python3-certbot-nginx"
