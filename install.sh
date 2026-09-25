@@ -37,7 +37,7 @@ warn() { printf "\033[0;33m[jawaker] ⚠ %s\033[0m\n" "$*"; }
 err()  { printf "\033[0;31m[jawaker] ✗ %s\033[0m\n" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
-gen_secret() { head -c 32 /dev/urandom | base64 | tr -d '\n/+=' | head -c 43; }
+gen_secret() { head -c 32 /dev/urandom | base64 | tr -d '\n'; }
 gen_pass()   { head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 32; }
 server_ip()  { 
     local _ip
@@ -337,7 +337,7 @@ elif ${USE_CLOUDFLARE:-false}; then
 else
     LISTEN_ADDR=":${PANEL_PORT}"
     COOKIE_SECURE="false"
-    COOKIE_ALLOW_INSECURE="true"
+    COOKIE_ALLOW_INSECURE="false"
 fi
 
 cat >"${CONF_DIR}/jawaker.env" <<EOF
