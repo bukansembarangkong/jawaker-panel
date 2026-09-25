@@ -67,6 +67,7 @@ func (h *UserHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/users/{id}/state", h.handleSetState)
 	mux.HandleFunc("POST /api/v1/users/{id}/roles", h.handleBindRole)
 	mux.HandleFunc("DELETE /api/v1/users/{id}/roles/{binding_id}", h.handleUnbindRole)
+	mux.HandleFunc("POST /api/v1/users/{id}/impersonate", h.handleImpersonate)
 }
 
 // handleList lists platform users. Requires owner or server.manage.
@@ -326,4 +327,80 @@ func (h *UserHandlers) recordAudit(r *http.Request, event audit.Event) {
 	event.SourceIP = r.RemoteAddr
 	event.UserAgent = r.UserAgent()
 	_ = audit.Record(r.Context(), h.audit, event)
+}
+
+type impersonateRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleImpersonate creates a short-lived read-only session for an operator to
+// view the panel as the target user (PRD §5.4).
+func (h *UserHandlers) handleImpersonate(w http.ResponseWriter, r *http.Request) {
+	targetID := r.PathValue("id")
+	authsession.RequirePermission(h.now, "impersonation.readonly", rbac.GlobalScope(), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req impersonateRequest
+			if err := decodeJSONStrict(r, &req); err != nil {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(err.Error(), nil))
+				return
+			}
+			if req.Reason == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("reason is required for admin impersonation per PRD §5.4", nil))
+				return
+			}
+
+			targetUser, err := identity.GetUserByID(r.Context(), h.pool, targetID)
+			if err != nil {
+				if errors.Is(err, identity.ErrNotFound) {
+					httpserver.WriteError(w, r, apierr.NotFound("user not found"))
+					return
+				}
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+
+			adminPrincipal, _ := auth.PrincipalFrom(r.Context())
+
+			// PRD §5.4: short-lived (1 hour), marked as impersonated in user agent.
+			policy := identity.DefaultSessionPolicy()
+			policy.AbsoluteTimeout = 1 * time.Hour
+			policy.IdleTimeout = 30 * time.Minute
+
+			meta := identity.SessionMetadata{
+				UserAgent: "impersonated-by:" + adminPrincipal.UserID + "; reason:" + req.Reason,
+			}
+
+			sess, err := identity.CreateSession(r.Context(), h.pool, targetID, meta, policy, h.now())
+			if err != nil {
+				httpserver.WriteError(w, r, apierr.Internal(err))
+				return
+			}
+
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      adminPrincipal.UserID,
+				Action:       "user.impersonate",
+				ResourceType: "user",
+				ResourceID:   targetID,
+				Result:       audit.ResultSuccess,
+				Reason:       req.Reason,
+				Context: map[string]any{
+					"impersonated_email": targetUser.Email,
+					"session_id":         sess.ID,
+					"duration":           "1h",
+				},
+			})
+
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"impersonated": true,
+				"user": map[string]any{
+					"id":           targetUser.ID,
+					"email":        targetUser.Email,
+					"display_name": targetUser.DisplayName,
+				},
+				"session_id": sess.ID,
+				"expires_at": sess.AbsoluteExpires,
+				"request_id": httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
 }
