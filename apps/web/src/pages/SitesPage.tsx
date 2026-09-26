@@ -507,7 +507,6 @@ interface SiteDetailProps {
 function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: SiteDetailProps) {
   const [tab, setTab] = useState<SiteTab>(site.mode === 'nodejs' ? 'nodejs' : 'config');
   const [deleting, setDeleting] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleteError, setDeleteError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -520,7 +519,7 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
         onDeleted();
       } catch (err) {
         if (isStepUpRequired(err)) {
-          setDeleting(false); // close delete modal first
+          setDeleting(false);
           onElevationRequired(() => { void run(); });
         } else {
           setDeleteError(err instanceof Error ? err : new Error(String(err)));
@@ -624,7 +623,7 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
           <button
             type="button"
             className="rounded-md border border-red-300 bg-white px-3.5 py-2 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-50 hover:border-red-400 dark:border-red-800 dark:bg-surface dark:text-red-400 dark:hover:bg-red-950/30"
-            onClick={() => { setDeleting(true); setDeleteConfirm(''); setDeleteError(null); }}
+            onClick={() => { setDeleting(true); setDeleteError(null); }}
           >
             Delete Website…
           </button>
@@ -638,21 +637,12 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
         title="Delete Website"
       >
         <div className="space-y-4">
-          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
-            <strong>Warning:</strong> This action cannot be undone. Nginx routing will be removed and site traffic will cease immediately.
-          </div>
           <p className="text-sm text-ink">
-            Please type <code className="font-mono font-semibold text-red-600">{site.slug}</code> to confirm deletion:
+            Are you sure you want to delete <strong className="font-semibold text-red-600">{site.name || site.slug}</strong>?
           </p>
-          <Field label="Website Slug Confirmation">
-            <input
-              className={inputClass}
-              value={deleteConfirm}
-              onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder={site.slug}
-              autoFocus
-            />
-          </Field>
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
+            This will permanently remove the Nginx configuration, routing, and project association.
+          </div>
           {deleteError && <ErrorNote error={deleteError} title="Delete failed" />}
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -666,7 +656,7 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
             <button
               type="button"
               className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-              disabled={deleteConfirm !== site.slug || busy}
+              disabled={busy}
               onClick={() => void doDelete()}
             >
               {busy ? 'Deleting…' : 'Delete Website'}
