@@ -436,7 +436,7 @@ export default function App() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <GoeyToaster position="bottom-right" />
+      <GoeyToaster position="top-right" />
     </div>
   );
 }
