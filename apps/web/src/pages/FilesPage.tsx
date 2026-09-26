@@ -6,24 +6,7 @@ type Tab = 'files' | 'editor' | 'terminal';
 export function FilesPage() {
   const [tab, setTab] = useState<Tab>('files');
   const [terminalMode, setTerminalMode] = useState<'disabled' | 'project' | 'restricted' | 'root'>('disabled');
-  const [code, setCode] = useState(`# Nginx / Runtime configuration candidate
-server {
-    listen 80;
-    server_name example.com;
-    root /var/www/example.com/current;
-    index index.html index.php;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
-`);
+  const [code, setCode] = useState('');
   const [editorStatus, setEditorStatus] = useState<string | null>(null);
 
   const tabCls = (t: Tab) =>

@@ -65,9 +65,7 @@ export function DatabasesPage() {
   // Sub-resource states for selected DB
   const [tab, setTab] = useState<'overview' | 'users' | 'ops' | 'metrics' | 'query'>('overview');
   const [queryInput, setQueryInput] = useState('SELECT version();');
-  const [queryResult, setQueryResult] = useState<string | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
-  const [queryRunning, setQueryRunning] = useState(false);
   const [users, setUsers] = useState<DatabaseUser[]>([]);
   const [metrics, setMetrics] = useState<DatabaseMetrics | null>(null);
   const [connectionString, setConnectionString] = useState<string | null>(null);
@@ -901,27 +899,13 @@ export function DatabasesPage() {
                   </span>
                   <button
                     type="button"
-                    disabled={queryRunning || !queryInput.trim()}
+                    disabled={!queryInput.trim()}
                     onClick={() => {
-                      setQueryRunning(true);
-                      setQueryError(null);
-                      setQueryResult(null);
-                      setTimeout(() => {
-                        setQueryRunning(false);
-                        if (queryInput.toLowerCase().includes('version')) {
-                          setQueryResult(`PostgreSQL 16.3 (Debian 16.3-1.pgdg120+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14) 12.2.0, 64-bit\n(1 row)`);
-                        } else if (queryInput.toLowerCase().includes('information_schema.tables')) {
-                          setQueryResult(`table_name\n----------------------\nusers\nsessions\nsites\nsite_domains\nmanaged_databases\ndatabase_users\njobs\naudit_events\n(8 rows)`);
-                        } else if (queryInput.toLowerCase().includes('pg_stat_activity')) {
-                          setQueryResult(`pid   | usename | client_addr | state  | query\n------+---------+-------------+--------+--------------------------\n18241 | jawaker | 127.0.0.1   | active | SELECT * FROM sites;\n(1 row)`);
-                        } else {
-                          setQueryResult(`Query executed successfully (0 rows affected, 1.4ms).`);
-                        }
-                      }, 350);
+                      setQueryError('Raw SQL execution via the panel is not supported. Use a dedicated database client (psql / mysql CLI) to run arbitrary queries.');
                     }}
                     className={primaryButtonClass}
                   >
-                    {queryRunning ? 'Running…' : '▶ Run Query'}
+                    &#x25B6; Run Query
                   </button>
                 </div>
               </div>
@@ -930,25 +914,6 @@ export function DatabasesPage() {
               {queryError && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
                   {queryError}
-                </div>
-              )}
-
-              {/* Query Result Output */}
-              {queryResult && (
-                <div className="rounded-md border border-line bg-elevated p-3">
-                  <div className="mb-2 flex items-center justify-between border-b border-line pb-1">
-                    <span className="text-[11px] font-semibold text-ink-secondary">Output</span>
-                    <button
-                      type="button"
-                      onClick={() => setQueryResult(null)}
-                      className="text-[11px] text-ink-muted hover:text-ink"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <pre className="max-h-64 overflow-x-auto overflow-y-auto font-mono text-xs text-ink leading-relaxed">
-                    {queryResult}
-                  </pre>
                 </div>
               )}
             </div>
