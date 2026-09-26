@@ -1350,26 +1350,38 @@ function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
               ))}
             </div>
           )}
-          <div className="flex items-end gap-2">
+          <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <Field label="Key">
-                <input
-                  value={newEnvKey}
-                  onChange={(e) => setNewEnvKey(e.target.value)}
-                  placeholder="NODE_ENV"
-                  className={inputClass}
-                />
-              </Field>
+              <label className="block text-xs font-medium text-ink-secondary mb-1">Key</label>
+              <input
+                value={newEnvKey}
+                onChange={(e) => setNewEnvKey(e.target.value)}
+                placeholder="NODE_ENV"
+                className={inputClass}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!newEnvKey.trim()) return;
+                    setEnvVars(prev => ({ ...prev, [newEnvKey.trim()]: newEnvVal }));
+                    setNewEnvKey(''); setNewEnvVal('');
+                  }
+                }}
+              />
             </div>
             <div className="flex-1">
-              <Field label="Value">
-                <input
-                  value={newEnvVal}
-                  onChange={(e) => setNewEnvVal(e.target.value)}
-                  placeholder="production"
-                  className={inputClass}
-                />
-              </Field>
+              <label className="block text-xs font-medium text-ink-secondary mb-1">Value</label>
+              <input
+                value={newEnvVal}
+                onChange={(e) => setNewEnvVal(e.target.value)}
+                placeholder="production"
+                className={inputClass}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!newEnvKey.trim()) return;
+                    setEnvVars(prev => ({ ...prev, [newEnvKey.trim()]: newEnvVal }));
+                    setNewEnvKey(''); setNewEnvVal('');
+                  }
+                }}
+              />
             </div>
             <button
               type="button"
