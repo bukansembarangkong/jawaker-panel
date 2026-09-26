@@ -70,7 +70,7 @@ export function APITokensPage() {
         try {
           await tokenApi.revoke(id);
           goeyToast.success('Token revoked');
-          void load();
+          setTokens(prev => prev.filter(tok => tok.id !== id));
         } catch (err) {
           const e = err instanceof Error ? err : new Error(String(err));
           goeyToast.error(`Failed: ${e.message}`);
@@ -250,27 +250,19 @@ export function APITokensPage() {
                       {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : <span className="text-slate-400">Never</span>}
                     </td>
                     <td className="px-4 py-3">
-                      {t.revoked_at ? (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-50 text-red-700">
-                          Revoked
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          Active
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Active
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {!t.revoked_at && (
-                        <button
-                          type="button"
-                          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
-                          onClick={() => void handleRevoke(t.id, t.name)}
-                        >
-                          Revoke
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
+                        onClick={() => void handleRevoke(t.id, t.name)}
+                      >
+                        Revoke
+                      </button>
                     </td>
                   </tr>
                 ))}

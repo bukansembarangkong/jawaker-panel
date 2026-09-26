@@ -103,12 +103,12 @@ func (s *Store) Create(ctx context.Context, userID, name, kind string, scopes, c
 	}, nil
 }
 
-// ListByUser lists active and revoked tokens for a user.
+// ListByUser lists active (non-revoked) tokens for a user.
 func (s *Store) ListByUser(ctx context.Context, userID string) ([]Token, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT id, user_id, name, kind, token_prefix, scopes, allowed_cidrs, expires_at, revoked_at, last_used_at, created_at
 		FROM api_tokens
-		WHERE user_id = $1
+		WHERE user_id = $1 AND revoked_at IS NULL
 		ORDER BY created_at DESC
 	`, userID)
 	if err != nil {
