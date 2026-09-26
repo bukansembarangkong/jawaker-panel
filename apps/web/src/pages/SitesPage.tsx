@@ -212,19 +212,6 @@ export function SitesPage() {
     void loadServers();
   };
 
-  if (pendingElevation) {
-    return (
-      <StepUpPrompt
-        onElevated={() => {
-          const action = pendingElevation;
-          setPendingElevation(null);
-          if (action) action();
-        }}
-        onCancel={() => setPendingElevation(null)}
-      />
-    );
-  }
-
   if (loadError) {
     return <ErrorNote error={loadError} title="Could not load" onRetry={() => void loadProjects()} />;
   }
@@ -232,22 +219,52 @@ export function SitesPage() {
   // ── Site detail active ───────────────────────────────────────────────────────
   if (selectedSite && selectedProject) {
     return (
-      <SiteDetail
-        site={selectedSite}
-        project={selectedProject}
-        onBack={() => setSelectedSite(null)}
-        onDeleted={() => {
-          setSelectedSite(null);
-          if (selectedProject) void loadSites(selectedProject.id);
-        }}
-        onElevationRequired={(resume) => setPendingElevation(resume)}
-      />
+      <>
+        <Modal
+          isOpen={!!pendingElevation}
+          onClose={() => setPendingElevation(null)}
+          title="Re-authentication Required"
+        >
+          <StepUpPrompt
+            onElevated={() => {
+              const action = pendingElevation;
+              setPendingElevation(null);
+              if (action) action();
+            }}
+            onCancel={() => setPendingElevation(null)}
+          />
+        </Modal>
+        <SiteDetail
+          site={selectedSite}
+          project={selectedProject}
+          onBack={() => setSelectedSite(null)}
+          onDeleted={() => {
+            setSelectedSite(null);
+            if (selectedProject) void loadSites(selectedProject.id);
+          }}
+          onElevationRequired={(resume) => setPendingElevation(() => resume)}
+        />
+      </>
     );
   }
 
   // ── Direct sites list & creation ─────────────────────────────────────────────
   return (
     <div className="space-y-6">
+      <Modal
+        isOpen={!!pendingElevation}
+        onClose={() => setPendingElevation(null)}
+        title="Re-authentication Required"
+      >
+        <StepUpPrompt
+          onElevated={() => {
+            const action = pendingElevation;
+            setPendingElevation(null);
+            if (action) action();
+          }}
+          onCancel={() => setPendingElevation(null)}
+        />
+      </Modal>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">Websites</h2>
