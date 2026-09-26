@@ -1108,7 +1108,7 @@ function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // Editable fields (controlled)
-  const [nodeVersion, setNodeVersion] = useState('system');
+  const [nodeVersion, setNodeVersion] = useState('22');
   const [appRoot, setAppRoot] = useState('');
   const [startupFile, setStartupFile] = useState('server.js');
   const [port, setPort] = useState(3000);
@@ -1290,10 +1290,11 @@ function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
               onChange={(e) => setNodeVersion(e.target.value)}
               className={inputClass}
             >
-              <option value="system">System default</option>
-              <option value="18">Node.js 18 LTS</option>
-              <option value="20">Node.js 20 LTS</option>
-              <option value="22">Node.js 22 LTS</option>
+              <option value="22">Node.js 22 LTS (v22.23.3 - Recommended)</option>
+              <option value="23">Node.js 23 Latest (v23.11.1 - Current)</option>
+              <option value="20">Node.js 20 LTS (v20.20.2 - Active)</option>
+              <option value="18">Node.js 18 LTS (v18.20.8 - Maintenance)</option>
+              <option value="system">System Default (/usr/bin/node)</option>
             </select>
           </Field>
           <Field label="Application port">
