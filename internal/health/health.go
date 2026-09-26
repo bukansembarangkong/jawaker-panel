@@ -30,37 +30,37 @@ var ErrNotFound = errors.New("health: not found")
 
 // HealthLog is one health check event.
 type HealthLog struct {
-	ID         string
-	CheckName  string
-	Status     string
-	Message    string
-	Details    map[string]any
-	DurationMS int
-	CheckedAt  time.Time
+	ID         string         `json:"id"`
+	CheckName  string         `json:"check_name"`
+	Status     string         `json:"status"`
+	Message    string         `json:"message"`
+	Details    map[string]any `json:"details"`
+	DurationMS int            `json:"duration_ms"`
+	CheckedAt  time.Time      `json:"checked_at"`
 }
 
 // UpgradeRecord is one migration run.
 type UpgradeRecord struct {
-	ID            string
-	MigrationName string
-	FromVersion   string
-	ToVersion     string
-	AppliedBy     string
-	Status        string
-	DurationMS    int
-	AppliedAt     time.Time
+	ID            string    `json:"id"`
+	MigrationName string    `json:"migration_name"`
+	FromVersion   string    `json:"from_version"`
+	ToVersion     string    `json:"to_version"`
+	AppliedBy     string    `json:"applied_by"`
+	Status        string    `json:"status"`
+	DurationMS    int       `json:"duration_ms"`
+	AppliedAt     time.Time `json:"applied_at"`
 }
 
 // RunbookEvent records the outcome of a runbook drill or incident.
 type RunbookEvent struct {
-	ID          string
-	RunbookName string
-	EventType   string // drill | incident | recovery | test
-	Outcome     string // pass | fail | partial
-	PerformedBy string
-	Notes       string
-	DurationMin int
-	OccurredAt  time.Time
+	ID          string    `json:"id"`
+	RunbookName string    `json:"runbook_name"`
+	EventType   string    `json:"event_type"`
+	Outcome     string    `json:"outcome"`
+	PerformedBy string    `json:"performed_by"`
+	Notes       string    `json:"notes"`
+	DurationMin int       `json:"duration_min"`
+	OccurredAt  time.Time `json:"occurred_at"`
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
