@@ -670,7 +670,7 @@ export function DatabasesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-sm font-semibold text-amber-500 flex items-center gap-1.5">
-                      <span>🛡️</span> Database Rescue Mode & Diagnostics (PRD §12.5)
+                      <span>🛡️</span> Database Rescue Mode & Diagnostics
                     </h4>
                     <p className="text-xs text-ink-muted mt-1">
                       In-place recovery for corrupted configuration or failed upgrades. Guarantees raw data directory preservation.

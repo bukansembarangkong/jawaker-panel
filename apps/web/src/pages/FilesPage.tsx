@@ -38,7 +38,7 @@ server {
       <div>
         <h1 className="text-2xl font-semibold text-ink">Files & Terminal</h1>
         <p className="text-sm text-ink-secondary mt-1">
-          File workspace, configuration editor, and terminal security controls (PRD §17).
+          File workspace, configuration editor, and terminal security controls.
         </p>
       </div>
 
@@ -63,7 +63,7 @@ server {
           </div>
           <div className="rounded-lg border border-border bg-surface p-4 text-xs font-mono text-ink-secondary">
             <p className="font-semibold text-ink mb-2">Project root: /srv/jawaker/projects/</p>
-            <p className="text-ink-muted">Ownership: isolated per-project POSIX user (PRD §17.3). Path traversal protection active.</p>
+            <p className="text-ink-muted">Ownership: isolated per-project POSIX user. Path traversal protection active.</p>
           </div>
           <EmptyState title="Local Project Explorer">
             File browsing is scoped to project roots. Select a project in the Sites or Apps tab to browse site assets directly.
@@ -100,16 +100,16 @@ server {
             spellCheck={false}
           />
           <p className="text-xs text-ink-muted">
-            Candidate configs are diffed, validated on-node via nginx -t, and applied atomically with rollback on failure (PRD §17.2, §38).
+            Candidate configs are diffed, validated on-node via nginx, and applied atomically with rollback on failure.
           </p>
         </section>
       )}
 
       {tab === 'terminal' && (
         <section className="space-y-4 max-w-xl">
-          <h2 className="text-base font-medium text-ink">Terminal Security Policy (PRD §17.4)</h2>
+          <h2 className="text-base font-medium text-ink">Terminal Security Policy</h2>
           <p className="text-sm text-ink-secondary">
-            Per PRD security requirements, interactive terminal access requires WebSocket and is strictly bounded by role.
+            Interactive terminal access requires WebSocket and is strictly bounded by role.
           </p>
           <div className="space-y-3">
             {[

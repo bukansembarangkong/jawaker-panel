@@ -159,7 +159,7 @@ function ReleasesTab() {
                         onClick={() => void runFleetRollout(rel.id)}
                         disabled={fleetRolling === rel.id}
                         className="rounded-md border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
-                        title="Fleet Rollout (PRD §25.5): rolling update across all enrolled nodes"
+                        title="Fleet Rollout: rolling update across all enrolled nodes"
                       >
                         {fleetRolling === rel.id ? 'Rolling…' : 'Fleet Rollout'}
                       </button>

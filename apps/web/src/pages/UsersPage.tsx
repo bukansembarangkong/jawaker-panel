@@ -63,7 +63,7 @@ export function UsersPage() {
   const [impersonationBanner, setImpersonationBanner] = useState<{ email: string; sessionId: string; expiresAt: string } | null>(null);
 
   async function handleImpersonate(user: PlatformUser) {
-    const reason = window.prompt(`Impersonation reason / ticket ID required (PRD §5.4):`);
+    const reason = window.prompt(`Impersonation reason / ticket ID required:`);
     if (!reason?.trim()) return;
     try {
       const res = await userApi.impersonate(user.id, reason.trim());
@@ -207,7 +207,7 @@ export function UsersPage() {
                           <button
                             onClick={() => void handleImpersonate(u)}
                             className="rounded-md border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100"
-                            title="Impersonate read-only session (PRD §5.4)"
+                            title="Impersonate as read-only session"
                           >
                             Impersonate
                           </button>

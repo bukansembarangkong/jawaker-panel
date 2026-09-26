@@ -74,7 +74,7 @@ export function AuditLogPage() {
     <div className="space-y-6 px-6 py-8">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Audit Trail & Revisions (PRD §36)</h1>
+          <h1 className="text-2xl font-semibold text-ink">Audit Trail & Revisions</h1>
           <p className="text-sm text-ink-secondary">
             Immutable, append-only security audit log recording every privileged operation across the panel.
           </p>

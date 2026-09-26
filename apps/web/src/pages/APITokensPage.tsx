@@ -78,7 +78,7 @@ export function APITokensPage() {
       <header>
         <h2 className="text-xl font-semibold">API Tokens</h2>
         <p className="mt-1 text-sm text-ink-secondary">
-          Personal and service tokens for programmatic access (PRD §26.2). The plaintext is shown once.
+          Personal and service tokens for programmatic API access. The plaintext value is shown once at creation.
         </p>
       </header>
 

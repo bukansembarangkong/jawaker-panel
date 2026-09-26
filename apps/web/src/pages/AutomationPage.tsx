@@ -165,7 +165,7 @@ export function AutomationPage() {
       <div>
         <h1 className="text-2xl font-semibold text-ink">Automation & Webhooks</h1>
         <p className="text-sm text-ink-secondary mt-1">
-          Automated event-condition-action policies and signed outbound webhook delivery (PRD §26.4, §26.5).
+          Automated event-condition-action policies and signed outbound webhook delivery.
         </p>
       </div>
 

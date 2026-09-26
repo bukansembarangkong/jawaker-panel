@@ -74,7 +74,7 @@ export function SettingsPage() {
             </div>
           </div>
           <div className="space-y-3">
-            <h2 className="text-base font-medium text-ink">{t('settings.language_label', 'Interface Language (PRD §43)')}</h2>
+            <h2 className="text-base font-medium text-ink">{t('settings.language_label', 'Interface Language')}</h2>
             <p className="text-xs text-ink-secondary">{t('settings.language_help', 'Switch between English and Bahasa Indonesia. Changes apply immediately.')}</p>
             <div className="flex gap-2">
               {[
@@ -98,7 +98,7 @@ export function SettingsPage() {
           </div>
           {profile && (
             <div className="space-y-3 pt-2">
-              <h2 className="text-base font-medium text-ink">Adaptive Resource Profile (PRD §31)</h2>
+              <h2 className="text-base font-medium text-ink">Adaptive Resource Profile</h2>
               <div className="rounded-lg border border-border bg-surface p-4 text-xs space-y-2">
                 <div className="flex justify-between items-center pb-2 border-b border-border">
                   <span className="text-ink-secondary">Capacity Profile:</span>

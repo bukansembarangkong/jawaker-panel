@@ -214,8 +214,8 @@ export function DashboardPage({
         </h2>
         <div className="mt-3">
           <EmptyState title="Infrastructure and workload signals are not built yet">
-            Servers, websites, backups, deployments, and certificates arrive with their phases. This
-            page reports the priority order from DESIGN_SYSTEM.md only for the signals the controller
+            Servers, websites, backups, deployments, and certificates arrive with their modules. This
+            page reports status only for the signals the controller
             can answer today; the rest are listed here rather than shown as empty tiles, which would
             read as &ldquo;all clear&rdquo; when nothing has been checked.
           </EmptyState>

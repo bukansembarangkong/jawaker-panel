@@ -1057,7 +1057,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
       />
       <div className="rounded-lg border border-line bg-surface p-4 space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-ink">PR & Branch Preview Environments (PRD §11.6)</h3>
+          <h3 className="text-sm font-semibold text-ink">PR & Branch Preview Environments</h3>
           <p className="text-xs text-ink-muted mt-1">
             Deploy ephemeral branch-isolated testing environments with dedicated routing and automatic teardown.
           </p>

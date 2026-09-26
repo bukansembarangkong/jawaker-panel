@@ -56,7 +56,7 @@ export function DRWizardPage() {
       <div>
         <h1 className="text-2xl font-semibold text-ink">Disaster Recovery Wizard</h1>
         <p className="text-sm text-ink-secondary mt-1">
-          Reconstruct a full server from backup archives (PRD §18.5).
+          Reconstruct a full server from backup archives.
         </p>
       </div>
 

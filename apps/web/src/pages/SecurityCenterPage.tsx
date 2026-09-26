@@ -239,7 +239,7 @@ export function SecurityCenterPage() {
       }`}>
         <div>
           <p className={`text-sm font-semibold ${attackMode?.enabled ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>
-            {attackMode?.enabled ? '🚨 Under Attack Mode - ACTIVE' : 'Under Attack Mode (PRD §21.4)'}
+            {attackMode?.enabled ? '🚨 Under Attack Mode - ACTIVE' : 'Under Attack Mode'}
           </p>
           <p className="text-xs text-ink-secondary mt-0.5">
             {attackMode?.enabled
