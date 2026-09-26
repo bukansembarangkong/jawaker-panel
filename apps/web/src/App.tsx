@@ -374,6 +374,7 @@ export default function App() {
 
         {/* Scrollable content */}
         <main className="flex-1 overflow-y-auto p-6">
+          <div className="mx-auto max-w-5xl w-full">
           {route === 'security' ? (
             <SecurityPage />
           ) : route === 'servers' ? (
@@ -429,6 +430,7 @@ export default function App() {
           ) : (
             <DashboardPage session={session} version={version} />
           )}
+          </div>
         </main>
       </div>
 
