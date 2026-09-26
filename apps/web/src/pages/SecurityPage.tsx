@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { goeyToast } from 'goey-toast';
+import { QRCodeSVG } from 'qrcode.react';
 
 import { ApiError, api, primeCsrf, type MFAStatus } from '../api/client';
 import {
@@ -198,21 +199,37 @@ export function SecurityPage() {
           <p className="mt-1 text-sm text-ink-secondary">
             Add this account to your authenticator app, then enter the code it shows.
           </p>
-          <dl className="mt-4 space-y-2 text-sm">
-            <dt className="text-ink-muted">Scan</dt>
-            <dd>
-              <a
-                href={pending.otpauth_uri}
-                className="font-mono text-xs break-all text-info underline"
-              >
-                {pending.otpauth_uri}
-              </a>
-            </dd>
-            <dt className="text-ink-muted">Or enter the key</dt>
-            <dd className="font-mono text-xs break-all text-ink">{pending.secret}</dd>
-            <dt className="text-ink-muted">Code refreshes every</dt>
-            <dd className="font-mono text-xs text-ink">{pending.period_seconds}s</dd>
-          </dl>
+          <div className="mt-4 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <div className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+              <QRCodeSVG
+                value={pending.otpauth_uri}
+                size={168}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+            <div className="min-w-0 flex-1 space-y-2 text-sm">
+              <p className="text-xs font-medium text-ink-muted uppercase tracking-wider">Manual Entry</p>
+              <div className="flex items-center gap-2">
+                <code className="block flex-1 rounded bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-ink select-all break-all border border-slate-200">
+                  {pending.secret}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pending.secret);
+                    goeyToast.success('Secret key copied to clipboard!');
+                  }}
+                  className="shrink-0 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-xs text-ink-muted">
+                Scan the QR code with Google Authenticator, Authy, or any TOTP app. Code refreshes every {pending.period_seconds}s.
+              </p>
+            </div>
+          </div>
           <form
             className="mt-4 space-y-4"
             onSubmit={(e) => {
