@@ -100,6 +100,11 @@ export function SitesPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const selectSite = (s: Site | null) => {
+    setSelectedSite(s);
+    if (s) sessionStorage.setItem('sites_selected_id', s.id);
+    else sessionStorage.removeItem('sites_selected_id');
+  };
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -142,6 +147,12 @@ export function SitesPage() {
     try {
       const page = await api.listSites(projectId);
       setSites(page.sites);
+      // Restore previously selected site after refresh
+      const savedId = sessionStorage.getItem('sites_selected_id');
+      if (savedId && page.sites) {
+        const match = page.sites.find((s) => s.id === savedId);
+        if (match) setSelectedSite(match);
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err : new Error(String(err)));
     }
@@ -167,9 +178,7 @@ export function SitesPage() {
   useEffect(() => {
     if (selectedProject) void loadSites(selectedProject.id);
     else setSites(null);
-    setSelectedSite(null);
   }, [selectedProject, loadSites]);
-
 
   const createSite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,7 +206,7 @@ export function SitesPage() {
         setSiteUpstream('');
         setSitePHPUnit('');
         await loadSites(selectedProject.id);
-        setSelectedSite(res.site);
+        selectSite(res.site);
       } catch (err) {
         if (isStepUpRequired(err)) {
           setPendingElevation(() => () => { void doCreate(); });
@@ -237,9 +246,9 @@ export function SitesPage() {
         <SiteDetail
           site={selectedSite}
           project={selectedProject}
-          onBack={() => setSelectedSite(null)}
+          onBack={() => selectSite(null)}
           onDeleted={() => {
-            setSelectedSite(null);
+            selectSite(null);
             if (selectedProject) void loadSites(selectedProject.id);
           }}
           onElevationRequired={(resume) => setPendingElevation(() => resume)}
@@ -335,7 +344,7 @@ export function SitesPage() {
               <button
                 type="button"
                 className={secondaryButtonClass}
-                onClick={() => setSelectedSite(site)}
+                onClick={() => selectSite(site)}
               >
                 Manage
               </button>
