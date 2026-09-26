@@ -144,6 +144,8 @@ func (h *Handlers) Routes(mux *http.ServeMux) {
 		RequireCSRF(h.csrf, RequireAuth(http.HandlerFunc(h.handleLogout))))
 	mux.Handle("GET /api/v1/auth/session",
 		RequireAuth(http.HandlerFunc(h.handleSession)))
+	mux.Handle("POST /api/v1/auth/password",
+		RequireCSRF(h.csrf, RequireAuth(http.HandlerFunc(h.handleChangePassword))))
 
 	h.registerMFARoutes(mux)
 	h.registerElevateRoutes(mux)
@@ -759,6 +761,71 @@ const (
 	MinimumPasswordLength = 12
 	MaxPasswordLength     = 1024
 )
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// handleChangePassword verifies current password and rotates to new password.
+func (h *Handlers) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	principal, ok := auth.PrincipalFrom(r.Context())
+	if !ok || principal.UserID == "" {
+		httpserver.WriteError(w, r, apierr.Unauthorized(""))
+		return
+	}
+
+	var req changePasswordRequest
+	if apiErr := decodeJSON(r, &req); apiErr != nil {
+		httpserver.WriteError(w, r, apiErr)
+		return
+	}
+
+	if req.CurrentPassword == "" {
+		httpserver.WriteError(w, r, apierr.InvalidRequest("Current password is required", map[string]any{"field": "current_password"}))
+		return
+	}
+	if req.NewPassword == "" {
+		httpserver.WriteError(w, r, apierr.InvalidRequest("New password is required", map[string]any{"field": "new_password"}))
+		return
+	}
+	if req.CurrentPassword == req.NewPassword {
+		httpserver.WriteError(w, r, apierr.InvalidRequest("New password must be different from current password", map[string]any{"field": "new_password"}))
+		return
+	}
+
+	if err := ValidatePassword(req.NewPassword); err != nil {
+		httpserver.WriteError(w, r, apierr.InvalidRequest(err.Error(), map[string]any{"field": "new_password"}))
+		return
+	}
+
+	if apiErr := h.reauthenticate(w, r, principal, req.CurrentPassword, "auth.change_password"); apiErr != nil {
+		httpserver.WriteError(w, r, apiErr)
+		return
+	}
+
+	if err := identity.RotatePassword(r.Context(), h.opts.DB, principal.UserID, req.NewPassword, h.params); err != nil {
+		httpserver.WriteError(w, r, apierr.Internal(err))
+		return
+	}
+
+	recordAudit(r.Context(), h.opts.Logger, h.opts.DB, httpserver.RequestIDFromRequest(r), audit.Event{
+		ActorType:    audit.ActorUser,
+		ActorID:      principal.UserID,
+		Action:       "auth.password_change",
+		ResourceType: "user",
+		ResourceID:   principal.UserID,
+		Result:       audit.ResultSuccess,
+		SourceIP:     clientIP(r),
+		UserAgent:    r.UserAgent(),
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     "ok",
+		"message":    "Password changed successfully",
+		"request_id": httpserver.RequestIDFromRequest(r),
+	})
+}
 
 // ValidatePassword enforces the password policy.
 func ValidatePassword(pw string) error {

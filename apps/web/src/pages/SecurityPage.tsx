@@ -316,7 +316,114 @@ export function SecurityPage() {
           </section>
         </>
       )}
+
+      {/* Account Password Management */}
+      <ChangePasswordSection />
     </div>
+  );
+}
+
+function ChangePasswordSection() {
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (newPw.length < 12) {
+      setError('New password must be at least 12 characters.');
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setError('New password and confirmation do not match.');
+      return;
+    }
+    if (newPw === currentPw) {
+      setError('New password must be different from current password.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await primeCsrf();
+      const res = await api.changePassword(currentPw, newPw);
+      setSuccess(res.message || 'Password changed successfully!');
+      setCurrentPw('');
+      setNewPw('');
+      setConfirmPw('');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to change password. Check your current password.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-border bg-surface p-5 mt-6">
+      <h2 className="text-base font-semibold text-ink">Change Account Password</h2>
+      <p className="mt-1 text-sm text-ink-muted">
+        Update the password for your current administrator session. Minimum 12 characters.
+      </p>
+
+      {error && (
+        <div className="mt-4 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mt-4 rounded-md border border-success/40 bg-success/10 p-3 text-sm text-success">
+          {success}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="mt-4 max-w-md space-y-4">
+        <Field label="Current Password" hint="The password you used to log in.">
+          <input
+            type="password"
+            value={currentPw}
+            onChange={(e) => setCurrentPw(e.target.value)}
+            className={inputClass}
+            autoComplete="current-password"
+            required
+          />
+        </Field>
+        <Field label="New Password" hint="At least 12 characters long.">
+          <input
+            type="password"
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            className={inputClass}
+            autoComplete="new-password"
+            required
+            minLength={12}
+          />
+        </Field>
+        <Field label="Confirm New Password" hint="Type the new password again.">
+          <input
+            type="password"
+            value={confirmPw}
+            onChange={(e) => setConfirmPw(e.target.value)}
+            className={inputClass}
+            autoComplete="new-password"
+            required
+            minLength={12}
+          />
+        </Field>
+        <button
+          type="submit"
+          disabled={busy || !currentPw || !newPw || !confirmPw}
+          className={primaryButtonClass}
+        >
+          {busy ? 'Updating…' : 'Update Password'}
+        </button>
+      </form>
+    </section>
   );
 }
 

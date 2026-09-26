@@ -350,6 +350,12 @@ export const api = {
       body: totpCode ? { password, totp_code: totpCode } : { password },
     }),
 
+  changePassword: (currentPassword: string, newPassword: string): Promise<{ status: string; message: string; request_id: string }> =>
+    request('/api/v1/auth/password', {
+      method: 'POST',
+      body: { current_password: currentPassword, new_password: newPassword },
+    }),
+
   listServers: (): Promise<ServerPage> => request<ServerPage>('/api/v1/servers'),
 
   getServer: (id: string): Promise<{ server: Server }> =>
