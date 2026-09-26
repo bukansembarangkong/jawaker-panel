@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GoeyToaster } from 'goey-toast';
+import 'goey-toast/dist/index.css';
 
 import { ErrorNote } from './components/ui';
 import { AppsPage } from './pages/AppsPage';
