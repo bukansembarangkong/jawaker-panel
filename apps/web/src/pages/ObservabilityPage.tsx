@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   observeApi,
@@ -49,7 +50,6 @@ export function ObservabilityPage() {
   const [schedules, setSchedules] = useState<ReportSchedule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   // Create rule form
@@ -102,7 +102,7 @@ export function ObservabilityPage() {
     try {
       await observeApi.createRule(newRule);
       setShowRuleForm(false);
-      setMsg('Alert rule created.');
+      goeyToast.success('Alert rule created.');
       void load();
     } catch (e) { setError(toError(e)); }
   }
@@ -121,7 +121,7 @@ export function ObservabilityPage() {
       onConfirm: async () => {
         try {
           await observeApi.deleteRule(rule.id);
-          setMsg('Rule deleted.');
+          goeyToast.success('Rule deleted.');
           void load();
         } catch (e) { setError(toError(e)); }
       },
@@ -131,7 +131,7 @@ export function ObservabilityPage() {
   async function handleResolveIncident(inc: AlertIncident) {
     try {
       await observeApi.resolveIncident(inc.id);
-      setMsg('Incident resolved.');
+      goeyToast.success('Incident resolved.');
       void load();
     } catch (e) { setError(toError(e)); }
   }
@@ -140,7 +140,7 @@ export function ObservabilityPage() {
     try {
       await observeApi.createSchedule(newSched);
       setShowSchedForm(false);
-      setMsg('Schedule created.');
+      goeyToast.success('Schedule created.');
       void load();
     } catch (e) { setError(toError(e)); }
   }
@@ -152,7 +152,7 @@ export function ObservabilityPage() {
       onConfirm: async () => {
         try {
           await observeApi.deleteSchedule(s.id);
-          setMsg('Schedule deleted.');
+          goeyToast.success('Schedule deleted.');
           void load();
         } catch (e) { setError(toError(e)); }
       },
@@ -186,12 +186,6 @@ export function ObservabilityPage() {
       </div>
 
       {error && <ErrorNote error={error} />}
-      {msg && (
-        <div className="rounded-md bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-800">
-          {msg}
-          <button className="ml-2 text-green-600 underline" onClick={() => setMsg(null)}>dismiss</button>
-        </div>
-      )}
 
       {/* SLO Summary (PRD §40) */}
       {slo && (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import { ApiError, api, primeCsrf, type MFAStatus } from '../api/client';
 import {
@@ -332,24 +333,20 @@ function ChangePasswordSection() {
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
 
     if (newPw.length < 12) {
-      setError('New password must be at least 12 characters.');
+      goeyToast.error('New password must be at least 12 characters.');
       return;
     }
     if (newPw !== confirmPw) {
-      setError('New password and confirmation do not match.');
+      goeyToast.error('New password and confirmation do not match.');
       return;
     }
     if (newPw === currentPw) {
-      setError('New password must be different from current password.');
+      goeyToast.error('New password must be different from current password.');
       return;
     }
 
@@ -357,12 +354,12 @@ function ChangePasswordSection() {
     try {
       await primeCsrf();
       const res = await api.changePassword(currentPw, newPw);
-      setSuccess(res.message || 'Password changed successfully!');
+      goeyToast.success(res.message || 'Password changed successfully!');
       setCurrentPw('');
       setNewPw('');
       setConfirmPw('');
     } catch (err: any) {
-      setError(err?.message || 'Failed to change password. Check your current password.');
+      goeyToast.error(err?.message || 'Failed to change password. Check your current password.');
     } finally {
       setBusy(false);
     }
@@ -374,17 +371,6 @@ function ChangePasswordSection() {
       <p className="mt-1 text-sm text-ink-muted">
         Update the password for your current administrator session. Minimum 12 characters.
       </p>
-
-      {error && (
-        <div className="mt-4 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mt-4 rounded-md border border-success/40 bg-success/10 p-3 text-sm text-success">
-          {success}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <Field label="Current Password" hint="The password you used to log in.">

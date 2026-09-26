@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
 import { type CanaryEntry, type ModuleUpdate, type UpdateJob, type UpdateRelease, updatesApi } from '../api/client';
 
@@ -42,7 +43,6 @@ function ReleasesTab() {
   const [channel, setChannel] = useState('');
   const [applying, setApplying] = useState<string | null>(null);
   const [fleetRolling, setFleetRolling] = useState<string | null>(null);
-  const [fleetMsg, setFleetMsg] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -78,10 +78,9 @@ function ReleasesTab() {
 
   const runFleetRollout = async (id: string) => {
     setFleetRolling(id);
-    setFleetMsg(null);
     try {
       const res = await updatesApi.fleetRollout(id);
-      setFleetMsg(`Fleet rollout started: job ${res.job_id.slice(0, 8)}… across ${res.total_nodes} nodes (batch ${res.batch_size}).`);
+      goeyToast.success(`Fleet rollout started: job ${res.job_id.slice(0, 8)}… across ${res.total_nodes} nodes (batch ${res.batch_size}).`);
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
@@ -94,12 +93,6 @@ function ReleasesTab() {
 
   return (
     <div className="space-y-4">
-      {fleetMsg && (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs text-emerald-600">
-          ✓ {fleetMsg}
-          <button onClick={() => setFleetMsg(null)} className="ml-2 text-emerald-500 hover:underline">dismiss</button>
-        </div>
-      )}
       <div className="flex items-center gap-3">
         <select
           value={channel}
