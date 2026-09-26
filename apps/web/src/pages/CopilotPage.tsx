@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
 import { type CopilotApproval, type CopilotPlan, type CopilotSession, copilotApi } from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
@@ -165,6 +165,7 @@ function PlansTab() {
   const [plans, setPlans] = useState<CopilotPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const load = () => {
     if (!projectId) return;
@@ -190,13 +191,18 @@ function PlansTab() {
 
   const cancel = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Cancel this plan?')) return;
-    try {
-      await copilotApi.cancelPlan(projectId, id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Cancel this plan?',
+      onConfirm: async () => {
+        try {
+          await copilotApi.cancelPlan(projectId, id);
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (loading) return <p className="text-ink-secondary text-sm">Loading plans…</p>;
@@ -204,6 +210,15 @@ function PlansTab() {
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <h2 className="text-sm font-medium text-ink">Change Plans ({plans.length})</h2>
 
       {plans.length === 0 ? (

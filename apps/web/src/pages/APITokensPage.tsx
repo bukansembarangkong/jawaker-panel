@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { tokenApi, ApiError } from '../api/client';
 import type { APIToken, CreatedAPIToken } from '../api/client';
-import { ErrorNote, EmptyState, secondaryButtonClass } from '../components/ui';
+import { ErrorNote, EmptyState, secondaryButtonClass, ConfirmModal } from '../components/ui';
 
 export function APITokensPage() {
   const [tokens, setTokens] = useState<APIToken[]>([]);
@@ -13,6 +13,7 @@ export function APITokensPage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'personal' | 'service'>('personal');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   async function load() {
     setLoading(true);
@@ -49,17 +50,31 @@ export function APITokensPage() {
   }
 
   async function handleRevoke(id: string) {
-    if (!confirm('Revoke this token? This cannot be undone.')) return;
-    try {
-      await tokenApi.revoke(id);
-      void load();
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Revoke this token? This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await tokenApi.revoke(id);
+          void load();
+        } catch (err) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
+      },
+    });
   }
 
   return (
     <div className="space-y-8">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <header>
         <h2 className="text-xl font-semibold">API Tokens</h2>
         <p className="mt-1 text-sm text-ink-secondary">

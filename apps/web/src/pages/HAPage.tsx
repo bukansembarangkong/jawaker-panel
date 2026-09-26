@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
 import { type HADrill, type HAEvent, type HAMember, type HAPool, haApi } from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
@@ -44,6 +44,7 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
   const [members, setMembers] = useState<HAMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const load = () => {
     if (!projectId) return;
@@ -59,24 +60,34 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
 
   const drain = async (serverId: string) => {
     if (!projectId) return;
-    if (!window.confirm('Start drain for this server?')) return;
-    try {
-      await haApi.startDrain(projectId, pool.id, serverId, 'manual drain');
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Start drain for this server?',
+      onConfirm: async () => {
+        try {
+          await haApi.startDrain(projectId, pool.id, serverId, 'manual drain');
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   const remove = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Remove this server from the pool?')) return;
-    try {
-      await haApi.removeMember(projectId, pool.id, id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Remove this server from the pool?',
+      onConfirm: async () => {
+        try {
+          await haApi.removeMember(projectId, pool.id, id);
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (loading) return <p className="text-ink-secondary text-xs">Loading members…</p>;
@@ -84,6 +95,15 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
 
   return (
     <div className="mt-3 space-y-1">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       {members.length === 0 ? (
         <p className="text-xs text-ink-muted">No members in this pool.</p>
       ) : (
@@ -131,6 +151,7 @@ function PoolsTab() {
   const [newName, setNewName] = useState('');
   const [newMode, setNewMode] = useState('active-passive');
   const [saving, setSaving] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const load = () => {
     if (!projectId) return;
@@ -162,13 +183,18 @@ function PoolsTab() {
 
   const deletePool = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Delete this pool? All members and events will be removed.')) return;
-    try {
-      await haApi.deletePool(projectId, id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Delete this pool? All members and events will be removed.',
+      onConfirm: async () => {
+        try {
+          await haApi.deletePool(projectId, id);
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (loading) return <p className="text-ink-secondary text-sm">Loading server pools…</p>;
@@ -176,6 +202,15 @@ function PoolsTab() {
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-ink">Server Pools ({pools.length})</h2>
         <button

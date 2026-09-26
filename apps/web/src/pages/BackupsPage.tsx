@@ -15,6 +15,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  ConfirmModal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -69,6 +70,7 @@ export function BackupsPage() {
   const [jobMsg, setJobMsg] = useState<string | null>(null);
   const [createdLink, setCreatedLink] = useState<BackupLinkCreated | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const [newPlan, setNewPlan] = useState({
     server_id: '',
@@ -178,22 +180,25 @@ export function BackupsPage() {
 
   const handleDeletePlan = async (plan: BackupPlan) => {
     if (!selectedProject) return;
-    if (!window.confirm(`Delete backup plan "${plan.name}"? It enters a soft-delete grace period.`)) {
-      return;
-    }
-    const run = async () => {
-      try {
-        await api.deleteBackupPlan(selectedProject.id, plan.id);
-        await loadPlans(selectedProject.id);
-      } catch (err: unknown) {
-        if (isStepUpRequired(err)) {
-          onElevationRequired(run);
-          return;
-        }
-        setError(toError(err));
-      }
-    };
-    await run();
+    setConfirmState({
+      open: true,
+      message: `Delete backup plan "${plan.name}"? It enters a soft-delete grace period.`,
+      onConfirm: async () => {
+        const run = async () => {
+          try {
+            await api.deleteBackupPlan(selectedProject.id, plan.id);
+            await loadPlans(selectedProject.id);
+          } catch (err: unknown) {
+            if (isStepUpRequired(err)) {
+              onElevationRequired(run);
+              return;
+            }
+            setError(toError(err));
+          }
+        };
+        await run();
+      },
+    });
   };
 
   const handleTriggerRun = async (plan: BackupPlan) => {
@@ -222,41 +227,49 @@ export function BackupsPage() {
 
   const handleRestore = async (run: BackupRun) => {
     if (!selectedProject) return;
-    if (!window.confirm('Restore this backup? Existing files at the destination will be overwritten.')) {
-      return;
-    }
-    const go = async () => {
-      try {
-        const res = await api.restoreBackupRun(selectedProject.id, run.id);
-        setJobMsg(`Restore queued (job ${res.job_id}).`);
-      } catch (err: unknown) {
-        if (isStepUpRequired(err)) {
-          onElevationRequired(go);
-          return;
-        }
-        setError(toError(err));
-      }
-    };
-    await go();
+    setConfirmState({
+      open: true,
+      message: 'Restore this backup? Existing files at the destination will be overwritten.',
+      onConfirm: async () => {
+        const go = async () => {
+          try {
+            const res = await api.restoreBackupRun(selectedProject.id, run.id);
+            setJobMsg(`Restore queued (job ${res.job_id}).`);
+          } catch (err: unknown) {
+            if (isStepUpRequired(err)) {
+              onElevationRequired(go);
+              return;
+            }
+            setError(toError(err));
+          }
+        };
+        await go();
+      },
+    });
   };
 
   const handleDeleteRun = async (run: BackupRun) => {
     if (!selectedProject) return;
-    if (!window.confirm('Delete this backup artifact? This cannot be undone.')) return;
-    const go = async () => {
-      try {
-        const res = await api.deleteBackupRun(selectedProject.id, run.id);
-        setJobMsg(`Delete queued (job ${res.job_id}).`);
-        await loadRuns(selectedProject.id);
-      } catch (err: unknown) {
-        if (isStepUpRequired(err)) {
-          onElevationRequired(go);
-          return;
-        }
-        setError(toError(err));
-      }
-    };
-    await go();
+    setConfirmState({
+      open: true,
+      message: 'Delete this backup artifact? This cannot be undone.',
+      onConfirm: async () => {
+        const go = async () => {
+          try {
+            const res = await api.deleteBackupRun(selectedProject.id, run.id);
+            setJobMsg(`Delete queued (job ${res.job_id}).`);
+            await loadRuns(selectedProject.id);
+          } catch (err: unknown) {
+            if (isStepUpRequired(err)) {
+              onElevationRequired(go);
+              return;
+            }
+            setError(toError(err));
+          }
+        };
+        await go();
+      },
+    });
   };
 
   const handleCreateLink = async (run: BackupRun) => {
@@ -272,6 +285,15 @@ export function BackupsPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       {stepUpPending && stepUpAction && (
         <StepUpPrompt
           onElevated={() => {

@@ -19,6 +19,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  ConfirmModal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -339,28 +340,43 @@ interface AppDetailProps {
 function AppDetail({ app, project, onBack, onDeleted, onElevationRequired }: AppDetailProps) {
   const [tab, setTab] = useState<AppTab>('deploy');
   const [deleting, setDeleting] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const tabClass = (t: AppTab) =>
     `px-4 py-1.5 text-sm rounded-md ${tab === t ? 'bg-elevated font-medium text-ink' : 'text-ink-secondary hover:text-ink'}`;
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete application "${app.name}"?`)) return;
-    setDeleting(true);
-    try {
-      await primeCsrf();
-      await api.deleteApp(project.id, app.id);
-      onDeleted();
-    } catch (e: unknown) {
-      if (isStepUpRequired(e)) {
-        onElevationRequired(() => handleDelete());
-      }
-    } finally {
-      setDeleting(false);
-    }
+    setConfirmState({
+      open: true,
+      message: `Delete application "${app.name}"?`,
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await primeCsrf();
+          await api.deleteApp(project.id, app.id);
+          onDeleted();
+        } catch (e: unknown) {
+          if (isStepUpRequired(e)) {
+            onElevationRequired(() => handleDelete());
+          }
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
   };
 
   return (
     <section className="px-6 py-8">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center justify-between mb-4">
         <button className="text-sm text-ink-secondary hover:text-ink" onClick={onBack}>
           ← Back to Apps
@@ -961,6 +977,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
   const [prNumber, setPrNumber] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadPreviews = useCallback(async () => {
     setLoading(true);
@@ -1005,25 +1022,39 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
   };
 
   const handleTeardown = async (previewId: string) => {
-    if (!window.confirm('Tear down this ephemeral preview environment?')) return;
-    const run = async () => {
-      try {
-        await primeCsrf();
-        await api.deletePreview(project.id, app.id, previewId);
-        await loadPreviews();
-      } catch (err: unknown) {
-        if (isStepUpRequired(err)) {
-          onElevationRequired(run);
-          return;
-        }
-        setError(toError(err));
-      }
-    };
-    await run();
+    setConfirmState({
+      open: true,
+      message: 'Tear down this ephemeral preview environment?',
+      onConfirm: async () => {
+        const run = async () => {
+          try {
+            await primeCsrf();
+            await api.deletePreview(project.id, app.id, previewId);
+            await loadPreviews();
+          } catch (err: unknown) {
+            if (isStepUpRequired(err)) {
+              onElevationRequired(run);
+              return;
+            }
+            setError(toError(err));
+          }
+        };
+        await run();
+      },
+    });
   };
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="rounded-lg border border-line bg-surface p-4 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-ink">PR & Branch Preview Environments (PRD §11.6)</h3>

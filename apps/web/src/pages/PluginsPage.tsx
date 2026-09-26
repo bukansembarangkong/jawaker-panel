@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
 import { type Plugin, pluginsApi } from '../api/client';
 
 type Tab = 'installed' | 'quarantined';
@@ -32,6 +32,7 @@ function InstalledTab() {
   const [ps, setPs] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const load = () => {
     setLoading(true);
@@ -63,13 +64,18 @@ function InstalledTab() {
   };
 
   const uninstall = async (id: string) => {
-    if (!window.confirm('Uninstall this plugin?')) return;
-    try {
-      await pluginsApi.uninstallPlugin(id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Uninstall this plugin?',
+      onConfirm: async () => {
+        try {
+          await pluginsApi.uninstallPlugin(id);
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   const quarantine = async (id: string) => {
@@ -88,6 +94,15 @@ function InstalledTab() {
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <h2 className="text-sm font-medium text-ink">Installed Plugins ({ps.length})</h2>
 
       {ps.length === 0 ? (

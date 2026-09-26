@@ -15,6 +15,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  ConfirmModal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -98,6 +99,7 @@ export function DatabasesPage() {
   } | null>(null);
   const [rescueMsg, setRescueMsg] = useState<string | null>(null);
   const [rescueLoading, setRescueLoading] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadProjects = useCallback(async () => {
     try {
@@ -206,23 +208,26 @@ export function DatabasesPage() {
 
   const handleDeleteDb = async (db: ManagedDatabase) => {
     if (!selectedProject) return;
-    if (!window.confirm(`Delete database "${db.name}"? It will enter a soft-delete grace period before permanent removal.`)) {
-      return;
-    }
-    const run = async () => {
-      try {
-        await api.deleteDatabase(selectedProject.id, db.id);
-        setSelectedDb(null);
-        await loadDatabases(selectedProject.id);
-      } catch (err: unknown) {
-        if (isStepUpRequired(err)) {
-          onElevationRequired(run);
-          return;
-        }
-        setError(toError(err));
-      }
-    };
-    await run();
+    setConfirmState({
+      open: true,
+      message: `Delete database "${db.name}"? It will enter a soft-delete grace period before permanent removal.`,
+      onConfirm: async () => {
+        const run = async () => {
+          try {
+            await api.deleteDatabase(selectedProject.id, db.id);
+            setSelectedDb(null);
+            await loadDatabases(selectedProject.id);
+          } catch (err: unknown) {
+            if (isStepUpRequired(err)) {
+              onElevationRequired(run);
+              return;
+            }
+            setError(toError(err));
+          }
+        };
+        await run();
+      },
+    });
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -240,13 +245,18 @@ export function DatabasesPage() {
 
   const handleRevokeUser = async (username: string) => {
     if (!selectedProject || !selectedDb) return;
-    if (!window.confirm(`Revoke user "${username}"?`)) return;
-    try {
-      await api.revokeDatabaseUser(selectedProject.id, selectedDb.id, username);
-      await loadUsers(selectedProject.id, selectedDb.id);
-    } catch (err: unknown) {
-      setError(toError(err));
-    }
+    setConfirmState({
+      open: true,
+      message: `Revoke user "${username}"?`,
+      onConfirm: async () => {
+        try {
+          await api.revokeDatabaseUser(selectedProject.id, selectedDb.id, username);
+          await loadUsers(selectedProject.id, selectedDb.id);
+        } catch (err: unknown) {
+          setError(toError(err));
+        }
+      },
+    });
   };
 
   const handleRotatePassword = async (username: string) => {
@@ -331,6 +341,15 @@ export function DatabasesPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       {stepUpPending && stepUpAction && (
         <StepUpPrompt
           onElevated={() => {

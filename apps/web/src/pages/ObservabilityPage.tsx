@@ -13,6 +13,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  ConfirmModal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -49,6 +50,7 @@ export function ObservabilityPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   // Create rule form
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -113,12 +115,17 @@ export function ObservabilityPage() {
   }
 
   async function handleDeleteRule(rule: AlertRule) {
-    if (!confirm(`Delete rule "${rule.name}"?`)) return;
-    try {
-      await observeApi.deleteRule(rule.id);
-      setMsg('Rule deleted.');
-      void load();
-    } catch (e) { setError(toError(e)); }
+    setConfirmState({
+      open: true,
+      message: `Delete rule "${rule.name}"?`,
+      onConfirm: async () => {
+        try {
+          await observeApi.deleteRule(rule.id);
+          setMsg('Rule deleted.');
+          void load();
+        } catch (e) { setError(toError(e)); }
+      },
+    });
   }
 
   async function handleResolveIncident(inc: AlertIncident) {
@@ -139,12 +146,17 @@ export function ObservabilityPage() {
   }
 
   async function handleDeleteSchedule(s: ReportSchedule) {
-    if (!confirm(`Delete schedule "${s.name}"?`)) return;
-    try {
-      await observeApi.deleteSchedule(s.id);
-      setMsg('Schedule deleted.');
-      void load();
-    } catch (e) { setError(toError(e)); }
+    setConfirmState({
+      open: true,
+      message: `Delete schedule "${s.name}"?`,
+      onConfirm: async () => {
+        try {
+          await observeApi.deleteSchedule(s.id);
+          setMsg('Schedule deleted.');
+          void load();
+        } catch (e) { setError(toError(e)); }
+      },
+    });
   }
 
   const severityColor = (s: string) =>
@@ -159,6 +171,15 @@ export function ObservabilityPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Observability</h1>
         {loading && <span className="text-sm text-gray-500">Loading…</span>}

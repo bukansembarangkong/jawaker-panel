@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
 import { type MailAlias, type MailDomain, type MailMailbox, type MailQueueEntry, mailApi } from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
@@ -30,6 +30,7 @@ function DomainsTab() {
   const [newDomain, setNewDomain] = useState('');
   const [newServer, setNewServer] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const load = () => {
     if (!projectId) return;
@@ -61,13 +62,18 @@ function DomainsTab() {
 
   const deleteDomain = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Delete this mail domain? All mailboxes and aliases will be removed.')) return;
-    try {
-      await mailApi.deleteDomain(projectId, id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Delete this mail domain? All mailboxes and aliases will be removed.',
+      onConfirm: async () => {
+        try {
+          await mailApi.deleteDomain(projectId, id);
+          load();
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (!projectId || loading) return <p className="text-ink-secondary text-sm">Loading domains...</p>;
@@ -75,6 +81,15 @@ function DomainsTab() {
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-ink">Mail Domains ({domains.length})</h2>
         <button
@@ -170,6 +185,7 @@ function MailboxesTab() {
   const [mailboxes, setMailboxes] = useState<MailMailbox[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   useEffect(() => {
     if (!projectId) return;
@@ -195,19 +211,33 @@ function MailboxesTab() {
 
   const deleteMailbox = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Delete this mailbox?')) return;
-    try {
-      await mailApi.deleteMailbox(projectId, selectedDomain, id);
-      setMailboxes((prev) => prev.filter((m) => m.id !== id));
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Delete this mailbox?',
+      onConfirm: async () => {
+        try {
+          await mailApi.deleteMailbox(projectId, selectedDomain, id);
+          setMailboxes((prev) => prev.filter((m) => m.id !== id));
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (error) return <ErrorNote error={error} title="Failed to load mailboxes" onRetry={() => setError(null)} />;
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center gap-3">
         <label className="text-sm text-ink-secondary">Domain</label>
         <select
@@ -262,6 +292,7 @@ function AliasesTab() {
   const [aliases, setAliases] = useState<MailAlias[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   useEffect(() => {
     if (!projectId) return;
@@ -287,19 +318,33 @@ function AliasesTab() {
 
   const deleteAlias = async (id: string) => {
     if (!projectId) return;
-    if (!window.confirm('Delete this alias?')) return;
-    try {
-      await mailApi.deleteAlias(projectId, selectedDomain, id);
-      setAliases((prev) => prev.filter((a) => a.id !== id));
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    setConfirmState({
+      open: true,
+      message: 'Delete this alias?',
+      onConfirm: async () => {
+        try {
+          await mailApi.deleteAlias(projectId, selectedDomain, id);
+          setAliases((prev) => prev.filter((a) => a.id !== id));
+        } catch (e) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    });
   };
 
   if (error) return <ErrorNote error={error} title="Failed to load aliases" onRetry={() => setError(null)} />;
 
   return (
     <div className="space-y-4">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex items-center gap-3">
         <label className="text-sm text-ink-secondary">Domain</label>
         <select
