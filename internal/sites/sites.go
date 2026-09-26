@@ -446,6 +446,29 @@ func (s *Store) CancelDelete(ctx context.Context, id string) (Site, error) {
 	return s.transition(ctx, id, StateActive, nil, []string{StatePendingDelete})
 }
 
+// ImmediateDelete marks a site deleted immediately, bypassing the grace period.
+func (s *Store) ImmediateDelete(ctx context.Context, id string) (Site, error) {
+	if strings.TrimSpace(id) == "" {
+		return Site{}, fmt.Errorf("%w: id is required", ErrInvalid)
+	}
+	now := s.clock()
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE sites
+		   SET state = 'deleted', deleted_at = $2, delete_after = NULL, updated_at = $2
+		 WHERE id = $1
+		   AND deleted_at IS NULL
+		   AND state IN ('active', 'suspended', 'pending_delete')
+		RETURNING %s`, siteColumns), id, now)
+	site, err := scanSite(row)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Site{}, fmt.Errorf("%w: not deletable", ErrState)
+		}
+		return Site{}, err
+	}
+	return site, nil
+}
+
 // FinalizeDelete tombstones a site whose grace period has elapsed.
 //
 // It refuses unless the deadline has actually passed, measured against the store

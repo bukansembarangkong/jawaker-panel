@@ -261,7 +261,7 @@ func (h *SiteHandlers) handleDeleteSite(w http.ResponseWriter, r *http.Request) 
 				httpserver.WriteError(w, r, siteErr(err))
 				return
 			}
-			site, err := h.sites.RequestDelete(r.Context(), id, sites.DefaultDeleteGrace)
+			site, err := h.sites.ImmediateDelete(r.Context(), id)
 			if err != nil {
 				httpserver.WriteError(w, r, siteErr(err))
 				return
@@ -274,15 +274,14 @@ func (h *SiteHandlers) handleDeleteSite(w http.ResponseWriter, r *http.Request) 
 				ResourceID:   id,
 				Result:       audit.ResultSuccess,
 				Context: map[string]any{
-					"project_id":   projectID,
-					"delete_after": site.DeleteAfter,
+					"project_id": projectID,
+					"site_slug":  site.Slug,
 				},
 			})
 			writeJSONResponse(w, http.StatusOK, map[string]any{
-				"status":       "pending_delete",
-				"site_id":      id,
-				"delete_after": site.DeleteAfter,
-				"request_id":   httpserver.RequestIDFromRequest(r),
+				"status":     "deleted",
+				"site_id":    id,
+				"request_id": httpserver.RequestIDFromRequest(r),
 			})
 		})).ServeHTTP(w, r)
 }
