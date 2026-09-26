@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { goeyToast } from 'goey-toast';
 import { automationApi, ApiError } from '../api/client';
 import type { AutomationRule, OutboundWebhook, WebhookDelivery } from '../api/client';
 import { ErrorNote, EmptyState, Modal, Field, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui';
@@ -83,9 +84,12 @@ export function AutomationPage() {
       });
       setRuleName('');
       setIsRuleOpen(false);
+      goeyToast.success('Automation rule created');
       void loadRules();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Failed to create rule: ${e.message}`);
     } finally {
       setRuleSubmitting(false);
     }
@@ -94,27 +98,35 @@ export function AutomationPage() {
   async function handleToggleRule(rule: AutomationRule) {
     try {
       await automationApi.updateRule(rule.id, { enabled: !rule.enabled });
+      goeyToast.success(`Rule ${rule.enabled ? 'disabled' : 'enabled'}`);
       void loadRules();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Failed to update rule: ${e.message}`);
     }
   }
 
   async function handleDeleteRule(id: string) {
     try {
       await automationApi.deleteRule(id);
+      goeyToast.success('Rule deleted');
       void loadRules();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Failed to delete rule: ${e.message}`);
     }
   }
 
   async function handleTestRule(id: string) {
     try {
       const res = await automationApi.testRule(id);
-      alert(`Simulation result: Trigger matched! Action that would execute: ${res.would_action}`);
+      goeyToast.info(`Simulation result: Trigger matched! Action: ${res.would_action}`);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Rule simulation failed: ${e.message}`);
     }
   }
 
@@ -131,9 +143,12 @@ export function AutomationPage() {
       setWebhookName('');
       setTargetUrl('');
       setIsWebhookOpen(false);
+      goeyToast.success('Outbound webhook registered');
       void loadWebhooks();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Failed to register webhook: ${e.message}`);
     } finally {
       setWebhookSubmitting(false);
     }
@@ -142,18 +157,23 @@ export function AutomationPage() {
   async function handleDeleteWebhook(id: string) {
     try {
       await automationApi.deleteWebhook(id);
+      goeyToast.success('Webhook deleted');
       void loadWebhooks();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Failed to delete webhook: ${e.message}`);
     }
   }
 
   async function handleTestWebhook(id: string) {
     try {
       const res = await automationApi.testWebhook(id);
-      alert(`Test ping enqueued for ${res.target_url} (Delivery ID: ${res.delivery_id})`);
+      goeyToast.info(`Test ping enqueued for ${res.target_url} (Delivery ID: ${res.delivery_id})`);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      goeyToast.error(`Webhook test ping failed: ${e.message}`);
     }
   }
 

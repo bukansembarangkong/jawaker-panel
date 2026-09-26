@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import { EmptyState, secondaryButtonClass } from '../components/ui';
 
 type Tab = 'files' | 'editor' | 'terminal';
@@ -36,10 +37,10 @@ export function FilesPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-base font-medium text-ink">Storage & Project Files</h2>
             <div className="flex gap-2">
-              <button className={secondaryButtonClass} onClick={() => alert('Download archive uses backup.file.archive')}>
+              <button className={secondaryButtonClass} onClick={() => goeyToast.info('Download archive uses backup.file.archive')}>
                 Download ZIP
               </button>
-              <button className={secondaryButtonClass} onClick={() => alert('Upload chunked resumable')}>
+              <button className={secondaryButtonClass} onClick={() => goeyToast.info('Upload chunked resumable')}>
                 Upload
               </button>
             </div>
@@ -126,7 +127,7 @@ export function FilesPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => alert(`Terminal security policy saved: mode=${terminalMode}`)}
+              onClick={() => goeyToast.success(`Terminal security policy saved: mode=${terminalMode}`)}
               className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent/90"
             >
               Save policy
@@ -145,7 +146,7 @@ export function FilesPage() {
                 <button
                   key={cmd}
                   type="button"
-                  onClick={() => alert(`Simulated Bounded Task: '${cmd}' executed via bounded executor (Exit Code: 0)`)}
+                  onClick={() => goeyToast.info(`Simulated Bounded Task: '${cmd}' executed via bounded executor (Exit Code: 0)`)}
                   className="rounded border border-border bg-canvas px-3 py-1 font-mono text-xs text-ink hover:bg-elevated transition"
                 >
                   $ {cmd}

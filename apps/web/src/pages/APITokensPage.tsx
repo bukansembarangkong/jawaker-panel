@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { goeyToast } from 'goey-toast';
 import { tokenApi, ApiError } from '../api/client';
 import type { APIToken, CreatedAPIToken } from '../api/client';
 import {
@@ -51,12 +52,15 @@ export function APITokensPage() {
     setError(null);
     try {
       const res = await tokenApi.create({ name: name.trim(), kind });
+      goeyToast.success('API token created');
       setCreated(res.token);
       setName('');
       setIsCreateOpen(false);
       void load();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     } finally {
       setSubmitting(false);
     }
@@ -69,9 +73,12 @@ export function APITokensPage() {
       onConfirm: async () => {
         try {
           await tokenApi.revoke(id);
+          goeyToast.success('Token revoked');
           void load();
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setError(e);
         }
       },
     });

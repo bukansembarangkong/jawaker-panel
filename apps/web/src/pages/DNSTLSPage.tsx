@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import {
   dnsTlsApi,
   type CertOrder,
@@ -128,9 +129,12 @@ export function DNSTLSPage() {
       setProviderName('');
       setProviderToken('');
       setIsProviderOpen(false);
+      goeyToast.success('DNS provider created');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -143,9 +147,12 @@ export function DNSTLSPage() {
       });
       setZoneName('');
       setIsZoneOpen(false);
+      goeyToast.success('DNS zone created');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -162,10 +169,13 @@ export function DNSTLSPage() {
       setRecName('');
       setRecContent('');
       setIsRecordOpen(false);
+      goeyToast.success('DNS record created');
       const rRes = await dnsTlsApi.listRecords(projectId!, selectedZone);
       setRecords(rRes.records || []);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -179,9 +189,12 @@ export function DNSTLSPage() {
       setChainPEM('');
       setPrivKeyPEM('');
       setShowImport(false);
+      goeyToast.success('Certificate imported');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -193,9 +206,12 @@ export function DNSTLSPage() {
       const identifiers = orderDomains.split(',').map((d) => d.trim()).filter(Boolean);
       await dnsTlsApi.createOrder(projectId!, { identifiers });
       setOrderDomains('');
+      goeyToast.success('Certificate order created');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     } finally {
       setOrderBusy(false);
     }
@@ -323,9 +339,12 @@ export function DNSTLSPage() {
                         onConfirm: async () => {
                           try {
                             await dnsTlsApi.deleteProvider(projectId!, p.id);
+                            goeyToast.success('DNS provider deleted');
                             await loadData();
                           } catch (err) {
-                            setError(err instanceof Error ? err : new Error(String(err)));
+                            const e = err instanceof Error ? err : new Error(String(err));
+                            goeyToast.error(`Failed: ${e.message}`);
+                            setError(e);
                           }
                         },
                       });
@@ -510,10 +529,13 @@ export function DNSTLSPage() {
                                       onConfirm: async () => {
                                         try {
                                           await dnsTlsApi.deleteRecord(projectId!, selectedZone, r.id);
+                                          goeyToast.success('DNS record deleted');
                                           const res = await dnsTlsApi.listRecords(projectId!, selectedZone);
                                           setRecords(res.records || []);
                                         } catch (err) {
-                                          setError(err instanceof Error ? err : new Error(String(err)));
+                                          const e = err instanceof Error ? err : new Error(String(err));
+                                          goeyToast.error(`Failed: ${e.message}`);
+                                          setError(e);
                                         }
                                       },
                                     });
@@ -631,9 +653,12 @@ export function DNSTLSPage() {
                                   onConfirm: async () => {
                                     try {
                                       await dnsTlsApi.cancelOrder(projectId!, o.id);
+                                      goeyToast.success('Order cancelled');
                                       await loadData();
                                     } catch (err) {
-                                      setError(err instanceof Error ? err : new Error(String(err)));
+                                      const e = err instanceof Error ? err : new Error(String(err));
+                                      goeyToast.error(`Failed: ${e.message}`);
+                                      setError(e);
                                     }
                                   },
                                 });
@@ -722,9 +747,12 @@ export function DNSTLSPage() {
                                   onConfirm: async () => {
                                     try {
                                       await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
+                                      goeyToast.success('Certificate revoked');
                                       await loadData();
                                     } catch (err) {
-                                      setError(err instanceof Error ? err : new Error(String(err)));
+                                      const e = err instanceof Error ? err : new Error(String(err));
+                                      goeyToast.error(`Failed: ${e.message}`);
+                                      setError(e);
                                     }
                                   },
                                 });

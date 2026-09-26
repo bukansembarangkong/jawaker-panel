@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   api,
@@ -173,9 +174,12 @@ export function BackupsPage() {
         retention_count: 7,
         retention_days: 30,
       });
+      goeyToast.success('Backup plan created');
       await loadPlans(selectedProject.id);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -188,13 +192,16 @@ export function BackupsPage() {
         const run = async () => {
           try {
             await api.deleteBackupPlan(selectedProject.id, plan.id);
+            goeyToast.success('Backup plan deleted');
             await loadPlans(selectedProject.id);
           } catch (err: unknown) {
             if (isStepUpRequired(err)) {
               onElevationRequired(run);
               return;
             }
-            setError(toError(err));
+            const e = toError(err);
+            goeyToast.error(`Failed: ${e.message}`);
+            setError(e);
           }
         };
         await run();
@@ -207,11 +214,14 @@ export function BackupsPage() {
     setJobMsg(null);
     try {
       const res = await api.triggerBackupRun(selectedProject.id, plan.id);
+      goeyToast.success('Backup run queued');
       setJobMsg(`Backup queued (run ${res.run_id}, job ${res.job_id}).`);
       await loadRuns(selectedProject.id);
       setTab('runs');
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -220,9 +230,12 @@ export function BackupsPage() {
     setJobMsg(null);
     try {
       const res = await api.verifyBackupRun(selectedProject.id, run.id);
+      goeyToast.success('Verification queued');
       setJobMsg(`Verification queued (job ${res.job_id}).`);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -235,13 +248,16 @@ export function BackupsPage() {
         const go = async () => {
           try {
             const res = await api.restoreBackupRun(selectedProject.id, run.id);
+            goeyToast.success('Restore queued');
             setJobMsg(`Restore queued (job ${res.job_id}).`);
           } catch (err: unknown) {
             if (isStepUpRequired(err)) {
               onElevationRequired(go);
               return;
             }
-            setError(toError(err));
+            const e = toError(err);
+            goeyToast.error(`Failed: ${e.message}`);
+            setError(e);
           }
         };
         await go();

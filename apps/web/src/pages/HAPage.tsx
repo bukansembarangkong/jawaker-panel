@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge, Modal, ConfirmModal } from '../components/ui';
 import { type HADrill, type HAEvent, type HAMember, type HAPool, haApi } from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
@@ -66,9 +67,12 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
       onConfirm: async () => {
         try {
           await haApi.startDrain(projectId, pool.id, serverId, 'manual drain');
+          goeyToast.success('Member drain started');
           load();
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to drain member: ${err.message}`);
+          setError(err);
         }
       },
     });
@@ -82,9 +86,12 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
       onConfirm: async () => {
         try {
           await haApi.removeMember(projectId, pool.id, id);
+          goeyToast.success('Member removed from pool');
           load();
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to remove member: ${err.message}`);
+          setError(err);
         }
       },
     });
@@ -171,11 +178,14 @@ function PoolsTab() {
     setSaving(true);
     try {
       await haApi.createPool(projectId, newName.trim(), '', newMode, 1);
+      goeyToast.success('Server pool created');
       setAdding(false);
       setNewName('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const err = e instanceof Error ? e : new Error(String(e));
+      goeyToast.error(`Failed to create pool: ${err.message}`);
+      setError(err);
     } finally {
       setSaving(false);
     }
@@ -189,9 +199,12 @@ function PoolsTab() {
       onConfirm: async () => {
         try {
           await haApi.deletePool(projectId, id);
+          goeyToast.success('Server pool deleted');
           load();
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to delete pool: ${err.message}`);
+          setError(err);
         }
       },
     });
@@ -354,9 +367,12 @@ function EventsTab() {
     if (!projectId) return;
     try {
       await haApi.resolveEvent(projectId, selectedPool, id);
+      goeyToast.success('Failover event resolved');
       setEvents((prev) => prev.map((ev) => ev.id === id ? { ...ev, resolved: true } : ev));
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const err = e instanceof Error ? e : new Error(String(e));
+      goeyToast.error(`Failed to resolve event: ${err.message}`);
+      setError(err);
     }
   };
 
@@ -443,11 +459,14 @@ function DrillsTab() {
     if (!projectId || !selectedPool) return;
     try {
       await haApi.createDrill(projectId, selectedPool, 'manual', '');
+      goeyToast.success('Drill triggered');
       setLoading(true);
       const r = await haApi.listDrills(projectId, selectedPool);
       setDrills(r.drills ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const err = e instanceof Error ? e : new Error(String(e));
+      goeyToast.error(`Failed to run drill: ${err.message}`);
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -457,9 +476,12 @@ function DrillsTab() {
     if (!projectId) return;
     try {
       await haApi.completeDrill(projectId, selectedPool, id, state, '');
+      goeyToast.success(`Drill marked as ${state}`);
       setDrills((prev) => prev.map((d) => d.id === id ? { ...d, state } : d));
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const err = e instanceof Error ? e : new Error(String(e));
+      goeyToast.error(`Failed to complete drill: ${err.message}`);
+      setError(err);
     }
   };
 

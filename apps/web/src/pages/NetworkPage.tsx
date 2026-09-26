@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   networkApi,
@@ -120,12 +121,14 @@ export function NetworkPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   function withStepUp(fn: () => Promise<void>) {
-    return () => fn().catch((e: unknown) => {
-      if (isStepUpRequired(e)) {
+    return () => fn().catch((err: unknown) => {
+      if (isStepUpRequired(err)) {
         setStepUpAction(() => fn);
         setStepUpPending(true);
       } else {
-        setError(toError(e));
+        const e = toError(err);
+        goeyToast.error(`Failed: ${e.message}`);
+        setError(e);
       }
     });
   }
@@ -133,6 +136,7 @@ export function NetworkPage() {
   // ─── Firewall actions ─────────────────────────────────────────────────────
   async function applyFirewall() {
     await networkApi.applyFirewall(serverId);
+    goeyToast.success('Firewall applied to server');
     loadData();
   }
 
@@ -156,63 +160,91 @@ export function NetworkPage() {
   }
 
   async function handleCreateRule() {
-    await networkApi.createRule(serverId, {
-      chain: newRule.chain,
-      priority: newRule.priority ? parseInt(newRule.priority, 10) : undefined,
-      protocol: newRule.protocol || undefined,
-      source_cidr: newRule.source_cidr || undefined,
-      dest_cidr: newRule.dest_cidr || undefined,
-      dest_port_min: newRule.dest_port_min ? parseInt(newRule.dest_port_min, 10) : undefined,
-      dest_port_max: newRule.dest_port_max ? parseInt(newRule.dest_port_max, 10) : undefined,
-      action: newRule.action,
-      enabled: newRule.enabled,
-      description: newRule.description || undefined,
-    });
-    setShowCreateRule(false);
-    setNewRule({ chain: 'INPUT', priority: '100', protocol: 'tcp', source_cidr: '', dest_cidr: '', dest_port_min: '', dest_port_max: '', action: 'ACCEPT', enabled: true, description: '' });
-    loadData();
+    try {
+      await networkApi.createRule(serverId, {
+        chain: newRule.chain,
+        priority: newRule.priority ? parseInt(newRule.priority, 10) : undefined,
+        protocol: newRule.protocol || undefined,
+        source_cidr: newRule.source_cidr || undefined,
+        dest_cidr: newRule.dest_cidr || undefined,
+        dest_port_min: newRule.dest_port_min ? parseInt(newRule.dest_port_min, 10) : undefined,
+        dest_port_max: newRule.dest_port_max ? parseInt(newRule.dest_port_max, 10) : undefined,
+        action: newRule.action,
+        enabled: newRule.enabled,
+        description: newRule.description || undefined,
+      });
+      goeyToast.success('Firewall rule created');
+      setShowCreateRule(false);
+      setNewRule({ chain: 'INPUT', priority: '100', protocol: 'tcp', source_cidr: '', dest_cidr: '', dest_port_min: '', dest_port_max: '', action: 'ACCEPT', enabled: true, description: '' });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   // ─── Port Forwards ────────────────────────────────────────────────────────
   async function handleCreateForward() {
-    await networkApi.createForward(serverId, {
-      protocol: newFwd.protocol,
-      listen_address: newFwd.listen_address || undefined,
-      listen_port: parseInt(newFwd.listen_port, 10),
-      dest_address: newFwd.dest_address,
-      dest_port: parseInt(newFwd.dest_port, 10),
-      description: newFwd.description || undefined,
-    });
-    setShowCreateForward(false);
-    setNewFwd({ protocol: 'tcp', listen_address: '', listen_port: '', dest_address: '', dest_port: '', description: '' });
-    loadData();
+    try {
+      await networkApi.createForward(serverId, {
+        protocol: newFwd.protocol,
+        listen_address: newFwd.listen_address || undefined,
+        listen_port: parseInt(newFwd.listen_port, 10),
+        dest_address: newFwd.dest_address,
+        dest_port: parseInt(newFwd.dest_port, 10),
+        description: newFwd.description || undefined,
+      });
+      goeyToast.success('Port forward created');
+      setShowCreateForward(false);
+      setNewFwd({ protocol: 'tcp', listen_address: '', listen_port: '', dest_address: '', dest_port: '', description: '' });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   // ─── Zones ────────────────────────────────────────────────────────────────
   async function handleCreateZone() {
-    await networkApi.createZone(serverId, {
-      name: newZone.name,
-      kind: newZone.kind || undefined,
-      interfaces: newZone.interfaces || undefined,
-    });
-    setShowCreateZone(false);
-    setNewZone({ name: '', kind: 'internal', interfaces: '' });
-    loadData();
+    try {
+      await networkApi.createZone(serverId, {
+        name: newZone.name,
+        kind: newZone.kind || undefined,
+        interfaces: newZone.interfaces || undefined,
+      });
+      goeyToast.success('Network zone created');
+      setShowCreateZone(false);
+      setNewZone({ name: '', kind: 'internal', interfaces: '' });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   // ─── WireGuard ────────────────────────────────────────────────────────────
   async function handleCreatePeer() {
-    await networkApi.createPeer(serverId, {
-      public_key: newPeer.public_key,
-      label: newPeer.label || undefined,
-      allowed_ips: newPeer.allowed_ips || undefined,
-      endpoint: newPeer.endpoint || undefined,
-      persistent_keepalive: newPeer.persistent_keepalive ? parseInt(newPeer.persistent_keepalive, 10) : undefined,
-      enabled: newPeer.enabled,
-    });
-    setShowCreatePeer(false);
-    setNewPeer({ public_key: '', label: '', allowed_ips: '', endpoint: '', persistent_keepalive: '25', enabled: true });
-    loadData();
+    try {
+      await networkApi.createPeer(serverId, {
+        public_key: newPeer.public_key,
+        label: newPeer.label || undefined,
+        allowed_ips: newPeer.allowed_ips || undefined,
+        endpoint: newPeer.endpoint || undefined,
+        persistent_keepalive: newPeer.persistent_keepalive ? parseInt(newPeer.persistent_keepalive, 10) : undefined,
+        enabled: newPeer.enabled,
+      });
+      goeyToast.success('WireGuard peer created');
+      setShowCreatePeer(false);
+      setNewPeer({ public_key: '', label: '', allowed_ips: '', endpoint: '', persistent_keepalive: '25', enabled: true });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   // ─── Diagnostics ──────────────────────────────────────────────────────────
@@ -401,6 +433,7 @@ export function NetworkPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await networkApi.deleteRule(serverId, rule.id);
+                          goeyToast.success('Firewall rule deleted');
                           loadData();
                         })}>Delete</button>
                     </td>
@@ -489,6 +522,7 @@ export function NetworkPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await networkApi.deleteForward(serverId, f.id);
+                          goeyToast.success('Port forward deleted');
                           loadData();
                         })}>Delete</button>
                     </td>
@@ -561,6 +595,7 @@ export function NetworkPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await networkApi.deleteZone(serverId, z.id);
+                          goeyToast.success('Network zone deleted');
                           loadData();
                         })}>Delete</button>
                     </td>
@@ -645,6 +680,7 @@ export function NetworkPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await networkApi.deletePeer(serverId, p.id);
+                          goeyToast.success('WireGuard peer deleted');
                           loadData();
                         })}>Delete</button>
                     </td>

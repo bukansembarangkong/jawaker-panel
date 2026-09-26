@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
 import { type Plugin, pluginsApi } from '../api/client';
 
@@ -48,18 +49,24 @@ function InstalledTab() {
   const enable = async (id: string) => {
     try {
       await pluginsApi.enablePlugin(id);
+      goeyToast.success('Plugin enabled');
       load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
   const disable = async (id: string) => {
     try {
       await pluginsApi.disablePlugin(id);
+      goeyToast.success('Plugin disabled');
       load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 
@@ -70,9 +77,12 @@ function InstalledTab() {
       onConfirm: async () => {
         try {
           await pluginsApi.uninstallPlugin(id);
+          goeyToast.success('Plugin uninstalled');
           load();
-        } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+        } catch (err) {
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setError(e);
         }
       },
     });
@@ -83,9 +93,12 @@ function InstalledTab() {
     if (!reason) return;
     try {
       await pluginsApi.quarantinePlugin(id, reason);
+      goeyToast.success('Plugin quarantined');
       load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   };
 

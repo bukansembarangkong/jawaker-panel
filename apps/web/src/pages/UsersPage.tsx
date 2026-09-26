@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { goeyToast } from 'goey-toast';
 import { userApi, ApiError } from '../api/client';
 import type { PlatformUser } from '../api/client';
 import {
@@ -75,13 +76,16 @@ export function UsersPage() {
     setFormError(null);
     try {
       await userApi.create({ email: email.trim(), display_name: displayName.trim(), password, account_type: accountType });
+      goeyToast.success('User created successfully');
       setEmail('');
       setDisplayName('');
       setPassword('');
       setIsInviteOpen(false);
       void load();
     } catch (err) {
-      setFormError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setFormError(e);
     } finally {
       setSubmitting(false);
     }
@@ -97,9 +101,12 @@ export function UsersPage() {
       onConfirm: async () => {
         try {
           await userApi.setState(user.id, newState);
+          goeyToast.success(newState === 'suspended' ? 'User suspended' : 'User activated');
           void load();
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setError(e);
         }
       },
     });
@@ -111,6 +118,7 @@ export function UsersPage() {
     setImpersonating(true);
     try {
       const res = await userApi.impersonate(impersonateTarget.id, impersonateReason.trim());
+      goeyToast.success('Impersonation session started');
       setImpersonationBanner({
         email: res.user.email,
         sessionId: res.session_id,
@@ -119,7 +127,9 @@ export function UsersPage() {
       setImpersonateTarget(null);
       setImpersonateReason('');
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     } finally {
       setImpersonating(false);
     }

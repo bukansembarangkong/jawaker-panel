@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   api,
@@ -236,9 +237,12 @@ export function DatabasesPage() {
         engine_version: '17',
         db_name: '',
       });
+      goeyToast.success('Database created');
       await loadDatabases(selectedProject.id);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      setError(e);
+      goeyToast.error(`Failed to create database: ${e.message}`);
     }
   };
 
@@ -252,13 +256,16 @@ export function DatabasesPage() {
           try {
             await api.deleteDatabase(selectedProject.id, db.id);
             selectDb(null);
+            goeyToast.success(`Database "${db.name}" deleted`);
             await loadDatabases(selectedProject.id);
           } catch (err: unknown) {
             if (isStepUpRequired(err)) {
               onElevationRequired(run);
               return;
             }
-            setError(toError(err));
+            const e = toError(err);
+            setError(e);
+            goeyToast.error(`Failed to delete database: ${e.message}`);
           }
         };
         await run();
@@ -274,9 +281,12 @@ export function DatabasesPage() {
       await api.createDatabaseUser(selectedProject.id, selectedDb.id, newUser);
       setNewUser({ username: '', privileges: ['ALL'] });
       setIsAddUserOpen(false);
+      goeyToast.success('Database user created');
       await loadUsers(selectedProject.id, selectedDb.id);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      setError(e);
+      goeyToast.error(`Failed to create user: ${e.message}`);
     }
   };
 
@@ -288,9 +298,12 @@ export function DatabasesPage() {
       onConfirm: async () => {
         try {
           await api.revokeDatabaseUser(selectedProject.id, selectedDb.id, username);
+          goeyToast.success(`User "${username}" revoked`);
           await loadUsers(selectedProject.id, selectedDb.id);
         } catch (err: unknown) {
-          setError(toError(err));
+          const e = toError(err);
+          setError(e);
+          goeyToast.error(`Failed to revoke user: ${e.message}`);
         }
       },
     });
@@ -301,13 +314,15 @@ export function DatabasesPage() {
     const run = async () => {
       try {
         await api.rotateDatabaseUserPassword(selectedProject.id, selectedDb.id, username);
-        alert(`Password rotated for user "${username}". Credentials updated in secrets store.`);
+        goeyToast.success(`Password rotated for user "${username}". Credentials updated in secrets store.`);
       } catch (err: unknown) {
         if (isStepUpRequired(err)) {
           onElevationRequired(run);
           return;
         }
-        setError(toError(err));
+        const e = toError(err);
+        setError(e);
+        goeyToast.error(`Failed to rotate password: ${e.message}`);
       }
     };
     await run();
@@ -318,9 +333,13 @@ export function DatabasesPage() {
     setDumpJobMsg(null);
     try {
       const res = await api.dumpDatabase(selectedProject.id, selectedDb.id);
-      setDumpJobMsg(`Dump job queued (ID: ${res.job_id}, Backup: ${res.backup_id})`);
+      const msg = `Dump job queued (ID: ${res.job_id}, Backup: ${res.backup_id})`;
+      setDumpJobMsg(msg);
+      goeyToast.success(msg);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      setError(e);
+      goeyToast.error(`Dump failed: ${e.message}`);
     }
   };
 
@@ -331,7 +350,9 @@ export function DatabasesPage() {
     const run = async () => {
       try {
         const res = await api.restoreDatabase(selectedProject.id, selectedDb.id, restorePath.trim());
-        setRestoreJobMsg(`Restore job queued (Job ID: ${res.job_id}). Recoverability will be verified automatically.`);
+        const msg = `Restore job queued (Job ID: ${res.job_id}). Recoverability will be verified automatically.`;
+        setRestoreJobMsg(msg);
+        goeyToast.success('Restore job queued');
         setRestorePath('');
         setIsRestoreOpen(false);
       } catch (err: unknown) {
@@ -339,7 +360,9 @@ export function DatabasesPage() {
           onElevationRequired(run);
           return;
         }
-        setError(toError(err));
+        const e = toError(err);
+        setError(e);
+        goeyToast.error(`Restore failed: ${e.message}`);
       }
     };
     await run();
@@ -353,7 +376,9 @@ export function DatabasesPage() {
       const diag = await api.getRescueDiagnostics(selectedProject.id, selectedDb.id);
       setRescueDiagnostics(diag);
     } catch (err: unknown) {
-      setError(toError(err));
+      const e = toError(err);
+      setError(e);
+      goeyToast.error(`Diagnostics failed: ${e.message}`);
     } finally {
       setRescueLoading(false);
     }
@@ -365,13 +390,16 @@ export function DatabasesPage() {
       try {
         const res = await api.rescueRollback(selectedProject.id, selectedDb.id);
         setRescueMsg(res.message);
+        goeyToast.success(res.message);
         await loadDatabases(selectedProject.id);
       } catch (err: unknown) {
         if (isStepUpRequired(err)) {
           onElevationRequired(run);
           return;
         }
-        setError(toError(err));
+        const e = toError(err);
+        setError(e);
+        goeyToast.error(`Rescue rollback failed: ${e.message}`);
       }
     };
     await run();

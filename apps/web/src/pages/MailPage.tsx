@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 import {
   type OperationalState,
   EmptyState,
@@ -85,11 +86,14 @@ function DomainsTab() {
     setSaving(true);
     try {
       await mailApi.createDomain(projectId, newServer.trim(), newDomain.trim());
+      goeyToast.success('Mail domain created');
       setAdding(false);
       setNewDomain('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const err = e instanceof Error ? e : new Error(String(e));
+      goeyToast.error(`Failed to create domain: ${err.message}`);
+      setError(err);
     } finally {
       setSaving(false);
     }
@@ -103,9 +107,12 @@ function DomainsTab() {
       onConfirm: async () => {
         try {
           await mailApi.deleteDomain(projectId, id);
+          goeyToast.success('Mail domain deleted');
           load();
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to delete domain: ${err.message}`);
+          setError(err);
         }
       },
     });
@@ -273,9 +280,12 @@ function MailboxesTab() {
       onConfirm: async () => {
         try {
           await mailApi.deleteMailbox(projectId, selectedDomain, id);
+          goeyToast.success('Mailbox deleted');
           setMailboxes((prev) => prev.filter((m) => m.id !== id));
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to delete mailbox: ${err.message}`);
+          setError(err);
         }
       },
     });
@@ -380,9 +390,12 @@ function AliasesTab() {
       onConfirm: async () => {
         try {
           await mailApi.deleteAlias(projectId, selectedDomain, id);
+          goeyToast.success('Alias deleted');
           setAliases((prev) => prev.filter((a) => a.id !== id));
         } catch (e) {
-          setError(e instanceof Error ? e : new Error(String(e)));
+          const err = e instanceof Error ? e : new Error(String(e));
+          goeyToast.error(`Failed to delete alias: ${err.message}`);
+          setError(err);
         }
       },
     });

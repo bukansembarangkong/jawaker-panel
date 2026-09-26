@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   api,
@@ -296,12 +297,15 @@ function CreateAppForm({ project, onCreated, onCancel, onElevationRequired }: Cr
         start_args: startArgs.trim() ? startArgs.trim().split(/\s+/) : undefined,
         port: port.trim() ? parseInt(port, 10) : undefined,
       });
+      goeyToast.success('App created');
       onCreated();
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => submit());
       } else {
-        setError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setError(err);
       }
     } finally {
       setSaving(false);
@@ -389,10 +393,14 @@ function AppDetail({ app, project, onBack, onDeleted, onElevationRequired }: App
         try {
           await primeCsrf();
           await api.deleteApp(project.id, app.id);
+          goeyToast.success('App deleted');
           onDeleted();
         } catch (e: unknown) {
           if (isStepUpRequired(e)) {
             onElevationRequired(() => handleDelete());
+          } else {
+            const err = toError(e);
+            goeyToast.error(`Failed: ${err.message}`);
           }
         } finally {
           setDeleting(false);
@@ -524,13 +532,16 @@ function DeployTab({
         commit_sha: commitSHA.trim(),
         git_ref: gitRef.trim() || undefined,
       });
+      goeyToast.success('Deployment triggered');
       setDeployResult(result);
       void pollJob(result.job.id);
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => triggerDeploy());
       } else {
-        setDeployError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setDeployError(err);
       }
     } finally {
       setDeploying(false);
@@ -543,13 +554,16 @@ function DeployTab({
     try {
       await primeCsrf();
       const result = await api.rollbackApp(project.id, app.id);
+      goeyToast.success('Rollback triggered');
       setDeployResult(result);
       void pollJob(result.job.id);
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => triggerRollback());
       } else {
-        setDeployError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setDeployError(err);
       }
     } finally {
       setRollingBack(false);
@@ -561,13 +575,16 @@ function DeployTab({
     try {
       await primeCsrf();
       const result = await api.redeployApp(project.id, app.id, depId);
+      goeyToast.success('Redeployment triggered');
       setDeployResult(result);
       void pollJob(result.job.id);
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => triggerRedeploy(depId));
       } else {
-        setDeployError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setDeployError(err);
       }
     }
   };
@@ -767,13 +784,16 @@ function EnvTab({
         value_source: newSource,
         value: newValue.trim(),
       });
+      goeyToast.success(`Environment variable ${newName.trim()} saved`);
       setNewName(''); setNewValue(''); setShowAdd(false);
       void load();
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => addEnvVar());
       } else {
-        setError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setError(err);
       }
     } finally {
       setSaving(false);
@@ -784,12 +804,15 @@ function EnvTab({
     try {
       await primeCsrf();
       await api.deleteEnvVar(project.id, app.id, name);
+      goeyToast.success(`Environment variable ${name} deleted`);
       void load();
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => deleteEnvVar(name));
       } else {
-        setError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setError(err);
       }
     }
   };
@@ -898,13 +921,16 @@ function WebhooksTab({
     try {
       await primeCsrf();
       const result = await api.createWebhookToken(project.id, app.id);
+      goeyToast.success('Webhook token created');
       setNewToken(result.token);
       void load();
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => createToken());
       } else {
-        setError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setError(err);
       }
     } finally {
       setCreating(false);
@@ -916,12 +942,15 @@ function WebhooksTab({
     try {
       await primeCsrf();
       await api.revokeWebhookToken(project.id, app.id, tokenId);
+      goeyToast.success('Webhook token revoked');
       void load();
     } catch (e: unknown) {
       if (isStepUpRequired(e)) {
         onElevationRequired(() => revokeToken(tokenId));
       } else {
-        setError(toError(e));
+        const err = toError(e);
+        goeyToast.error(`Failed: ${err.message}`);
+        setError(err);
       }
     }
   };
@@ -1046,6 +1075,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
         await primeCsrf();
         const pr = prNumber ? parseInt(prNumber, 10) : undefined;
         await api.createPreview(project.id, app.id, { branch: branch.trim(), pr_number: pr });
+        goeyToast.success('Preview environment created');
         setBranch('');
         setPrNumber('');
         setIsCreateOpen(false);
@@ -1055,7 +1085,9 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
           onElevationRequired(run);
           return;
         }
-        setError(toError(err));
+        const e = toError(err);
+        goeyToast.error(`Failed: ${e.message}`);
+        setError(e);
       } finally {
         setCreating(false);
       }
@@ -1072,13 +1104,16 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
           try {
             await primeCsrf();
             await api.deletePreview(project.id, app.id, previewId);
+            goeyToast.success('Preview environment torn down');
             await loadPreviews();
           } catch (err: unknown) {
             if (isStepUpRequired(err)) {
               onElevationRequired(run);
               return;
             }
-            setError(toError(err));
+            const e = toError(err);
+            goeyToast.error(`Failed: ${e.message}`);
+            setError(e);
           }
         };
         await run();

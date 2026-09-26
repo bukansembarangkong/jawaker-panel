@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { goeyToast } from 'goey-toast';
 import { notifyApi, ApiError } from '../api/client';
 import type { NotificationChannel, NotifyDelivery } from '../api/client';
 import { ErrorNote, EmptyState, Modal, Field, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui';
@@ -62,11 +63,14 @@ export function NotificationsPage() {
     setFormError(null);
     try {
       await notifyApi.createChannel({ type, name: name.trim(), config: {} });
+      goeyToast.success('Notification channel created');
       setName('');
       setIsAddChannelOpen(false);
       void loadChannels();
     } catch (err) {
-      setFormError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setFormError(e);
     } finally {
       setSubmitting(false);
     }
@@ -75,9 +79,12 @@ export function NotificationsPage() {
   async function handleDelete(id: string) {
     try {
       await notifyApi.deleteChannel(id);
+      goeyToast.success('Channel deleted');
       void loadChannels();
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     }
   }
 

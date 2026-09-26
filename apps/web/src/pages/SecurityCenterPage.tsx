@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   securityCenterApi,
@@ -125,12 +126,14 @@ export function SecurityCenterPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   function withStepUp(fn: () => Promise<void>) {
-    return () => fn().catch((e: unknown) => {
-      if (isStepUpRequired(e)) {
+    return () => fn().catch((err: unknown) => {
+      if (isStepUpRequired(err)) {
         setStepUpAction(() => fn);
         setStepUpPending(true);
       } else {
-        setError(toError(e));
+        const e = toError(err);
+        goeyToast.error(`Failed: ${e.message}`);
+        setError(e);
       }
     });
   }
@@ -141,6 +144,7 @@ export function SecurityCenterPage() {
     try {
       const r = await securityCenterApi.triggerScan(serverId);
       setFindings(r.findings ?? []);
+      goeyToast.success('Hardening scan completed');
       loadData();
     } catch (e) {
       setError(toError(e));
@@ -174,23 +178,37 @@ export function SecurityCenterPage() {
   }
 
   async function handleCreateBan() {
-    await securityCenterApi.createBan(serverId, {
-      ip: newBan.ip, reason: newBan.reason || undefined, source: newBan.source || undefined,
-    });
-    setShowCreateBan(false);
-    setNewBan({ ip: '', reason: '', source: 'manual' });
-    loadData();
+    try {
+      await securityCenterApi.createBan(serverId, {
+        ip: newBan.ip, reason: newBan.reason || undefined, source: newBan.source || undefined,
+      });
+      goeyToast.success('IP ban created');
+      setShowCreateBan(false);
+      setNewBan({ ip: '', reason: '', source: 'manual' });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   async function handleCreateWAF() {
-    await securityCenterApi.createWAFRule(serverId, {
-      kind: newWAF.kind, pattern: newWAF.pattern, action: newWAF.action,
-      enabled: newWAF.enabled, priority: parseInt(newWAF.priority, 10) || 100,
-      description: newWAF.description || undefined,
-    });
-    setShowCreateWAF(false);
-    setNewWAF({ kind: 'rate_limit', pattern: '', action: 'block', enabled: true, priority: '100', description: '' });
-    loadData();
+    try {
+      await securityCenterApi.createWAFRule(serverId, {
+        kind: newWAF.kind, pattern: newWAF.pattern, action: newWAF.action,
+        enabled: newWAF.enabled, priority: parseInt(newWAF.priority, 10) || 100,
+        description: newWAF.description || undefined,
+      });
+      goeyToast.success('WAF rule created');
+      setShowCreateWAF(false);
+      setNewWAF({ kind: 'rate_limit', pattern: '', action: 'block', enabled: true, priority: '100', description: '' });
+      loadData();
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
+    }
   }
 
   async function loadAttackMode(sid: string) {
@@ -207,12 +225,16 @@ export function SecurityCenterPage() {
     try {
       if (attackMode?.enabled) {
         await attackModeApi.disable(serverId);
+        goeyToast.success('Under Attack Mode deactivated');
       } else {
         await attackModeApi.enable(serverId);
+        goeyToast.success('Under Attack Mode activated');
       }
       await loadAttackMode(serverId);
-    } catch (e) {
-      setError(toError(e));
+    } catch (err) {
+      const e = toError(err);
+      goeyToast.error(`Failed: ${e.message}`);
+      setError(e);
     } finally {
       setAttackModeLoading(false);
     }
@@ -516,6 +538,7 @@ export function SecurityCenterPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await securityCenterApi.removeBan(serverId, b.id);
+                          goeyToast.success('Ban removed');
                           loadData();
                         })}>Unban</button>
                     </td>
@@ -603,6 +626,7 @@ export function SecurityCenterPage() {
                       <button type="button" className={secondaryButtonClass}
                         onClick={withStepUp(async () => {
                           await securityCenterApi.deleteWAFRule(serverId, r.id);
+                          goeyToast.success('WAF rule deleted');
                           loadData();
                         })}>Delete</button>
                     </td>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   ApiError,
@@ -157,6 +158,7 @@ export function ServersPage() {
       if (isStepUpRequired(err)) {
         setPendingElevation(() => retry);
       } else {
+        goeyToast.error(`Failed: ${apiErr.message}`);
         setError(apiErr);
       }
     } finally {
@@ -168,6 +170,7 @@ export function ServersPage() {
     await withStepUp(
       async () => {
         const result = await api.createEnrollmentToken(nodeName);
+        goeyToast.success('Enrollment token minted');
         setIssued(result);
         setNodeName('');
         setIsEnrollOpen(false);
@@ -181,6 +184,7 @@ export function ServersPage() {
     await withStepUp(
       async () => {
         await api.revokeEnrollmentToken(id);
+        goeyToast.success('Enrollment token revoked');
         await loadTokens();
       },
       () => void revokeToken(id),
@@ -191,6 +195,7 @@ export function ServersPage() {
     await withStepUp(
       async () => {
         await api.deleteServer(id);
+        goeyToast.success('Server removed from fleet');
         await loadServers();
       },
       () => void deleteServer(id),

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { goeyToast } from 'goey-toast';
 
 import {
   api,
@@ -214,6 +215,7 @@ export function SitesPage() {
         if (siteMode === 'reverse_proxy' && siteUpstream) body.upstream = siteUpstream;
         if (siteMode === 'php' && sitePHPUnit) body.php_unit = sitePHPUnit;
         const res = await api.createSite(selectedProject.id, body);
+        goeyToast.success('Site created');
         setShowCreateSite(false);
         setSiteSlug('');
         setSiteName('');
@@ -228,7 +230,9 @@ export function SitesPage() {
         if (isStepUpRequired(err)) {
           setPendingElevation(() => () => { void doCreate(); });
         } else {
-          setSiteCreateError(err instanceof Error ? err : new Error(String(err)));
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setSiteCreateError(e);
         }
       } finally {
         setBusy(false);
@@ -542,13 +546,16 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
     const run = async () => {
       try {
         await api.deleteSite(project.id, site.id);
+        goeyToast.success('Site deleted');
         onDeleted();
       } catch (err) {
         if (isStepUpRequired(err)) {
           setDeleting(false);
           onElevationRequired(() => { void run(); });
         } else {
-          setDeleteError(err instanceof Error ? err : new Error(String(err)));
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setDeleteError(e);
         }
         setBusy(false);
       }
@@ -831,8 +838,15 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
       const res = await api.validateConfig(project.id, site.id, { config: candidate, filename });
       setValidateResult(res);
       setVerdictKey(currentKey);
+      if (res.valid) {
+        goeyToast.success('Config validation passed');
+      } else {
+        goeyToast.error('Config validation failed');
+      }
     } catch (err) {
-      setValidateError(err instanceof Error ? err : new Error(String(err)));
+      const e = err instanceof Error ? err : new Error(String(err));
+      goeyToast.error(`Failed: ${e.message}`);
+      setValidateError(e);
     } finally {
       setValidating(false);
     }
@@ -861,9 +875,12 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
           throw err;
         }
         // 202 Accepted — start polling
+        goeyToast.success('Config candidate applied');
         void pollJob(accepted.job.id);
       } catch (err) {
-        setApplyError(err instanceof Error ? err : new Error(String(err)));
+        const e = err instanceof Error ? err : new Error(String(err));
+        goeyToast.error(`Failed: ${e.message}`);
+        setApplyError(e);
         setApplying(false);
       }
     };
@@ -1194,12 +1211,15 @@ function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
           env_vars: envVars,
           port,
         });
+        goeyToast.success('Node.js configuration saved');
         setConfig(res.nodejs_config);
-      } catch (e) {
-        if (isStepUpRequired(e)) {
+      } catch (err) {
+        if (isStepUpRequired(err)) {
           onElevationRequired(() => { void doSave(); });
         } else {
-          setSaveError(e instanceof Error ? e : new Error(String(e)));
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setSaveError(e);
         }
       } finally {
         setSaving(false);
@@ -1214,13 +1234,16 @@ function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
       setActionMessage(null);
       try {
         const res = await api.nodeJSAction(project.id, site.id, action);
+        goeyToast.success(res.result.message || `${action} completed`);
         setActionMessage(res.result.message || `${action} completed. State: ${res.result.state}`);
         await refreshStatus();
-      } catch (e) {
-        if (isStepUpRequired(e)) {
+      } catch (err) {
+        if (isStepUpRequired(err)) {
           onElevationRequired(() => { void doAction(); });
         } else {
-          setActionMessage(`Error: ${e instanceof Error ? e.message : String(e)}`);
+          const e = err instanceof Error ? err : new Error(String(err));
+          goeyToast.error(`Failed: ${e.message}`);
+          setActionMessage(`Error: ${e.message}`);
         }
       } finally {
         setActionBusy(null);
