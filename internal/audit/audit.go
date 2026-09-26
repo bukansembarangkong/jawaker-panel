@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -121,6 +122,14 @@ func Record(ctx context.Context, db Execer, e Event) error {
 			return fmt.Errorf("audit: encode context: %w", err)
 		}
 		contextJSON = encoded
+	}
+
+	// SourceIP must be a bare address (no port) for the inet column.
+	// Callers frequently pass r.RemoteAddr which is "host:port" or "[::1]:port".
+	if e.SourceIP != "" {
+		if host, _, err := net.SplitHostPort(e.SourceIP); err == nil {
+			e.SourceIP = host
+		}
 	}
 
 	if _, err := db.Exec(ctx, insertAuditEvent,
