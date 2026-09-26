@@ -480,6 +480,43 @@ export const api = {
     );
   },
 
+  getNodeJSConfig: (projectId: string, siteId: string): Promise<{ nodejs_config: NodeJSConfig }> =>
+    request<{ nodejs_config: NodeJSConfig }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/nodejs`,
+    ),
+
+  upsertNodeJSConfig: (
+    projectId: string,
+    siteId: string,
+    params: {
+      node_version: string;
+      app_root: string;
+      startup_file: string;
+      start_args: string[];
+      env_vars: Record<string, string>;
+      port: number;
+    },
+  ): Promise<{ nodejs_config: NodeJSConfig }> =>
+    request<{ nodejs_config: NodeJSConfig }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/nodejs`,
+      { method: 'PUT', body: params },
+    ),
+
+  nodeJSAction: (
+    projectId: string,
+    siteId: string,
+    action: 'start' | 'stop' | 'restart' | 'npm_install',
+  ): Promise<{ result: SiteNodeJSManageResult }> =>
+    request<{ result: SiteNodeJSManageResult }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/nodejs/action`,
+      { method: 'POST', body: { action } },
+    ),
+
+  getNodeJSStatus: (projectId: string, siteId: string): Promise<{ status: SiteNodeJSStatusResult }> =>
+    request<{ status: SiteNodeJSStatusResult }>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/sites/${encodeURIComponent(siteId)}/nodejs/status`,
+    ),
+
   // --- Jobs --------------------------------------------------------------------
 
   getJob: (id: string): Promise<JobStatus> =>
@@ -910,6 +947,37 @@ export interface SitePage {
   offset: number;
   has_more: boolean;
 }
+
+export interface NodeJSConfig {
+  id: string;
+  site_id: string;
+  node_version: string;
+  app_root: string;
+  startup_file: string;
+  start_args: string[];
+  env_vars: Record<string, string>;
+  port: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SiteNodeJSStatusResult {
+  unit_name: string;
+  active: boolean;
+  state: string;
+  pid?: number;
+  since?: string;
+  main_pid?: number;
+  memory_current?: string;
+}
+
+export interface SiteNodeJSManageResult {
+  action: string;
+  unit_name: string;
+  state: string;
+  message?: string;
+}
+
 
 export interface ValidateResult {
   valid: boolean;

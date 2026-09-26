@@ -7,8 +7,10 @@ import {
   type ApplyAccepted,
   type JobStatus,
   type LogsTail,
+  type NodeJSConfig,
   type Project,
   type Site,
+  type SiteNodeJSStatusResult,
   type ValidateResult,
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
@@ -475,7 +477,7 @@ function CreateSiteForm({
 
 // ─── SiteDetail ───────────────────────────────────────────────────────────────
 
-type SiteTab = 'config' | 'logs';
+type SiteTab = 'config' | 'logs' | 'nodejs';
 
 interface SiteDetailProps {
   site: Site;
@@ -486,7 +488,7 @@ interface SiteDetailProps {
 }
 
 function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: SiteDetailProps) {
-  const [tab, setTab] = useState<SiteTab>('config');
+  const [tab, setTab] = useState<SiteTab>(site.mode === 'nodejs' ? 'nodejs' : 'config');
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleteError, setDeleteError] = useState<Error | null>(null);
@@ -510,6 +512,11 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
     };
     await run();
   };
+
+  const tabs: SiteTab[] =
+    site.mode === 'nodejs' || site.mode === 'reverse_proxy'
+      ? ['nodejs', 'config', 'logs']
+      : ['config', 'logs'];
 
   return (
     <div className="space-y-4">
@@ -557,24 +564,29 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
 
       {/* Tabs */}
       <nav className="flex gap-1 border-b border-line" aria-label="Site sections">
-        {(['config', 'logs'] as SiteTab[]).map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             type="button"
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm capitalize border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+              t === 'nodejs' ? '' : 'capitalize'
+            } ${
               tab === t
                 ? 'border-ink text-ink font-medium'
                 : 'border-transparent text-ink-secondary hover:text-ink'
             }`}
           >
-            {t}
+            {t === 'nodejs' ? 'Node.js' : t}
           </button>
         ))}
       </nav>
 
+      {tab === 'nodejs' && (
+        <NodeJSTab site={site} project={project} onElevationRequired={onElevationRequired} />
+      )}
       {tab === 'config' && (
         <ConfigTab site={site} project={project} onElevationRequired={onElevationRequired} />
       )}
@@ -642,7 +654,7 @@ function generateDefaultNginxConfig(site: Site): string {
   const docRoot = site.doc_root || `/var/www/${serverName}`;
   const upstream = site.upstream || 'http://127.0.0.1:3000';
 
-  if (site.mode === 'reverse_proxy') {
+  if (site.mode === 'nodejs' || site.mode === 'reverse_proxy') {
     return `server {
     listen 80;
     server_name ${serverName};
@@ -819,11 +831,12 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-ink-secondary">Candidate configuration</span>
           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            site.mode === 'nodejs' ? 'bg-green-100 text-green-700' :
             site.mode === 'reverse_proxy' ? 'bg-blue-100 text-blue-700' :
             site.mode === 'php' ? 'bg-purple-100 text-purple-700' :
             'bg-slate-100 text-slate-700'
           }`}>
-            {site.mode === 'reverse_proxy' ? 'Reverse Proxy' : site.mode === 'php' ? 'PHP-FPM' : 'Static'}
+            {site.mode === 'nodejs' ? 'Node.js' : site.mode === 'reverse_proxy' ? 'Reverse Proxy' : site.mode === 'php' ? 'PHP-FPM' : 'Static'}
           </span>
           {site.mode === 'reverse_proxy' && site.upstream && (
             <span className="text-xs text-ink-muted font-mono">{site.upstream}</span>
@@ -1039,6 +1052,323 @@ function LogsTab({ site, project }: { site: Site; project: Project }) {
           </pre>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── NodeJSTab ────────────────────────────────────────────────────────────────
+
+interface NodeJSTabProps {
+  site: Site;
+  project: Project;
+  onElevationRequired: (resume: () => void) => void;
+}
+
+function NodeJSTab({ site, project, onElevationRequired }: NodeJSTabProps) {
+  const [config, setConfig] = useState<NodeJSConfig | null>(null);
+  const [status, setStatus] = useState<SiteNodeJSStatusResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [saveError, setSaveError] = useState<Error | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // Editable fields (controlled)
+  const [nodeVersion, setNodeVersion] = useState('system');
+  const [appRoot, setAppRoot] = useState('');
+  const [startupFile, setStartupFile] = useState('server.js');
+  const [port, setPort] = useState(3000);
+  const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [newEnvKey, setNewEnvKey] = useState('');
+  const [newEnvVal, setNewEnvVal] = useState('');
+
+  // Load config + status on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [cfgRes, stRes] = await Promise.all([
+          api.getNodeJSConfig(project.id, site.id).catch(() => null),
+          api.getNodeJSStatus(project.id, site.id).catch(() => ({ status: { active: false, state: 'unknown', unit_name: '' } })),
+        ]);
+        if (cancelled) return;
+        if (cfgRes) {
+          const c = cfgRes.nodejs_config;
+          setConfig(c);
+          setNodeVersion(c.node_version);
+          setAppRoot(c.app_root);
+          setStartupFile(c.startup_file);
+          setPort(c.port);
+          setEnvVars(c.env_vars ?? {});
+        }
+        setStatus(stRes.status);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e : new Error(String(e)));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [project.id, site.id]);
+
+  const refreshStatus = async () => {
+    try {
+      const res = await api.getNodeJSStatus(project.id, site.id);
+      setStatus(res.status);
+    } catch { /* ignore */ }
+  };
+
+  const handleSave = () => {
+    const doSave = async () => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const res = await api.upsertNodeJSConfig(project.id, site.id, {
+          node_version: nodeVersion,
+          app_root: appRoot,
+          startup_file: startupFile,
+          start_args: [],
+          env_vars: envVars,
+          port,
+        });
+        setConfig(res.nodejs_config);
+      } catch (e) {
+        if (isStepUpRequired(e)) {
+          onElevationRequired(() => { void doSave(); });
+        } else {
+          setSaveError(e instanceof Error ? e : new Error(String(e)));
+        }
+      } finally {
+        setSaving(false);
+      }
+    };
+    void doSave();
+  };
+
+  const handleAction = (action: 'start' | 'stop' | 'restart' | 'npm_install') => {
+    const doAction = async () => {
+      setActionBusy(action);
+      setActionMessage(null);
+      try {
+        const res = await api.nodeJSAction(project.id, site.id, action);
+        setActionMessage(res.result.message || `${action} completed. State: ${res.result.state}`);
+        await refreshStatus();
+      } catch (e) {
+        if (isStepUpRequired(e)) {
+          onElevationRequired(() => { void doAction(); });
+        } else {
+          setActionMessage(`Error: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } finally {
+        setActionBusy(null);
+      }
+    };
+    void doAction();
+  };
+
+  if (loading) return <div className="py-8 text-center text-sm text-ink-muted">Loading Node.js configuration...</div>;
+  if (error) return <ErrorNote error={error} title="Failed to load Node.js config" />;
+
+  const isActive = status?.active ?? false;
+
+  return (
+    <div className="space-y-6">
+      {/* Status card */}
+      <div className="rounded-lg border border-line bg-surface p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`h-2.5 w-2.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-400'}`} />
+          <div>
+            <span className="text-sm font-medium text-ink">
+              {isActive ? 'Running' : 'Stopped'}
+            </span>
+            {status?.state && status.state !== 'unknown' && (
+              <span className="ml-2 text-xs text-ink-muted">{status.state}</span>
+            )}
+            {status?.pid && (
+              <span className="ml-2 text-xs text-ink-muted">PID {status.pid}</span>
+            )}
+            {status?.since && (
+              <span className="ml-2 text-xs text-ink-muted">since {new Date(status.since).toLocaleTimeString()}</span>
+            )}
+            {status?.memory_current && (
+              <span className="ml-2 text-xs text-ink-muted">{status.memory_current}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isActive ? (
+            <button
+              type="button"
+              disabled={actionBusy !== null}
+              onClick={() => handleAction('start')}
+              className={primaryButtonClass}
+            >
+              {actionBusy === 'start' ? 'Starting...' : 'Start'}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={actionBusy !== null}
+                onClick={() => handleAction('restart')}
+                className={secondaryButtonClass}
+              >
+                {actionBusy === 'restart' ? 'Restarting...' : 'Restart'}
+              </button>
+              <button
+                type="button"
+                disabled={actionBusy !== null}
+                onClick={() => handleAction('stop')}
+                className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                {actionBusy === 'stop' ? 'Stopping...' : 'Stop'}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            disabled={actionBusy !== null}
+            onClick={() => handleAction('npm_install')}
+            className={secondaryButtonClass}
+          >
+            {actionBusy === 'npm_install' ? 'Installing...' : 'npm install'}
+          </button>
+        </div>
+      </div>
+
+      {/* Action message */}
+      {actionMessage && (
+        <div className="rounded-md border border-line bg-elevated p-3 font-mono text-xs text-ink">
+          {actionMessage}
+        </div>
+      )}
+
+      {/* Configuration form */}
+      <div className="rounded-lg border border-line bg-surface p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-ink">Node.js Configuration</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Node.js version">
+            <select
+              value={nodeVersion}
+              onChange={(e) => setNodeVersion(e.target.value)}
+              className={inputClass}
+            >
+              <option value="system">System default</option>
+              <option value="18">Node.js 18 LTS</option>
+              <option value="20">Node.js 20 LTS</option>
+              <option value="22">Node.js 22 LTS</option>
+            </select>
+          </Field>
+          <Field label="Application port">
+            <input
+              type="number"
+              min={1024}
+              max={65535}
+              value={port}
+              onChange={(e) => setPort(Number(e.target.value))}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Application root" hint="Subdirectory relative to site root (leave empty for root)">
+            <input
+              value={appRoot}
+              onChange={(e) => setAppRoot(e.target.value)}
+              placeholder="e.g. backend or leave blank"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Startup file">
+            <input
+              value={startupFile}
+              onChange={(e) => setStartupFile(e.target.value)}
+              placeholder="server.js"
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
+        {/* Environment Variables */}
+        <div>
+          <p className="mb-2 text-xs font-medium text-ink-secondary">Environment variables</p>
+          {Object.entries(envVars).length > 0 && (
+            <div className="mb-2 space-y-1">
+              {Object.entries(envVars).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2 font-mono text-xs">
+                  <span className="w-32 truncate text-ink">{k}</span>
+                  <span className="text-ink-muted">=</span>
+                  <span className="flex-1 truncate text-ink-secondary">{v}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = { ...envVars };
+                      delete next[k];
+                      setEnvVars(next);
+                    }}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Field label="Key">
+                <input
+                  value={newEnvKey}
+                  onChange={(e) => setNewEnvKey(e.target.value)}
+                  placeholder="NODE_ENV"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="flex-1">
+              <Field label="Value">
+                <input
+                  value={newEnvVal}
+                  onChange={(e) => setNewEnvVal(e.target.value)}
+                  placeholder="production"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!newEnvKey.trim()) return;
+                setEnvVars(prev => ({ ...prev, [newEnvKey.trim()]: newEnvVal }));
+                setNewEnvKey('');
+                setNewEnvVal('');
+              }}
+              className={secondaryButtonClass}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+
+        {saveError && <ErrorNote error={saveError} title="Save failed" />}
+        <div className="flex items-center justify-between">
+          {config ? (
+            <span className="text-xs text-ink-muted">Last saved: {new Date(config.updated_at).toLocaleString()}</span>
+          ) : (
+            <span className="text-xs text-ink-muted">No configuration saved yet</span>
+          )}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className={primaryButtonClass}
+          >
+            {saving ? 'Saving...' : 'Save configuration'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
