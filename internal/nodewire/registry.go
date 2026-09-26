@@ -783,7 +783,7 @@ var Operations = map[Operation]Descriptor{
 		LockKeys:    []string{"site.nodejs.manage"},
 		Timeout:     120 * time.Second,
 		AuditAction: "site.nodejs.manage",
-		Retry:       RetryPolicy{Idempotent: false, MaxAttempts: 1},
+		Retry:       RetryPolicy{Idempotent: false, MaxAttempts: 0},
 		Rollback:    "start/restart: if the unit fails to reach active state the error is returned; the previous unit file is not removed. " +
 			"stop: stopping an already-stopped unit is a no-op. " +
 			"npm_install: a failed install leaves node_modules in an indeterminate state; re-running the action retries the install.",
