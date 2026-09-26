@@ -102,10 +102,17 @@ export function DatabasesPage() {
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
+  const selectDb = (db: ManagedDatabase | null) => {
+    setSelectedDb(db);
+    window.location.hash = db ? `#/databases/${db.id}` : '#/databases';
+  };
+
   const loadProjects = useCallback(async () => {
     try {
       const data = await api.listProjects({ state: 'active', limit: 50 });
-      setProjects(data.projects || []);
+      const projs = data.projects || [];
+      setProjects(projs);
+      setSelectedProject((prev) => prev ?? projs[0] ?? null);
     } catch (e: unknown) {
       setError(toError(e));
     }
@@ -125,7 +132,16 @@ export function DatabasesPage() {
     setError(null);
     try {
       const data = await api.listDatabases(projectId);
-      setDatabases(data.databases || []);
+      const loaded = data.databases || [];
+      setDatabases(loaded);
+
+      const dbIdFromHash = window.location.hash.startsWith('#/databases/')
+        ? window.location.hash.slice('#/databases/'.length)
+        : null;
+      if (dbIdFromHash) {
+        const match = loaded.find((d) => d.id === dbIdFromHash);
+        if (match) setSelectedDb(match);
+      }
     } catch (e: unknown) {
       setError(toError(e));
     } finally {
@@ -169,7 +185,7 @@ export function DatabasesPage() {
   useEffect(() => {
     if (selectedProject) {
       void loadDatabases(selectedProject.id);
-      setSelectedDb(null);
+      if (!window.location.hash.startsWith('#/databases/')) setSelectedDb(null);
     }
   }, [selectedProject, loadDatabases]);
 
@@ -181,8 +197,27 @@ export function DatabasesPage() {
     }
   }, [selectedProject, selectedDb, loadUsers, loadMetrics, loadConnString]);
 
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash;
+      if (h === '#/databases' || h === '#/databases/') {
+        setSelectedDb(null);
+      } else if (h.startsWith('#/databases/')) {
+        const id = h.slice('#/databases/'.length);
+        setDatabases((prev) => {
+          const match = prev.find((d) => d.id === id);
+          if (match) setSelectedDb(match);
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
   const onElevationRequired = (action: () => Promise<void>) => {
     setStepUpAction(() => action);
+
     setStepUpPending(true);
   };
 
@@ -216,7 +251,7 @@ export function DatabasesPage() {
         const run = async () => {
           try {
             await api.deleteDatabase(selectedProject.id, db.id);
-            setSelectedDb(null);
+            selectDb(null);
             await loadDatabases(selectedProject.id);
           } catch (err: unknown) {
             if (isStepUpRequired(err)) {
@@ -424,7 +459,7 @@ export function DatabasesPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedDb(null)}
+                  onClick={() => selectDb(null)}
                   className="text-xs text-ink-muted hover:text-ink"
                 >
                   &larr; All databases
@@ -1034,7 +1069,7 @@ export function DatabasesPage() {
               {databases.map((db) => (
                 <div
                   key={db.id}
-                  onClick={() => setSelectedDb(db)}
+                  onClick={() => selectDb(db)}
                   className="cursor-pointer rounded-lg border border-line bg-surface p-4 transition-all hover:border-line-hover hover:shadow-sm space-y-2"
                 >
                   <div className="flex items-center justify-between">

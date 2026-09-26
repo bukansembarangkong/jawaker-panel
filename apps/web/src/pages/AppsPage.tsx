@@ -69,10 +69,17 @@ export function AppsPage() {
   const [stepUpAction, setStepUpAction] = useState<(() => Promise<void>) | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
+  const selectApp = (a: App | null) => {
+    setSelectedApp(a);
+    window.location.hash = a ? `#/apps/${a.id}` : '#/apps';
+  };
+
   const loadProjects = useCallback(async () => {
     try {
       const data = await api.listProjects({ state: 'active', limit: 50 });
-      setProjects(data.projects || []);
+      const projs = data.projects || [];
+      setProjects(projs);
+      setSelectedProject((prev) => prev ?? projs[0] ?? null);
     } catch (e: unknown) {
       setError(toError(e));
     }
@@ -83,7 +90,16 @@ export function AppsPage() {
     setError(null);
     try {
       const data = await api.listApps(projectId, { limit: 50 });
-      setApps(data.apps || []);
+      const loaded = data.apps || [];
+      setApps(loaded);
+
+      const appIdFromHash = window.location.hash.startsWith('#/apps/')
+        ? window.location.hash.slice('#/apps/'.length)
+        : null;
+      if (appIdFromHash) {
+        const match = loaded.find((a) => a.id === appIdFromHash);
+        if (match) setSelectedApp(match);
+      }
     } catch (e: unknown) {
       setError(toError(e));
     } finally {
@@ -98,6 +114,21 @@ export function AppsPage() {
   useEffect(() => {
     if (selectedProject) void loadApps(selectedProject.id);
   }, [selectedProject, loadApps]);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash;
+      if (h === '#/apps' || h === '#/apps/') {
+        setSelectedApp(null);
+      } else if (h.startsWith('#/apps/')) {
+        const id = h.slice('#/apps/'.length);
+        const match = apps.find((a) => a.id === id);
+        if (match) setSelectedApp(match);
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [apps]);
 
   const onElevationRequired = (action: () => Promise<void>) => {
     setStepUpAction(() => action);
@@ -125,9 +156,9 @@ export function AppsPage() {
       <AppDetail
         app={selectedApp}
         project={selectedProject}
-        onBack={() => setSelectedApp(null)}
+        onBack={() => selectApp(null)}
         onDeleted={() => {
-          setSelectedApp(null);
+          selectApp(null);
           void loadApps(selectedProject.id);
         }}
         onElevationRequired={onElevationRequired}
@@ -205,7 +236,7 @@ export function AppsPage() {
                 <li
                   key={app.id}
                   className="flex items-center justify-between rounded-lg border border-line bg-surface p-3 hover:bg-elevated cursor-pointer"
-                  onClick={() => setSelectedApp(app)}
+                  onClick={() => selectApp(app)}
                 >
                   <div>
                     <span className="font-medium text-ink">{app.name}</span>
