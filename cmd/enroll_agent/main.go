@@ -44,11 +44,11 @@ func main() {
 
 	store := nodes.NewStore(pool, now)
 
-	// Clean up any stale tokens for "Primary Node"
-	_, _ = pool.Exec(ctx, "DELETE FROM enrollment_tokens WHERE node_name = 'Primary Node'")
+	// Clean up any stale tokens for "primary-node"
+	_, _ = pool.Exec(ctx, "DELETE FROM enrollment_tokens WHERE node_name = 'primary-node'")
 
 	_, tokenPlaintext, err := store.CreateToken(ctx, authority.ControllerID(), nodes.CreateTokenParams{
-		NodeName: "Primary Node",
+		NodeName: "primary-node",
 	})
 	if err != nil {
 		log.Fatalf("CreateToken: %v", err)
