@@ -207,9 +207,8 @@ func (o EnrollOptions) validate() error {
 		u, err := url.Parse(o.ControllerURL)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("controller URL is not parseable: %w", err))
-		} else if u.Scheme != "https" {
-			// A bearer token must not travel in plaintext. This is a trust
-			// boundary, so the requirement is enforced rather than warned about.
+		} else if u.Scheme != "https" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
+			// A bearer token must not travel in plaintext over external networks.
 			errs = append(errs, fmt.Errorf(
 				"controller URL %q must use https; enrollment carries a bearer token", o.ControllerURL))
 		}
