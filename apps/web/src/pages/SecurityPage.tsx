@@ -34,7 +34,12 @@ interface PendingEnrollment {
 
 export function SecurityPage() {
   const [status, setStatus] = useState<MFAStatus | null>(null);
-  const [pending, setPending] = useState<PendingEnrollment | null>(null);
+  const [pending, setPending] = useState<PendingEnrollment | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('jawaker_pending_mfa');
+      return saved ? (JSON.parse(saved) as PendingEnrollment) : null;
+    } catch { return null; }
+  });
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,11 +71,13 @@ export function SecurityPage() {
     try {
       await primeCsrf();
       const result = await api.mfaEnroll(password);
-      setPending({
+      const p: PendingEnrollment = {
         secret: result.secret,
         otpauth_uri: result.otpauth_uri,
         period_seconds: result.period_seconds,
-      });
+      };
+      sessionStorage.setItem('jawaker_pending_mfa', JSON.stringify(p));
+      setPending(p);
       setPassword('');
       await load();
     } catch (err) {
@@ -90,6 +97,7 @@ export function SecurityPage() {
       if (result.recovery_codes_error) {
         setError(new Error(result.recovery_codes_error));
       }
+      sessionStorage.removeItem('jawaker_pending_mfa');
       setPending(null);
       setCode('');
       await load();
@@ -188,6 +196,36 @@ export function SecurityPage() {
             </Field>
             <button type="submit" disabled={busy || !password} className={primaryButtonClass}>
               {busy ? 'Working…' : 'Begin enrollment'}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {step === 'pending' && !pending && (
+        <section className="rounded-lg border border-warn/50 bg-surface p-5 space-y-4">
+          <h2 className="text-base font-semibold text-ink">Setup Incomplete</h2>
+          <p className="text-sm text-ink-secondary">
+            You started two-factor setup but it wasn't completed. Enter your password to get a fresh QR code and finish setup.
+          </p>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void enroll();
+            }}
+          >
+            <Field label="Current password">
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+                required
+              />
+            </Field>
+            <button type="submit" disabled={busy || !password} className={primaryButtonClass}>
+              {busy ? 'Working…' : 'Get New QR Code'}
             </button>
           </form>
         </section>
