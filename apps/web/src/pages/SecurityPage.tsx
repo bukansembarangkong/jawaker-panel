@@ -158,7 +158,9 @@ export function SecurityPage() {
 
       {issuedCodes && <RecoveryCodeList codes={issuedCodes} onDismiss={() => setIssuedCodes(null)} />}
 
-      {step === 'none' && (
+      <div className="grid gap-6 lg:grid-cols-2 items-start">
+        <div className="space-y-6">
+          {step === 'none' && (
         <section className="rounded-lg border border-line bg-surface p-5">
           <h2 className="text-base font-semibold text-ink">Enable two-factor authentication</h2>
           <p className="mt-1 text-sm text-ink-secondary">
@@ -316,9 +318,11 @@ export function SecurityPage() {
           </section>
         </>
       )}
+        </div>{/* end left col */}
 
-      {/* Account Password Management */}
-      <ChangePasswordSection />
+        {/* Right column: Change Password */}
+        <ChangePasswordSection />
+      </div>{/* end grid */}
     </div>
   );
 }
@@ -365,7 +369,7 @@ function ChangePasswordSection() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-5 mt-6">
+    <section className="rounded-lg border border-border bg-surface p-5">
       <h2 className="text-base font-semibold text-ink">Change Account Password</h2>
       <p className="mt-1 text-sm text-ink-muted">
         Update the password for your current administrator session. Minimum 12 characters.
@@ -382,7 +386,7 @@ function ChangePasswordSection() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="mt-4 max-w-md space-y-4">
+      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <Field label="Current Password" hint="The password you used to log in.">
           <input
             type="password"
