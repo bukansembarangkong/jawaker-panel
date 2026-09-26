@@ -104,6 +104,8 @@ type EnrollmentResponse struct {
 	// that reported the wrong one can see it rather than wonder why nothing dials
 	// it.
 	NodeListenerAddress string `json:"node_listener_address"`
+	// RequestID correlates the enrollment request.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // Validate checks a response is structurally usable before the agent writes
