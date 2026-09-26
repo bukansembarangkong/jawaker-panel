@@ -115,15 +115,16 @@ export default function App() {
     if (state.kind !== 'authenticated') return;
     import('./api/client').then(({ api }) => {
       api.listServers().then((res) => {
-        setServers(res.servers);
-        if (res.servers.length > 0) {
+        const servers = res.servers ?? [];
+        setServers(servers);
+        if (servers.length > 0) {
           const stored = localStorage.getItem('jawaker_selected_server');
-          const matched = res.servers.find((s) => s.id === stored);
+          const matched = servers.find((s) => s.id === stored);
           if (matched) {
             setSelectedServerId(matched.id);
           } else {
-            setSelectedServerId(res.servers[0].id);
-            localStorage.setItem('jawaker_selected_server', res.servers[0].id);
+            setSelectedServerId(servers[0].id);
+            localStorage.setItem('jawaker_selected_server', servers[0].id);
           }
         }
       }).catch(() => {});
