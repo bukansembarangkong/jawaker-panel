@@ -2,14 +2,26 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { tokenApi, ApiError } from '../api/client';
 import type { APIToken, CreatedAPIToken } from '../api/client';
-import { ErrorNote, EmptyState, secondaryButtonClass, ConfirmModal } from '../components/ui';
+import {
+  ErrorNote,
+  EmptyState,
+  StatusBadge,
+  Modal,
+  ConfirmModal,
+  Field,
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui';
 
 export function APITokensPage() {
   const [tokens, setTokens] = useState<APIToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [created, setCreated] = useState<CreatedAPIToken | null>(null);
+  const [copied, setCopied] = useState(false);
 
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'personal' | 'service'>('personal');
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +53,7 @@ export function APITokensPage() {
       const res = await tokenApi.create({ name: name.trim(), kind });
       setCreated(res.token);
       setName('');
+      setIsCreateOpen(false);
       void load();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -49,10 +62,10 @@ export function APITokensPage() {
     }
   }
 
-  async function handleRevoke(id: string) {
+  async function handleRevoke(id: string, tokenName: string) {
     setConfirmState({
       open: true,
-      message: 'Revoke this token? This cannot be undone.',
+      message: `Revoke token "${tokenName}"? Any application or script using this token will lose access immediately. This cannot be undone.`,
       onConfirm: async () => {
         try {
           await tokenApi.revoke(id);
@@ -64,101 +77,193 @@ export function APITokensPage() {
     });
   }
 
+  async function copyToken(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Fallback
+    }
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <ConfirmModal
         isOpen={confirmState.open}
-        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onClose={() => setConfirmState((s) => ({ ...s, open: false }))}
         onConfirm={confirmState.onConfirm}
-        title="Are you sure?"
+        title="Revoke API Token?"
         message={confirmState.message}
-        confirmLabel="Yes, proceed"
+        confirmLabel="Yes, revoke"
         danger
       />
-      <header>
-        <h2 className="text-xl font-semibold">API Tokens</h2>
-        <p className="mt-1 text-sm text-ink-secondary">
-          Personal and service tokens for programmatic API access. The plaintext value is shown once at creation.
-        </p>
-      </header>
+
+      {/* Create Token Modal */}
+      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Create API Token">
+        <form onSubmit={handleCreate} className="space-y-4">
+          <Field label="Token Name" hint="A memorable identifier (e.g. CI/CD Deployer, Backup Script)">
+            <input
+              type="text"
+              required
+              className={inputClass}
+              placeholder="e.g. github-actions-deploy"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Token Type" hint="Personal tokens carry your user permissions. Service tokens are intended for automation.">
+            <select
+              className={inputClass}
+              value={kind}
+              onChange={(e) => setKind(e.target.value as 'personal' | 'service')}
+            >
+              <option value="personal">Personal Token</option>
+              <option value="service">Service Account Token</option>
+            </select>
+          </Field>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setIsCreateOpen(false)}
+              className={secondaryButtonClass}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !name.trim()}
+              className={primaryButtonClass}
+            >
+              {submitting ? 'Creating…' : 'Generate Token'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Token Created Alert Modal */}
+      {created && (
+        <Modal isOpen={true} onClose={() => setCreated(null)} title="New API Token Generated">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+              <strong>Make sure to copy your token now.</strong> You won't be able to see it again!
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-ink-secondary mb-1">
+                Token ({created.name})
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={created.plaintext}
+                  className={`${inputClass} font-mono text-xs select-all`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void copyToken(created.plaintext)}
+                  className={primaryButtonClass}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setCreated(null)}
+                className={secondaryButtonClass}
+              >
+                I have saved this token
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-ink">API Tokens</h2>
+          <p className="text-sm text-ink-secondary">
+            Personal and service tokens for programmatic API access and CLI automation.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsCreateOpen(true)}
+          className={primaryButtonClass}
+        >
+          + Create Token
+        </button>
+      </div>
 
       {error && <ErrorNote error={error} title="Token operation failed" onRetry={() => void load()} />}
 
-      {created && (
-        <div className="rounded-md border border-line bg-elevated p-4">
-          <p className="text-sm font-medium text-ok">Token created. Copy it now - it will not be shown again.</p>
-          <code className="mt-2 block break-all rounded bg-canvas p-2 font-mono text-xs">{created.plaintext}</code>
-          <button type="button" className="mt-2 text-xs text-ink-muted underline" onClick={() => setCreated(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3 rounded-md border border-line bg-surface p-4">
-        <label className="flex flex-col text-sm">
-          Name
-          <input
-            className="mt-1 rounded border border-line bg-canvas px-2 py-1"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </label>
-        <label className="flex flex-col text-sm">
-          Kind
-          <select
-            className="mt-1 rounded border border-line bg-canvas px-2 py-1"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as 'personal' | 'service')}
-          >
-            <option value="personal">personal</option>
-            <option value="service">service</option>
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={submitting}
-          className={secondaryButtonClass}
-        >
-          {submitting ? 'Creating…' : 'Create token'}
-        </button>
-      </form>
-
+      {/* Token Table */}
       {loading ? (
         <p className="text-sm text-ink-secondary">Loading tokens…</p>
       ) : tokens.length === 0 ? (
-        <EmptyState title="No tokens">Create a token to use the CLI or API.</EmptyState>
+        <EmptyState title="No API Tokens">
+          Create an API token to integrate external CI/CD pipelines, CLI scripts, or automated workflows.
+        </EmptyState>
       ) : (
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-line text-ink-muted">
-              <th className="py-2">Name</th>
-              <th>Kind</th>
-              <th>Prefix</th>
-              <th>Last used</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tokens.map((t) => (
-              <tr key={t.id} className="border-b border-line">
-                <td className="py-2 font-medium">{t.name}</td>
-                <td>{t.kind}</td>
-                <td className="font-mono text-xs">{t.token_prefix}…</td>
-                <td>{t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '-'}</td>
-                <td>{t.revoked_at ? 'revoked' : 'active'}</td>
-                <td className="text-right">
-                  {!t.revoked_at && (
-                    <button type="button" className="text-crit underline" onClick={() => void handleRevoke(t.id)}>
-                      Revoke
-                    </button>
-                  )}
-                </td>
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-line bg-elevated/50 text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <tr>
+                <th className="px-4 py-3">Token Name</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Prefix</th>
+                <th className="px-4 py-3">Last Used</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {tokens.map((t) => (
+                <tr key={t.id} className="hover:bg-elevated/40 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-ink">{t.name}</p>
+                    <p className="text-xs text-ink-muted">Created {new Date(t.created_at).toLocaleDateString()}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-md bg-elevated px-2 py-0.5 text-xs font-medium text-ink-secondary capitalize">
+                      {t.kind}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-ink-secondary">
+                    {t.token_prefix}••••••••
+                  </td>
+                  <td className="px-4 py-3 text-xs text-ink-muted">
+                    {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : 'Never'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      state={t.revoked_at ? 'Disabled' : 'Healthy'}
+                      detail={t.revoked_at ? 'Revoked' : 'Active'}
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {!t.revoked_at && (
+                      <button
+                        type="button"
+                        className="text-xs text-danger hover:underline font-medium"
+                        onClick={() => void handleRevoke(t.id, t.name)}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -2,19 +2,54 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { userApi, ApiError } from '../api/client';
 import type { PlatformUser } from '../api/client';
-import { ErrorNote, EmptyState, secondaryButtonClass } from '../components/ui';
+import {
+  ErrorNote,
+  EmptyState,
+  StatusBadge,
+  Modal,
+  ConfirmModal,
+  Field,
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui';
+
+function UserAvatar({ name, email }: { name: string; email: string }) {
+  const initials = (name || email)
+    .split(' ')
+    .map((w) => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <div className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+      {initials}
+    </div>
+  );
+}
 
 export function UsersPage() {
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
 
+  // Invite modal state
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [accountType, setAccountType] = useState('customer');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<ApiError | Error | null>(null);
+
+  // Impersonate modal state
+  const [impersonateTarget, setImpersonateTarget] = useState<PlatformUser | null>(null);
+  const [impersonateReason, setImpersonateReason] = useState('');
+  const [impersonating, setImpersonating] = useState(false);
+  const [impersonationBanner, setImpersonationBanner] = useState<{ email: string; sessionId: string; expiresAt: string } | null>(null);
+
+  // Suspend/activate confirm state
+  const [confirmState, setConfirmState] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} });
 
   async function load() {
     setLoading(true);
@@ -43,6 +78,7 @@ export function UsersPage() {
       setEmail('');
       setDisplayName('');
       setPassword('');
+      setIsInviteOpen(false);
       void load();
     } catch (err) {
       setFormError(err instanceof Error ? err : new Error(String(err)));
@@ -51,176 +87,284 @@ export function UsersPage() {
     }
   }
 
-  async function handleSetState(user: PlatformUser, state: 'active' | 'suspended') {
-    try {
-      await userApi.setState(user.id, state);
-      void load();
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    }
+  function handleSetState(user: PlatformUser, newState: 'active' | 'suspended') {
+    setConfirmState({
+      open: true,
+      title: newState === 'suspended' ? 'Suspend User?' : 'Activate User?',
+      message: newState === 'suspended'
+        ? `Suspend "${user.display_name}"? They will lose access immediately and cannot log in until reactivated.`
+        : `Reactivate "${user.display_name}"? They will regain access to the panel.`,
+      onConfirm: async () => {
+        try {
+          await userApi.setState(user.id, newState);
+          void load();
+        } catch (err) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
+      },
+    });
   }
 
-  const [impersonationBanner, setImpersonationBanner] = useState<{ email: string; sessionId: string; expiresAt: string } | null>(null);
-
-  async function handleImpersonate(user: PlatformUser) {
-    const reason = window.prompt(`Impersonation reason / ticket ID required:`);
-    if (!reason?.trim()) return;
+  async function handleImpersonate(e: FormEvent) {
+    e.preventDefault();
+    if (!impersonateTarget || !impersonateReason.trim()) return;
+    setImpersonating(true);
     try {
-      const res = await userApi.impersonate(user.id, reason.trim());
+      const res = await userApi.impersonate(impersonateTarget.id, impersonateReason.trim());
       setImpersonationBanner({
         email: res.user.email,
         sessionId: res.session_id,
         expiresAt: res.expires_at,
       });
+      setImpersonateTarget(null);
+      setImpersonateReason('');
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setImpersonating(false);
     }
   }
 
+  function generatePassword() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    const arr = new Uint8Array(14);
+    crypto.getRandomValues(arr);
+    setPassword(Array.from(arr, (b) => chars[b % chars.length]).join(''));
+  }
+
   return (
-    <div className="p-6 space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Users</h1>
-        <p className="text-sm text-ink-secondary mt-1">Manage platform users and their roles.</p>
-      </div>
+    <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState((s) => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
 
-      {error && (
-        <ErrorNote error={error} title="Failed to load users" onRetry={() => void load()} />
-      )}
+      {/* Invite User Modal */}
+      <Modal isOpen={isInviteOpen} onClose={() => { setIsInviteOpen(false); setFormError(null); }} title="Invite New User">
+        <form onSubmit={handleCreate} className="space-y-4">
+          {formError && <ErrorNote error={formError} title="Failed to create user" />}
 
-      {/* Impersonation banner (PRD §5.4: clearly bannered) */}
+          <Field label="Email Address">
+            <input
+              type="email"
+              required
+              autoComplete="off"
+              className={inputClass}
+              placeholder="user@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Display Name">
+            <input
+              type="text"
+              required
+              className={inputClass}
+              placeholder="Full Name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Temporary Password" hint="User should change this on first login.">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                required
+                className={`${inputClass} flex-1 font-mono`}
+                placeholder="Minimum 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={generatePassword}
+                className={secondaryButtonClass}
+                title="Generate secure password"
+              >
+                Generate
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Account Type">
+            <select
+              className={inputClass}
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value)}
+            >
+              <option value="customer">Customer</option>
+              <option value="staff">Staff</option>
+            </select>
+          </Field>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => { setIsInviteOpen(false); setFormError(null); }}
+              className={secondaryButtonClass}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !email.trim() || !displayName.trim() || !password.trim()}
+              className={primaryButtonClass}
+            >
+              {submitting ? 'Creating…' : 'Create User'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Impersonate Modal */}
+      <Modal
+        isOpen={impersonateTarget !== null}
+        onClose={() => { setImpersonateTarget(null); setImpersonateReason(''); }}
+        title={`Impersonate: ${impersonateTarget?.display_name ?? ''}`}
+      >
+        <form onSubmit={handleImpersonate} className="space-y-4">
+          <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+            This creates a read-only session as the selected user. All actions are audited.
+          </div>
+          <Field label="Reason / Ticket ID" hint="Required for audit trail.">
+            <textarea
+              required
+              rows={2}
+              className={`${inputClass} resize-none`}
+              placeholder="e.g. Support ticket #1234 - investigating login issue"
+              value={impersonateReason}
+              onChange={(e) => setImpersonateReason(e.target.value)}
+            />
+          </Field>
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => { setImpersonateTarget(null); setImpersonateReason(''); }}
+              className={secondaryButtonClass}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={impersonating || !impersonateReason.trim()}
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              {impersonating ? 'Starting…' : 'Start Session'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Impersonation active banner */}
       {impersonationBanner && (
-        <div className="rounded-md border border-purple-400 bg-purple-50 dark:bg-purple-950/40 px-4 py-3 flex items-center gap-3">
-          <span className="rounded bg-purple-600 px-1.5 py-0.5 text-xs font-bold text-white uppercase">Impersonation</span>
-          <p className="text-sm text-purple-800 dark:text-purple-200 flex-1">
-            Session created for <strong>{impersonationBanner.email}</strong> - read-only, expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
-            Session ID: <code className="text-xs">{impersonationBanner.sessionId.slice(0, 8)}…</code>
+        <div className="rounded-lg border border-purple-400 bg-purple-50 px-4 py-3 flex items-center gap-3">
+          <span className="rounded bg-purple-600 px-1.5 py-0.5 text-xs font-bold text-white uppercase">Impersonation Active</span>
+          <p className="text-sm text-purple-800 flex-1">
+            Read-only session as <strong>{impersonationBanner.email}</strong> - expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
           </p>
-          <button
-            onClick={() => setImpersonationBanner(null)}
-            className="text-xs text-purple-600 hover:underline"
-          >
+          <button onClick={() => setImpersonationBanner(null)} className="text-xs text-purple-600 hover:underline">
             Dismiss
           </button>
         </div>
       )}
 
-      <section>
-        <h2 className="text-base font-medium text-ink mb-3">Invite user</h2>
-        <form onSubmit={(e) => void handleCreate(e)} className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-          <input
-            type="email"
-            placeholder="Email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="col-span-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <input
-            type="text"
-            placeholder="Display name"
-            required
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="col-span-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <input
-            type="password"
-            placeholder="Temporary password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="col-span-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <select
-            value={accountType}
-            onChange={(e) => setAccountType(e.target.value)}
-            className="col-span-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="customer">Customer</option>
-            <option value="staff">Staff</option>
-          </select>
-          <div className="col-span-2 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-            >
-              {submitting ? 'Creating…' : 'Create user'}
-            </button>
-          </div>
-          {formError && (
-            <div className="col-span-2">
-              <ErrorNote error={formError} title="Failed to create user" />
-            </div>
-          )}
-        </form>
-      </section>
+      {/* Page header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-ink">Users</h2>
+          <p className="text-sm text-ink-secondary">Manage platform users, their roles, and account states.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsInviteOpen(true)}
+          className={primaryButtonClass}
+        >
+          + Invite User
+        </button>
+      </div>
 
-      <section>
-        <h2 className="text-base font-medium text-ink mb-3">Platform users</h2>
-        {loading ? (
-          <p className="text-sm text-ink-secondary">Loading…</p>
-        ) : users.length === 0 ? (
-          <EmptyState title="No users yet">No platform users have been created.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-elevated text-ink-secondary">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium">Email</th>
-                  <th className="px-4 py-2 text-left font-medium">Name</th>
-                  <th className="px-4 py-2 text-left font-medium">Type</th>
-                  <th className="px-4 py-2 text-left font-medium">State</th>
-                  <th className="px-4 py-2 text-left font-medium">Actions</th>
+      {error && <ErrorNote error={error} title="Failed to load users" onRetry={() => void load()} />}
+
+      {/* Users table */}
+      {loading ? (
+        <p className="text-sm text-ink-secondary">Loading…</p>
+      ) : users.length === 0 ? (
+        <EmptyState title="No users yet">No platform users have been created yet.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-line bg-elevated/50 text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <tr>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {users.map((u) => (
+                <tr key={u.id} className="hover:bg-elevated/40 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={u.display_name} email={u.email} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-ink truncate">{u.display_name}</p>
+                          {u.is_owner && (
+                            <span className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
+                              Owner
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-ink-muted truncate">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-md bg-elevated px-2 py-0.5 text-xs font-medium text-ink-secondary capitalize">
+                      {u.account_type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      state={u.state === 'active' ? 'Healthy' : 'Paused'}
+                      detail={u.state}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {!u.is_owner && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
+                          className={secondaryButtonClass}
+                        >
+                          {u.state === 'active' ? 'Suspend' : 'Activate'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImpersonateTarget(u)}
+                          className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
+                          title="Impersonate as read-only session"
+                        >
+                          Impersonate
+                        </button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {users.map((u) => (
-                  <tr key={u.id} className="bg-surface hover:bg-elevated/50">
-                    <td className="px-4 py-2 text-ink">
-                      {u.email}
-                      {u.is_owner && (
-                        <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-xs text-accent font-medium">owner</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-ink">{u.display_name}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{u.account_type}</td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        u.state === 'active'
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                      }`}>
-                        {u.state}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 flex items-center gap-2">
-                      {!u.is_owner && (
-                        <>
-                          <button
-                            onClick={() => void handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
-                            className={secondaryButtonClass}
-                          >
-                            {u.state === 'active' ? 'Suspend' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => void handleImpersonate(u)}
-                            className="rounded-md border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100"
-                            title="Impersonate as read-only session"
-                          >
-                            Impersonate
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
