@@ -1,6 +1,24 @@
-import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
-import { type MailAlias, type MailDomain, type MailMailbox, type MailQueueEntry, mailApi } from '../api/client';
+import { useEffect, useCallback, useState } from 'react';
+import {
+  type OperationalState,
+  EmptyState,
+  ErrorNote,
+  StatusBadge,
+  ConfirmModal,
+  Modal,
+  Field,
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui';
+import {
+  type MailAlias,
+  type MailDomain,
+  type MailMailbox,
+  type MailQueueEntry,
+  mailApi,
+  api,
+} from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
 type Tab = 'domains' | 'mailboxes' | 'aliases' | 'queue';
@@ -24,6 +42,7 @@ function StateBadge({ state }: { state: string }) {
 function DomainsTab() {
   const projectId = useFirstProjectId();
   const [domains, setDomains] = useState<MailDomain[]>([]);
+  const [servers, setServers] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [adding, setAdding] = useState(false);
@@ -32,7 +51,20 @@ function DomainsTab() {
   const [saving, setSaving] = useState(false);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
-  const load = () => {
+  const loadServers = useCallback(async () => {
+    try {
+      const page = await api.listServers();
+      const list = page.servers.map((s) => ({ id: s.id, name: s.name }));
+      setServers(list);
+      if (list.length > 0 && !newServer) {
+        setNewServer(list[0].id);
+      }
+    } catch {
+      // Ignore: server dropdown degrades gracefully
+    }
+  }, [newServer]);
+
+  const load = useCallback(() => {
     if (!projectId) return;
     setLoading(true);
     mailApi
@@ -40,18 +72,21 @@ function DomainsTab() {
       .then((r) => setDomains(r.domains ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  };
+  }, [projectId]);
 
-  useEffect(() => { load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void loadServers();
+    load();
+  }, [load, loadServers]);
 
-  const create = async () => {
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!projectId || !newDomain.trim() || !newServer.trim()) return;
     setSaving(true);
     try {
       await mailApi.createDomain(projectId, newServer.trim(), newDomain.trim());
       setAdding(false);
       setNewDomain('');
-      setNewServer('');
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -64,7 +99,7 @@ function DomainsTab() {
     if (!projectId) return;
     setConfirmState({
       open: true,
-      message: 'Delete this mail domain? All mailboxes and aliases will be removed.',
+      message: 'Delete this mail domain? All mailboxes and aliases will be removed. This cannot be undone.',
       onConfirm: async () => {
         try {
           await mailApi.deleteDomain(projectId, id);
@@ -76,6 +111,10 @@ function DomainsTab() {
     });
   };
 
+  const getServerName = (serverId: string) => {
+    return servers.find((s) => s.id === serverId)?.name || 'Primary Node';
+  };
+
   if (!projectId || loading) return <p className="text-ink-secondary text-sm">Loading domains...</p>;
   if (error) return <ErrorNote error={error} title="Failed to load mail domains" onRetry={load} />;
 
@@ -83,87 +122,104 @@ function DomainsTab() {
     <div className="space-y-4">
       <ConfirmModal
         isOpen={confirmState.open}
-        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onClose={() => setConfirmState((s) => ({ ...s, open: false }))}
         onConfirm={confirmState.onConfirm}
         title="Are you sure?"
         message={confirmState.message}
         confirmLabel="Yes, proceed"
         danger
       />
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-ink">Mail Domains ({domains.length})</h2>
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
-        >
-          Add Domain
-        </button>
-      </div>
 
-      {adding && (
-        <div className="rounded-md border border-line bg-surface p-4 space-y-3">
-          <h3 className="text-sm font-medium text-ink">Add Mail Domain</h3>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label className="text-xs text-ink-secondary">Domain</label>
-              <input
-                type="text"
-                value={newDomain}
-                onChange={(e) => setNewDomain(e.target.value)}
-                placeholder="mail.example.com"
-                className="mt-1 w-full rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ink-secondary">Server ID</label>
-              <input
-                type="text"
+      {/* Add Domain Modal */}
+      <Modal isOpen={adding} onClose={() => setAdding(false)} title="Add Mail Domain">
+        <form onSubmit={create} className="space-y-4">
+          <Field label="Mail Domain Name" hint="Domain for receiving and sending emails.">
+            <input
+              type="text"
+              required
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              placeholder="mail.example.com"
+              className={inputClass}
+            />
+          </Field>
+
+          {servers.length > 1 && (
+            <Field label="Host Server" hint="Select which node hosts the mail service for this domain.">
+              <select
+                className={inputClass}
                 value={newServer}
                 onChange={(e) => setNewServer(e.target.value)}
-                placeholder="server UUID"
-                className="mt-1 w-full rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
+                required
+              >
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <div className="flex gap-2 justify-end pt-2">
             <button
               type="button"
-              onClick={() => void create()}
-              disabled={saving}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAdding(false); setNewDomain(''); setNewServer(''); }}
-              className="rounded-md border border-line px-3 py-1.5 text-xs text-ink-secondary hover:text-ink"
+              onClick={() => {
+                setAdding(false);
+                setNewDomain('');
+              }}
+              className={secondaryButtonClass}
             >
               Cancel
             </button>
+            <button
+              type="submit"
+              disabled={saving || !newDomain.trim()}
+              className={primaryButtonClass}
+            >
+              {saving ? 'Adding...' : 'Add Domain'}
+            </button>
           </div>
+        </form>
+      </Modal>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Mail Domains ({domains.length})</h2>
+          <p className="text-xs text-ink-muted">Configure domains to receive and route incoming and outgoing emails.</p>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={() => {
+            if (servers.length > 0 && !newServer) {
+              setNewServer(servers[0].id);
+            }
+            setAdding(true);
+          }}
+          className={primaryButtonClass}
+        >
+          + Add Domain
+        </button>
+      </div>
 
       {domains.length === 0 ? (
-        <EmptyState title="No mail domains">
-          <p className="text-sm text-ink-secondary">Add a domain to start managing mailboxes and aliases.</p>
+        <EmptyState title="No mail domains configured">
+          <p className="text-sm text-ink-secondary">Add your first mail domain to configure mailboxes and aliases.</p>
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-line rounded-md border border-line">
+        <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
           {domains.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-4 px-4 py-3">
               <div className="min-w-0">
-                <p className="truncate font-mono text-sm text-ink">{d.domain}</p>
-                <p className="text-xs text-ink-muted">{d.server_id}</p>
+                <p className="truncate font-mono text-sm font-medium text-ink">{d.domain}</p>
+                <p className="text-xs text-ink-muted">Host: {getServerName(d.server_id)}</p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <StateBadge state={d.state} />
                 <button
                   type="button"
                   onClick={() => void deleteDomain(d.id)}
-                  className="text-xs text-ink-secondary hover:text-danger"
+                  className="text-xs text-danger hover:underline"
                 >
                   Delete
                 </button>
