@@ -276,11 +276,25 @@ export function SitesPage() {
         <form onSubmit={(e) => void createProject(e)} className="rounded-md border border-line bg-surface p-4 space-y-3">
           <h3 className="text-sm font-medium text-ink">New project</h3>
           {projectCreateError && <ErrorNote error={projectCreateError} title="Create failed" />}
-          <Field label="Slug (URL-safe, immutable)">
-            <input className={inputClass} value={projectSlug} onChange={(e) => setProjectSlug(e.target.value)} required pattern="[a-z0-9-]+" />
-          </Field>
           <Field label="Name">
-            <input className={inputClass} value={projectName} onChange={(e) => setProjectName(e.target.value)} required />
+            <input
+              className={inputClass}
+              value={projectName}
+              onChange={(e) => {
+                const name = e.target.value;
+                setProjectName(name);
+                // Auto-fill slug only if user hasn't manually edited it
+                setProjectSlug((prev) => {
+                  const autoSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                  const prevAutoSlug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                  return prev === prevAutoSlug ? autoSlug : prev;
+                });
+              }}
+              required
+            />
+          </Field>
+          <Field label="Slug (URL-safe, immutable)">
+            <input className={inputClass} value={projectSlug} onChange={(e) => setProjectSlug(e.target.value)} required pattern="[a-z0-9-]+" placeholder="auto-filled from name" />
           </Field>
           <Field label="Description (optional)">
             <input className={inputClass} value={projectDesc} onChange={(e) => setProjectDesc(e.target.value)} />
@@ -422,11 +436,24 @@ function CreateSiteForm({
           <input className={inputClass} placeholder="Server ID" value={siteServerId} onChange={(e) => setSiteServerId(e.target.value)} required />
         )}
       </Field>
-      <Field label="Slug">
-        <input className={inputClass} value={siteSlug} onChange={(e) => setSiteSlug(e.target.value)} required pattern="[a-z0-9-]+" />
-      </Field>
       <Field label="Name">
-        <input className={inputClass} value={siteName} onChange={(e) => setSiteName(e.target.value)} required />
+        <input
+          className={inputClass}
+          value={siteName}
+          onChange={(e) => {
+            const name = e.target.value;
+            setSiteName(name);
+            const autoSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            const prevAutoSlug = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            if (!siteSlug || siteSlug === prevAutoSlug) {
+              setSiteSlug(autoSlug);
+            }
+          }}
+          required
+        />
+      </Field>
+      <Field label="Slug (URL-safe)">
+        <input className={inputClass} value={siteSlug} onChange={(e) => setSiteSlug(e.target.value)} required pattern="[a-z0-9-]+" placeholder="auto-filled from name" />
       </Field>
       <Field label="Mode">
         <select className={inputClass} value={siteMode} onChange={(e) => setSiteMode(e.target.value as typeof siteMode)}>
