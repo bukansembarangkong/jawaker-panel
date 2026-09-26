@@ -16,6 +16,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  Modal,
   StatusBadge,
   inputClass,
   primaryButtonClass,
@@ -262,7 +263,11 @@ export function SitesPage() {
         )}
       </div>
 
-      {showCreateSite && (
+      <Modal
+        isOpen={showCreateSite}
+        onClose={() => setShowCreateSite(false)}
+        title="Add a new website"
+      >
         <CreateSiteForm
           servers={servers}
           siteSlug={siteSlug} setSiteSlug={setSiteSlug}
@@ -277,7 +282,7 @@ export function SitesPage() {
           onSubmit={(e) => void createSite(e)}
           onCancel={() => setShowCreateSite(false)}
         />
-      )}
+      </Modal>
 
       {sites === null ? (
         <p role="status" className="text-sm text-ink-secondary">Loading sites...</p>
@@ -349,12 +354,7 @@ function CreateSiteForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <form onSubmit={onSubmit} className="rounded-md border border-line bg-surface p-5 space-y-4 max-w-xl">
-      <div>
-        <h3 className="text-base font-semibold text-ink">Add a new website</h3>
-        <p className="text-xs text-ink-muted mt-0.5">Configure domain, runtime mode, and root directory</p>
-      </div>
-
+    <form onSubmit={onSubmit} className="space-y-4">
       {siteCreateError && <ErrorNote error={siteCreateError} title="Create failed" />}
 
       {/* Only show server picker if there are multiple servers */}
