@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { notifyApi, ApiError } from '../api/client';
 import type { NotificationChannel, NotifyDelivery } from '../api/client';
-import { ErrorNote, EmptyState, secondaryButtonClass } from '../components/ui';
+import { ErrorNote, EmptyState, Modal, Field, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui';
 
 type Tab = 'channels' | 'inbox';
 
@@ -14,6 +14,7 @@ export function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
 
+  const [isAddChannelOpen, setIsAddChannelOpen] = useState(false);
   const [type, setType] = useState('in_panel');
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +63,7 @@ export function NotificationsPage() {
     try {
       await notifyApi.createChannel({ type, name: name.trim(), config: {} });
       setName('');
+      setIsAddChannelOpen(false);
       void loadChannels();
     } catch (err) {
       setFormError(err instanceof Error ? err : new Error(String(err)));
@@ -113,42 +115,58 @@ export function NotificationsPage() {
 
       {tab === 'channels' && (
         <>
-          <section>
-            <h2 className="text-base font-medium text-ink mb-3">Add channel</h2>
-            <form onSubmit={(e) => void handleCreate(e)} className="flex flex-wrap gap-3 max-w-xl">
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="in_panel">In-panel</option>
-                <option value="email">Email</option>
-                <option value="telegram">Telegram</option>
-                <option value="webhook">Webhook</option>
-                <option value="discord">Discord</option>
-                <option value="slack">Slack</option>
-              </select>
-              <input
-                type="text"
-                placeholder="Channel name"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-              >
-                {submitting ? 'Adding…' : 'Add'}
-              </button>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-medium text-ink">Channels</h2>
+            <button
+              type="button"
+              onClick={() => setIsAddChannelOpen(true)}
+              className={primaryButtonClass}
+            >
+              + Add Channel
+            </button>
+          </div>
+
+          <Modal isOpen={isAddChannelOpen} onClose={() => setIsAddChannelOpen(false)} title="Add Notification Channel">
+            <form onSubmit={(e) => void handleCreate(e)} className="space-y-4">
+              <Field label="Type">
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="in_panel">In-panel</option>
+                  <option value="email">Email</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="webhook">Webhook</option>
+                  <option value="discord">Discord</option>
+                  <option value="slack">Slack</option>
+                </select>
+              </Field>
+              <Field label="Channel Name">
+                <input
+                  type="text"
+                  placeholder="Channel name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              {formError && <div className="mt-2"><ErrorNote error={formError} title="Failed to create channel" /></div>}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsAddChannelOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className={primaryButtonClass}
+                >
+                  {submitting ? 'Adding…' : 'Add Channel'}
+                </button>
+              </div>
             </form>
-            {formError && <div className="mt-2"><ErrorNote error={formError} title="Failed to create channel" /></div>}
-          </section>
+          </Modal>
 
           <section>
-            <h2 className="text-base font-medium text-ink mb-3">Channels</h2>
             {loading ? (
               <p className="text-sm text-ink-secondary">Loading…</p>
             ) : channels.length === 0 ? (

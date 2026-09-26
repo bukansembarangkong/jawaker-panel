@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { automationApi, ApiError } from '../api/client';
 import type { AutomationRule, OutboundWebhook, WebhookDelivery } from '../api/client';
-import { ErrorNote, EmptyState, secondaryButtonClass } from '../components/ui';
+import { ErrorNote, EmptyState, Modal, Field, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui';
 
 type Tab = 'rules' | 'webhooks';
 
@@ -16,12 +16,14 @@ export function AutomationPage() {
   const [error, setError] = useState<ApiError | Error | null>(null);
 
   // New Rule State
+  const [isRuleOpen, setIsRuleOpen] = useState(false);
   const [ruleName, setRuleName] = useState('');
   const [triggerEvent, setTriggerEvent] = useState('disk.pressure');
   const [actionType, setActionType] = useState('notify');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
 
   // New Webhook State
+  const [isWebhookOpen, setIsWebhookOpen] = useState(false);
   const [webhookName, setWebhookName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export function AutomationPage() {
         condition: { field: 'threshold', value: 90 },
       });
       setRuleName('');
+      setIsRuleOpen(false);
       void loadRules();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -127,6 +130,7 @@ export function AutomationPage() {
       setCreatedSecret(res.signing_secret);
       setWebhookName('');
       setTargetUrl('');
+      setIsWebhookOpen(false);
       void loadWebhooks();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -178,52 +182,67 @@ export function AutomationPage() {
 
       {tab === 'rules' && (
         <div className="space-y-6">
-          <section className="rounded-lg border border-border bg-surface p-4">
-            <h2 className="text-base font-medium text-ink mb-3">Create Automation Rule</h2>
-            <form onSubmit={(e) => void handleCreateRule(e)} className="grid grid-cols-1 gap-3 sm:grid-cols-4 max-w-4xl">
-              <input
-                type="text"
-                placeholder="Rule name (e.g. Disk pressure alert)"
-                required
-                value={ruleName}
-                onChange={(e) => setRuleName(e.target.value)}
-                className="col-span-1 sm:col-span-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-              <select
-                value={triggerEvent}
-                onChange={(e) => setTriggerEvent(e.target.value)}
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="disk.pressure">WHEN disk.pressure (&gt;90%)</option>
-                <option value="backup.failed">WHEN backup.failed</option>
-                <option value="deployment.failed">WHEN deployment.failed</option>
-                <option value="server.offline">WHEN server.offline</option>
-                <option value="security.alert">WHEN security.alert</option>
-              </select>
-              <select
-                value={actionType}
-                onChange={(e) => setActionType(e.target.value)}
-                className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="notify">THEN notify</option>
-                <option value="incident_open">THEN open incident</option>
-                <option value="job_postpone">THEN postpone non-critical jobs</option>
-                <option value="service_restart">THEN restart service</option>
-              </select>
-              <div className="sm:col-span-4 flex justify-end">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-medium text-ink">Configured Rules</h2>
+            <button
+              type="button"
+              onClick={() => setIsRuleOpen(true)}
+              className={primaryButtonClass}
+            >
+              + Create Rule
+            </button>
+          </div>
+
+          <Modal isOpen={isRuleOpen} onClose={() => setIsRuleOpen(false)} title="Create Automation Rule">
+            <form onSubmit={(e) => void handleCreateRule(e)} className="space-y-4">
+              <Field label="Rule Name">
+                <input
+                  type="text"
+                  placeholder="Rule name (e.g. Disk pressure alert)"
+                  required
+                  value={ruleName}
+                  onChange={(e) => setRuleName(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Trigger Event">
+                <select
+                  value={triggerEvent}
+                  onChange={(e) => setTriggerEvent(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="disk.pressure">WHEN disk.pressure (&gt;90%)</option>
+                  <option value="backup.failed">WHEN backup.failed</option>
+                  <option value="deployment.failed">WHEN deployment.failed</option>
+                  <option value="server.offline">WHEN server.offline</option>
+                  <option value="security.alert">WHEN security.alert</option>
+                </select>
+              </Field>
+              <Field label="Action">
+                <select
+                  value={actionType}
+                  onChange={(e) => setActionType(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="notify">THEN notify</option>
+                  <option value="incident_open">THEN open incident</option>
+                  <option value="job_postpone">THEN postpone non-critical jobs</option>
+                  <option value="service_restart">THEN restart service</option>
+                </select>
+              </Field>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsRuleOpen(false)} className={secondaryButtonClass}>Cancel</button>
                 <button
                   type="submit"
                   disabled={ruleSubmitting}
-                  className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+                  className={primaryButtonClass}
                 >
                   {ruleSubmitting ? 'Creating…' : 'Create Rule'}
                 </button>
               </div>
             </form>
-          </section>
-
+          </Modal>
           <section>
-            <h2 className="text-base font-medium text-ink mb-3">Configured Rules</h2>
             {loading ? (
               <p className="text-sm text-ink-secondary">Loading…</p>
             ) : rules.length === 0 ? (
@@ -272,51 +291,67 @@ export function AutomationPage() {
 
       {tab === 'webhooks' && (
         <div className="space-y-6">
-          <section className="rounded-lg border border-border bg-surface p-4">
-            <h2 className="text-base font-medium text-ink mb-3">Register Outbound Webhook</h2>
-            <form onSubmit={(e) => void handleCreateWebhook(e)} className="flex flex-wrap gap-3 max-w-3xl">
-              <input
-                type="text"
-                placeholder="Webhook name"
-                required
-                value={webhookName}
-                onChange={(e) => setWebhookName(e.target.value)}
-                className="flex-1 min-w-[200px] rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-              <input
-                type="url"
-                placeholder="https://api.example.com/webhooks/receiver"
-                required
-                value={targetUrl}
-                onChange={(e) => setTargetUrl(e.target.value)}
-                className="flex-[2] min-w-[280px] rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-              <button
-                type="submit"
-                disabled={webhookSubmitting}
-                className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-              >
-                {webhookSubmitting ? 'Registering…' : 'Register Webhook'}
-              </button>
-            </form>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-medium text-ink">Registered Endpoints</h2>
+            <button
+              type="button"
+              onClick={() => setIsWebhookOpen(true)}
+              className={primaryButtonClass}
+            >
+              + Register Webhook
+            </button>
+          </div>
 
-            {createdSecret && (
-              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/50 dark:bg-yellow-950/20">
-                <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-400">
-                  Save this HMAC-SHA256 Signing Secret (shown once):
-                </p>
-                <p className="mt-1 font-mono text-xs text-yellow-900 dark:text-yellow-300 break-all select-all">
-                  {createdSecret}
-                </p>
-                <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-500">
-                  Payloads are signed via HMAC-SHA256 in the <code className="font-mono">X-Jawaker-Signature</code> HTTP header.
-                </p>
+          <Modal isOpen={isWebhookOpen} onClose={() => setIsWebhookOpen(false)} title="Register Outbound Webhook">
+            <form onSubmit={(e) => void handleCreateWebhook(e)} className="space-y-4">
+              <Field label="Webhook Name">
+                <input
+                  type="text"
+                  placeholder="Webhook name"
+                  required
+                  value={webhookName}
+                  onChange={(e) => setWebhookName(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Target URL">
+                <input
+                  type="url"
+                  placeholder="https://api.example.com/webhooks/receiver"
+                  required
+                  value={targetUrl}
+                  onChange={(e) => setTargetUrl(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsWebhookOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={webhookSubmitting}
+                  className={primaryButtonClass}
+                >
+                  {webhookSubmitting ? 'Registering…' : 'Register Webhook'}
+                </button>
               </div>
-            )}
-          </section>
+            </form>
+          </Modal>
+
+          {createdSecret && (
+            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/50 dark:bg-yellow-950/20">
+              <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-400">
+                Save this HMAC-SHA256 Signing Secret (shown once):
+              </p>
+              <p className="mt-1 font-mono text-xs text-yellow-900 dark:text-yellow-300 break-all select-all">
+                {createdSecret}
+              </p>
+              <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-500">
+                Payloads are signed via HMAC-SHA256 in the <code className="font-mono">X-Jawaker-Signature</code> HTTP header.
+              </p>
+            </div>
+          )}
 
           <section>
-            <h2 className="text-base font-medium text-ink mb-3">Registered Endpoints</h2>
             {loading ? (
               <p className="text-sm text-ink-secondary">Loading…</p>
             ) : webhooks.length === 0 ? (

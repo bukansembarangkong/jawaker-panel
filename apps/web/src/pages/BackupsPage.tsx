@@ -15,6 +15,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  Modal,
   ConfirmModal,
   inputClass,
   primaryButtonClass,
@@ -319,10 +320,10 @@ export function BackupsPage() {
         {selectedProject && tab === 'plans' && (
           <button
             type="button"
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => setShowCreateForm(true)}
             className={primaryButtonClass}
           >
-            {showCreateForm ? 'Cancel' : 'New Plan'}
+            + New Plan
           </button>
         )}
       </div>
@@ -390,12 +391,15 @@ export function BackupsPage() {
 
           {tab === 'plans' && (
             <div className="space-y-4">
-              {showCreateForm && (
+              <Modal
+                isOpen={showCreateForm}
+                onClose={() => setShowCreateForm(false)}
+                title="New Backup Plan"
+              >
                 <form
                   onSubmit={handleCreatePlan}
-                  className="space-y-4 rounded-lg border border-line bg-surface p-4"
+                  className="space-y-4"
                 >
-                  <h3 className="text-sm font-semibold text-ink">New Backup Plan</h3>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Server">
                       <select
@@ -499,7 +503,7 @@ export function BackupsPage() {
                       />
                     </Field>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => setShowCreateForm(false)}
@@ -512,7 +516,7 @@ export function BackupsPage() {
                     </button>
                   </div>
                 </form>
-              )}
+              </Modal>
 
               {loading ? (
                 <p className="text-xs text-ink-muted">Loading plans…</p>

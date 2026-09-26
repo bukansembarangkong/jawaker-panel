@@ -11,9 +11,12 @@ import {
   EmptyState,
   ErrorNote,
   StatusBadge,
+  Modal,
   ConfirmModal,
   primaryButtonClass,
+  secondaryButtonClass,
   inputClass,
+  Field,
 } from '../components/ui';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
@@ -33,6 +36,11 @@ export function DNSTLSPage() {
 
   // Forms & Error
   const [error, setError] = useState<Error | null>(null);
+
+  // Modal open states
+  const [isProviderOpen, setIsProviderOpen] = useState(false);
+  const [isZoneOpen, setIsZoneOpen] = useState(false);
+  const [isRecordOpen, setIsRecordOpen] = useState(false);
 
   // New Provider Form
   const [providerName, setProviderName] = useState('');
@@ -119,6 +127,7 @@ export function DNSTLSPage() {
       });
       setProviderName('');
       setProviderToken('');
+      setIsProviderOpen(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -133,6 +142,7 @@ export function DNSTLSPage() {
         provider_id: zoneProviderId,
       });
       setZoneName('');
+      setIsZoneOpen(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -151,6 +161,7 @@ export function DNSTLSPage() {
       });
       setRecName('');
       setRecContent('');
+      setIsRecordOpen(false);
       const rRes = await dnsTlsApi.listRecords(projectId!, selectedZone);
       setRecords(rRes.records || []);
     } catch (err) {
@@ -239,43 +250,59 @@ export function DNSTLSPage() {
         <div className="space-y-8">
           {/* Providers Section */}
           <section className="space-y-4">
-            <h3 className="text-base font-semibold text-ink">DNS Providers</h3>
-            <form onSubmit={handleCreateProvider} className="flex flex-wrap items-end gap-3 p-4 bg-surface rounded-lg border border-line">
-              <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Provider Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Cloudflare Prod"
-                  className={inputClass}
-                  value={providerName}
-                  onChange={(e) => setProviderName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Type</label>
-                <select
-                  className={inputClass}
-                  value={providerType}
-                  onChange={(e) => setProviderType(e.target.value)}
-                >
-                  <option value="cloudflare">Cloudflare</option>
-                  <option value="route53">AWS Route53</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">API Token (sealed)</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="API Secret Token"
-                  className={inputClass}
-                  value={providerToken}
-                  onChange={(e) => setProviderToken(e.target.value)}
-                />
-              </div>
-              <button type="submit" className={primaryButtonClass}>Add Provider</button>
-            </form>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-ink">DNS Providers</h3>
+              <button
+                type="button"
+                onClick={() => setIsProviderOpen(true)}
+                className={primaryButtonClass}
+              >
+                + Add Provider
+              </button>
+            </div>
+
+            <Modal
+              isOpen={isProviderOpen}
+              onClose={() => setIsProviderOpen(false)}
+              title="Add DNS Provider"
+            >
+              <form onSubmit={handleCreateProvider} className="space-y-4">
+                <Field label="Provider Name">
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Cloudflare Prod"
+                    className={inputClass}
+                    value={providerName}
+                    onChange={(e) => setProviderName(e.target.value)}
+                  />
+                </Field>
+                <Field label="Type">
+                  <select
+                    className={inputClass}
+                    value={providerType}
+                    onChange={(e) => setProviderType(e.target.value)}
+                  >
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="route53">AWS Route53</option>
+                  </select>
+                </Field>
+                <Field label="API Token (sealed)">
+                  <input
+                    type="password"
+                    required
+                    placeholder="API Secret Token"
+                    className={inputClass}
+                    value={providerToken}
+                    onChange={(e) => setProviderToken(e.target.value)}
+                  />
+                </Field>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setIsProviderOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                  <button type="submit" className={primaryButtonClass}>Add Provider</button>
+                </div>
+              </form>
+            </Modal>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {providers.map((p) => (
@@ -314,35 +341,52 @@ export function DNSTLSPage() {
 
           {/* Zones & Records Section */}
           <section className="space-y-4">
-            <h3 className="text-base font-semibold text-ink">DNS Zones</h3>
-            <form onSubmit={handleCreateZone} className="flex flex-wrap items-end gap-3 p-4 bg-surface rounded-lg border border-line">
-              <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Zone Domain</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="example.com"
-                  className={inputClass}
-                  value={zoneName}
-                  onChange={(e) => setZoneName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Assigned Provider</label>
-                <select
-                  required
-                  className={inputClass}
-                  value={zoneProviderId}
-                  onChange={(e) => setZoneProviderId(e.target.value)}
-                >
-                  <option value="">Select Provider...</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.provider})</option>
-                  ))}
-                </select>
-              </div>
-              <button type="submit" className={primaryButtonClass}>Create Zone</button>
-            </form>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-ink">DNS Zones</h3>
+              <button
+                type="button"
+                onClick={() => setIsZoneOpen(true)}
+                className={primaryButtonClass}
+              >
+                + Create Zone
+              </button>
+            </div>
+
+            <Modal
+              isOpen={isZoneOpen}
+              onClose={() => setIsZoneOpen(false)}
+              title="Create DNS Zone"
+            >
+              <form onSubmit={handleCreateZone} className="space-y-4">
+                <Field label="Zone Domain">
+                  <input
+                    type="text"
+                    required
+                    placeholder="example.com"
+                    className={inputClass}
+                    value={zoneName}
+                    onChange={(e) => setZoneName(e.target.value)}
+                  />
+                </Field>
+                <Field label="Assigned Provider">
+                  <select
+                    required
+                    className={inputClass}
+                    value={zoneProviderId}
+                    onChange={(e) => setZoneProviderId(e.target.value)}
+                  >
+                    <option value="">Select Provider...</option>
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.provider})</option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setIsZoneOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                  <button type="submit" className={primaryButtonClass}>Create Zone</button>
+                </div>
+              </form>
+            </Modal>
 
             {zones.length === 0 ? (
               <EmptyState title="No DNS Zones">
@@ -369,54 +413,70 @@ export function DNSTLSPage() {
 
                 {selectedZone && (
                   <div className="space-y-4">
-                    <form onSubmit={handleCreateRecord} className="flex flex-wrap items-end gap-3 p-4 bg-surface rounded-lg border border-line">
-                      <div>
-                        <label className="block text-xs font-medium text-ink-secondary mb-1">Record Name</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="sub or @"
-                          className={inputClass}
-                          value={recName}
-                          onChange={(e) => setRecName(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-ink-secondary mb-1">Type</label>
-                        <select
-                          className={inputClass}
-                          value={recType}
-                          onChange={(e) => setRecType(e.target.value)}
-                        >
-                          <option value="A">A</option>
-                          <option value="AAAA">AAAA</option>
-                          <option value="CNAME">CNAME</option>
-                          <option value="TXT">TXT</option>
-                          <option value="MX">MX</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-ink-secondary mb-1">Content</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Target IP or text"
-                          className={inputClass}
-                          value={recContent}
-                          onChange={(e) => setRecContent(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-ink-secondary mb-1">TTL</label>
-                        <input
-                          type="number"
-                          className={`${inputClass} w-24`}
-                          value={recTTL}
-                          onChange={(e) => setRecTTL(Number(e.target.value))}
-                        />
-                      </div>
-                      <button type="submit" className={primaryButtonClass}>Add Record</button>
-                    </form>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-ink">Zone Records</h4>
+                      <button
+                        type="button"
+                        onClick={() => setIsRecordOpen(true)}
+                        className={primaryButtonClass}
+                      >
+                        + Add Record
+                      </button>
+                    </div>
+
+                    <Modal
+                      isOpen={isRecordOpen}
+                      onClose={() => setIsRecordOpen(false)}
+                      title="Add DNS Record"
+                    >
+                      <form onSubmit={handleCreateRecord} className="space-y-4">
+                        <Field label="Record Name">
+                          <input
+                            type="text"
+                            required
+                            placeholder="sub or @"
+                            className={inputClass}
+                            value={recName}
+                            onChange={(e) => setRecName(e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Type">
+                          <select
+                            className={inputClass}
+                            value={recType}
+                            onChange={(e) => setRecType(e.target.value)}
+                          >
+                            <option value="A">A</option>
+                            <option value="AAAA">AAAA</option>
+                            <option value="CNAME">CNAME</option>
+                            <option value="TXT">TXT</option>
+                            <option value="MX">MX</option>
+                          </select>
+                        </Field>
+                        <Field label="Content">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Target IP or text"
+                            className={inputClass}
+                            value={recContent}
+                            onChange={(e) => setRecContent(e.target.value)}
+                          />
+                        </Field>
+                        <Field label="TTL">
+                          <input
+                            type="number"
+                            className={inputClass}
+                            value={recTTL}
+                            onChange={(e) => setRecTTL(Number(e.target.value))}
+                          />
+                        </Field>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setIsRecordOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                          <button type="submit" className={primaryButtonClass}>Add Record</button>
+                        </div>
+                      </form>
+                    </Modal>
 
                     <div className="overflow-x-auto border border-line rounded-lg">
                       <table className="w-full text-left text-sm">

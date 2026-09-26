@@ -18,6 +18,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  Modal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -423,7 +424,7 @@ export function SecurityCenterPage() {
       {tab === 'bans' && (
         <div className="space-y-4">
           <div className="flex gap-2">
-            <button type="button" className={secondaryButtonClass}
+            <button type="button" className={primaryButtonClass}
               onClick={withStepUp(async () => setShowCreateBan(true))}>+ Ban IP</button>
             <button type="button" className={secondaryButtonClass}
               onClick={() => { void loadLiveBans(); }}>
@@ -431,10 +432,13 @@ export function SecurityCenterPage() {
             </button>
           </div>
 
-          {showCreateBan && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreateBan}
+            onClose={() => setShowCreateBan(false)}
+            title="Ban IP Address"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreateBan(); }}>
-              <h3 className="text-sm font-medium">Ban IP</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="IP address">
                   <input className={inputClass} required value={newBan.ip}
@@ -446,17 +450,19 @@ export function SecurityCenterPage() {
                     {['manual', 'fail2ban', 'crowdsec'].map((s) => <option key={s}>{s}</option>)}
                   </select>
                 </Field>
-                <Field label="Reason">
-                  <input className={inputClass} value={newBan.reason}
-                    onChange={(e) => setNewBan({ ...newBan, reason: e.target.value })} />
-                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Reason">
+                    <input className={inputClass} value={newBan.reason}
+                      onChange={(e) => setNewBan({ ...newBan, reason: e.target.value })} />
+                  </Field>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Ban</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass} onClick={() => setShowCreateBan(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Ban</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {liveBans != null && (
             <div className="space-y-2">
@@ -524,13 +530,16 @@ export function SecurityCenterPage() {
       {/* ─── WAF Rules ─── */}
       {tab === 'waf' && (
         <div className="space-y-4">
-          <button type="button" className={secondaryButtonClass}
+          <button type="button" className={primaryButtonClass}
             onClick={withStepUp(async () => setShowCreateWAF(true))}>+ Rule</button>
 
-          {showCreateWAF && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreateWAF}
+            onClose={() => setShowCreateWAF(false)}
+            title="New WAF Rule"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreateWAF(); }}>
-              <h3 className="text-sm font-medium">New WAF Rule</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Kind">
                   <select className={inputClass} value={newWAF.kind}
@@ -561,12 +570,12 @@ export function SecurityCenterPage() {
                     onChange={(e) => setNewWAF({ ...newWAF, enabled: e.target.checked })} />
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass} onClick={() => setShowCreateWAF(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Create</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {wafRules.length === 0 && !loading ? (
             <EmptyState title="No WAF rules configured."><span /></EmptyState>

@@ -15,6 +15,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  Modal,
   ConfirmModal,
   inputClass,
   primaryButtonClass,
@@ -99,6 +100,8 @@ export function DatabasesPage() {
   } | null>(null);
   const [rescueMsg, setRescueMsg] = useState<string | null>(null);
   const [rescueLoading, setRescueLoading] = useState(false);
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadProjects = useCallback(async () => {
@@ -237,6 +240,7 @@ export function DatabasesPage() {
     try {
       await api.createDatabaseUser(selectedProject.id, selectedDb.id, newUser);
       setNewUser({ username: '', privileges: ['ALL'] });
+      setIsAddUserOpen(false);
       await loadUsers(selectedProject.id, selectedDb.id);
     } catch (err: unknown) {
       setError(toError(err));
@@ -296,6 +300,7 @@ export function DatabasesPage() {
         const res = await api.restoreDatabase(selectedProject.id, selectedDb.id, restorePath.trim());
         setRestoreJobMsg(`Restore job queued (Job ID: ${res.job_id}). Recoverability will be verified automatically.`);
         setRestorePath('');
+        setIsRestoreOpen(false);
       } catch (err: unknown) {
         if (isStepUpRequired(err)) {
           onElevationRequired(run);
@@ -376,10 +381,10 @@ export function DatabasesPage() {
         {selectedProject && !selectedDb && (
           <button
             type="button"
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => setShowCreateForm(true)}
             className={primaryButtonClass}
           >
-            {showCreateForm ? 'Cancel' : 'New Database'}
+            + New Database
           </button>
         )}
       </div>
@@ -543,49 +548,73 @@ export function DatabasesPage() {
           {/* Users Tab */}
           {tab === 'users' && (
             <div className="space-y-6">
-              {/* Create User */}
-              <form onSubmit={handleCreateUser} className="rounded-lg border border-line bg-surface p-4 space-y-3">
-                <h4 className="text-sm font-semibold text-ink">Add Database User</h4>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Username">
-                    <input
-                      type="text"
-                      required
-                      placeholder="app_user"
-                      value={newUser.username}
-                      onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="Privileges">
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {ALL_PRIVILEGES.map((p) => (
-                        <label key={p} className="flex items-center gap-1 text-xs text-ink">
-                          <input
-                            type="checkbox"
-                            checked={newUser.privileges.includes(p)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewUser({ ...newUser, privileges: [...newUser.privileges, p] });
-                              } else {
-                                setNewUser({
-                                  ...newUser,
-                                  privileges: newUser.privileges.filter((x) => x !== p),
-                                });
-                              }
-                            }}
-                            className="rounded border-line"
-                          />
-                          {p}
-                        </label>
-                      ))}
-                    </div>
-                  </Field>
-                </div>
-                <button type="submit" className={primaryButtonClass}>
-                  Create User
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-ink">Database Users</h4>
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserOpen(true)}
+                  className={primaryButtonClass}
+                >
+                  + Add User
                 </button>
-              </form>
+              </div>
+
+              <Modal
+                isOpen={isAddUserOpen}
+                onClose={() => setIsAddUserOpen(false)}
+                title="Add Database User"
+              >
+                <form onSubmit={handleCreateUser} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    <Field label="Username">
+                      <input
+                        type="text"
+                        required
+                        placeholder="app_user"
+                        value={newUser.username}
+                        onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="Privileges">
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {ALL_PRIVILEGES.map((p) => (
+                          <label key={p} className="flex items-center gap-1 text-xs text-ink">
+                            <input
+                              type="checkbox"
+                              checked={newUser.privileges.includes(p)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewUser({ ...newUser, privileges: [...newUser.privileges, p] });
+                                } else {
+                                  setNewUser({
+                                    ...newUser,
+                                    privileges: newUser.privileges.filter((x) => x !== p),
+                                  });
+                                }
+                              }}
+                              className="rounded border-line"
+                            />
+                            {p}
+                          </label>
+                        ))}
+                      </div>
+                    </Field>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUserOpen(false)}
+                      className={secondaryButtonClass}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className={primaryButtonClass}>
+                      Create User
+                    </button>
+                  </div>
+                </form>
+              </Modal>
 
               {/* User List */}
               <div className="space-y-3">
@@ -644,26 +673,58 @@ export function DatabasesPage() {
               </div>
 
               {/* Restore */}
-              <form onSubmit={handleRestore} className="rounded-lg border border-line bg-surface p-4 space-y-3">
-                <h4 className="text-sm font-semibold text-ink">Restore from Dump</h4>
-                <p className="text-xs text-ink-muted">
-                  Restores database content from a validated node dump path. The restore worker executes a live recoverability check via metrics before completing (Gate 2).
-                </p>
-                <Field label="Dump File Path on Node">
-                  <input
-                    type="text"
-                    required
-                    placeholder="/var/lib/jawaker/db-dumps/..."
-                    value={restorePath}
-                    onChange={(e) => setRestorePath(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-                <button type="submit" className={secondaryButtonClass}>
-                  Queue Restore Job
-                </button>
+              <div className="rounded-lg border border-line bg-surface p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-ink">Restore from Dump</h4>
+                    <p className="text-xs text-ink-muted mt-1">
+                      Restores database content from a validated node dump path. The restore worker executes a live recoverability check via metrics before completing (Gate 2).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsRestoreOpen(true)}
+                    className={secondaryButtonClass}
+                  >
+                    + Restore Dump
+                  </button>
+                </div>
                 {restoreJobMsg && <p className="text-xs text-ink-secondary">{restoreJobMsg}</p>}
-              </form>
+              </div>
+
+              <Modal
+                isOpen={isRestoreOpen}
+                onClose={() => setIsRestoreOpen(false)}
+                title="Restore Database from Dump"
+              >
+                <form onSubmit={handleRestore} className="space-y-4">
+                  <p className="text-xs text-ink-muted">
+                    Restores database content from a validated node dump path. The restore worker executes a live recoverability check via metrics before completing.
+                  </p>
+                  <Field label="Dump File Path on Node">
+                    <input
+                      type="text"
+                      required
+                      placeholder="/var/lib/jawaker/db-dumps/..."
+                      value={restorePath}
+                      onChange={(e) => setRestorePath(e.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsRestoreOpen(false)}
+                      className={secondaryButtonClass}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className={primaryButtonClass}>
+                      Queue Restore Job
+                    </button>
+                  </div>
+                </form>
+              </Modal>
 
               {/* Database Rescue Mode (PRD §12.5) */}
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
@@ -896,12 +957,15 @@ export function DatabasesPage() {
       ) : (
         /* Database List */
         <div className="space-y-4">
-          {showCreateForm && (
+          <Modal
+            isOpen={showCreateForm}
+            onClose={() => setShowCreateForm(false)}
+            title="Provision Managed Database"
+          >
             <form
               onSubmit={handleCreateDb}
-              className="rounded-lg border border-line bg-surface p-4 space-y-4"
+              className="space-y-4"
             >
-              <h3 className="text-sm font-semibold text-ink">Provision Managed Database</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Server">
                   <select
@@ -979,7 +1043,7 @@ export function DatabasesPage() {
                   />
                 </Field>
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
@@ -992,7 +1056,7 @@ export function DatabasesPage() {
                 </button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {loading ? (
             <p className="text-xs text-ink-muted">Loading databases…</p>

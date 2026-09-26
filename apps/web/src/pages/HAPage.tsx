@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge, ConfirmModal } from '../components/ui';
+import { type OperationalState, EmptyState, ErrorNote, StatusBadge, Modal, ConfirmModal } from '../components/ui';
 import { type HADrill, type HAEvent, type HAMember, type HAPool, haApi } from '../api/client';
 import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
@@ -218,18 +218,28 @@ function PoolsTab() {
           onClick={() => setAdding(true)}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
         >
-          Create Pool
+          + Create Pool
         </button>
       </div>
 
-      {adding && (
-        <div className="rounded-md border border-line bg-surface p-4 space-y-3">
-          <h3 className="text-sm font-medium text-ink">Create Server Pool</h3>
-          <div className="grid gap-2 sm:grid-cols-2">
+      <Modal
+        isOpen={adding}
+        onClose={() => { setAdding(false); setNewName(''); }}
+        title="Create Server Pool"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xs text-ink-secondary">Name</label>
               <input
                 type="text"
+                required
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="pool-name"
@@ -249,15 +259,7 @@ function PoolsTab() {
               </select>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => void create()}
-              disabled={saving}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-            >
-              {saving ? 'Creating…' : 'Create'}
-            </button>
+          <div className="flex gap-2 justify-end pt-2">
             <button
               type="button"
               onClick={() => { setAdding(false); setNewName(''); }}
@@ -265,9 +267,16 @@ function PoolsTab() {
             >
               Cancel
             </button>
+            <button
+              type="submit"
+              disabled={saving || !newName.trim()}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+            >
+              {saving ? 'Creating…' : 'Create'}
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {pools.length === 0 ? (
         <EmptyState title="No server pools">

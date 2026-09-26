@@ -16,6 +16,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  Modal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -307,10 +308,13 @@ export function NetworkPage() {
             <pre className="overflow-auto rounded-md bg-elevated p-3 text-xs text-ink">{liveChains}</pre>
           )}
 
-          {showCreateRule && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreateRule}
+            onClose={() => setShowCreateRule(false)}
+            title="New Firewall Rule"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreateRule(); }}>
-              <h3 className="text-sm font-medium">New Firewall Rule</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Chain">
                   <select className={inputClass} value={newRule.chain}
@@ -359,13 +363,13 @@ export function NetworkPage() {
                     onChange={(e) => setNewRule({ ...newRule, enabled: e.target.checked })} />
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass}
                   onClick={() => setShowCreateRule(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Create</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {rules.length === 0 && !loading ? (
             <EmptyState title="No firewall rules defined."><span /></EmptyState>
@@ -411,13 +415,16 @@ export function NetworkPage() {
       {/* ─── Port Forwards Tab ─── */}
       {tab === 'forwards' && (
         <div className="space-y-4">
-          <button type="button" className={secondaryButtonClass}
+          <button type="button" className={primaryButtonClass}
             onClick={() => setShowCreateForward(true)}>+ Forward</button>
 
-          {showCreateForward && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreateForward}
+            onClose={() => setShowCreateForward(false)}
+            title="New Port Forward"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreateForward(); }}>
-              <h3 className="text-sm font-medium">New Port Forward</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Protocol">
                   <select className={inputClass} value={newFwd.protocol}
@@ -448,13 +455,13 @@ export function NetworkPage() {
                     onChange={(e) => setNewFwd({ ...newFwd, description: e.target.value })} />
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass}
                   onClick={() => setShowCreateForward(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Create</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {forwards.length === 0 && !loading ? (
             <EmptyState title="No port forwards configured."><span /></EmptyState>
@@ -496,13 +503,16 @@ export function NetworkPage() {
       {/* ─── Zones Tab ─── */}
       {tab === 'zones' && (
         <div className="space-y-4">
-          <button type="button" className={secondaryButtonClass}
+          <button type="button" className={primaryButtonClass}
             onClick={() => setShowCreateZone(true)}>+ Zone</button>
 
-          {showCreateZone && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreateZone}
+            onClose={() => setShowCreateZone(false)}
+            title="New Network Zone"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreateZone(); }}>
-              <h3 className="text-sm font-medium">New Network Zone</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Name">
                   <input className={inputClass} required value={newZone.name}
@@ -519,13 +529,13 @@ export function NetworkPage() {
                     onChange={(e) => setNewZone({ ...newZone, interfaces: e.target.value })} />
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass}
                   onClick={() => setShowCreateZone(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Create</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {zones.length === 0 && !loading ? (
             <EmptyState title="No network zones defined."><span /></EmptyState>
@@ -565,13 +575,16 @@ export function NetworkPage() {
       {/* ─── WireGuard Tab ─── */}
       {tab === 'wireguard' && (
         <div className="space-y-4">
-          <button type="button" className={secondaryButtonClass}
+          <button type="button" className={primaryButtonClass}
             onClick={() => setShowCreatePeer(true)}>+ Peer</button>
 
-          {showCreatePeer && (
-            <form className="space-y-3 rounded-md border border-line p-4"
+          <Modal
+            isOpen={showCreatePeer}
+            onClose={() => setShowCreatePeer(false)}
+            title="New WireGuard Peer"
+          >
+            <form className="space-y-4"
               onSubmit={(e) => { e.preventDefault(); void handleCreatePeer(); }}>
-              <h3 className="text-sm font-medium">New WireGuard Peer</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Public key">
                   <input className={inputClass} required value={newPeer.public_key}
@@ -598,13 +611,13 @@ export function NetworkPage() {
                     onChange={(e) => setNewPeer({ ...newPeer, enabled: e.target.checked })} />
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className={secondaryButtonClass}
                   onClick={() => setShowCreatePeer(false)}>Cancel</button>
+                <button type="submit" className={primaryButtonClass}>Create</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           {peers.length === 0 && !loading ? (
             <EmptyState title="No WireGuard peers configured."><span /></EmptyState>

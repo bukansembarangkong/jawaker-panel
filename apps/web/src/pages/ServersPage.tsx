@@ -16,6 +16,7 @@ import {
   Field,
   MetricCard,
   StatusBadge,
+  Modal,
   ConfirmModal,
   inputClass,
   primaryButtonClass,
@@ -101,6 +102,7 @@ export function ServersPage() {
   const [issued, setIssued] = useState<IssuedEnrollmentToken | null>(null);
   const [nodeName, setNodeName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [isEnrollOpen, setIsEnrollOpen] = useState(false);
 
   // The pending action that a step-up refusal interrupted. Re-running it is the
   // caller's decision, not an automatic retry: the operator has just typed a
@@ -168,6 +170,7 @@ export function ServersPage() {
         const result = await api.createEnrollmentToken(nodeName);
         setIssued(result);
         setNodeName('');
+        setIsEnrollOpen(false);
         await loadTokens();
       },
       () => void createToken(),
@@ -243,9 +246,18 @@ export function ServersPage() {
       {error && <ErrorNote error={error} title="Server request failed" onRetry={() => void loadServers()} />}
 
       <section aria-labelledby="fleet-heading">
-        <h2 id="fleet-heading" className="text-base font-semibold text-ink">
-          Fleet
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 id="fleet-heading" className="text-base font-semibold text-ink">
+            Fleet
+          </h2>
+          <button
+            type="button"
+            onClick={() => setIsEnrollOpen(true)}
+            className={primaryButtonClass}
+          >
+            + Enroll Node
+          </button>
+        </div>
         {servers === null ? (
           <p role="status" className="mt-2 text-sm text-ink-secondary">
             Loading servers…
@@ -348,16 +360,17 @@ export function ServersPage() {
         )}
       </section>
 
-      <section aria-labelledby="enroll-heading" className="rounded-lg border border-line bg-surface p-5">
-        <h2 id="enroll-heading" className="text-base font-semibold text-ink">
-          Enroll a node
-        </h2>
-        <p className="mt-1 text-sm text-ink-secondary">
+      <Modal
+        isOpen={isEnrollOpen}
+        onClose={() => setIsEnrollOpen(false)}
+        title="Enroll New Node"
+      >
+        <p className="text-sm text-ink-secondary mb-4">
           A token is valid once, expires quickly, and is shown a single time. Minting one requires
           re-authentication, because it adds a machine to the fleet.
         </p>
         <form
-          className="mt-4 space-y-4"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             void createToken();
@@ -375,13 +388,30 @@ export function ServersPage() {
               required
             />
           </Field>
-          <button type="submit" disabled={busy || !nodeName} className={primaryButtonClass}>
-            {busy ? 'Working…' : 'Mint a one-time token'}
-          </button>
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setIsEnrollOpen(false)}
+              className={secondaryButtonClass}
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={busy || !nodeName} className={primaryButtonClass}>
+              {busy ? 'Working…' : 'Mint a one-time token'}
+            </button>
+          </div>
         </form>
-      </section>
+      </Modal>
 
-      {issued && <IssuedTokenPanel issued={issued} onDismiss={() => setIssued(null)} />}
+      {issued && (
+        <Modal
+          isOpen={issued !== null}
+          onClose={() => setIssued(null)}
+          title={`Enrollment Token Ready for ${issued.node_name}`}
+        >
+          <IssuedTokenPanel issued={issued} onDismiss={() => setIssued(null)} />
+        </Modal>
+      )}
 
       <section aria-labelledby="token-list-heading">
         <h2 id="token-list-heading" className="text-base font-semibold text-ink">
@@ -479,14 +509,8 @@ export function IssuedTokenPanel({
   }
 
   return (
-    <section
-      aria-labelledby="issued-heading"
-      className="rounded-lg border border-warn/50 bg-surface p-5"
-    >
-      <h2 id="issued-heading" className="text-base font-semibold text-ink">
-        Enrollment token for {issued.node_name}
-      </h2>
-      <p className="mt-1 text-sm text-warn">{issued.notice}</p>
+    <div className="space-y-3">
+      <p className="text-sm text-warn">{issued.notice}</p>
       <p className="mt-2 text-sm text-ink-secondary">
         Run this on the machine. The token works once and expires{' '}
         {formatTimestamp(issued.expires_at)}.
@@ -494,7 +518,7 @@ export function IssuedTokenPanel({
       <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-xs text-ink">
         {command}
       </pre>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
         <button type="button" onClick={() => void copy()} className={secondaryButtonClass}>
           {copied ? 'Copied' : 'Copy command'}
         </button>
@@ -502,6 +526,6 @@ export function IssuedTokenPanel({
           I have saved this token
         </button>
       </div>
-    </section>
+    </div>
   );
 }

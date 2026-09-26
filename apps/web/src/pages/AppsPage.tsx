@@ -19,6 +19,7 @@ import {
   ErrorNote,
   Field,
   StatusBadge,
+  Modal,
   ConfirmModal,
   inputClass,
   primaryButtonClass,
@@ -176,7 +177,11 @@ export function AppsPage() {
             </button>
           </div>
 
-          {showCreateForm && (
+          <Modal
+            isOpen={showCreateForm}
+            onClose={() => setShowCreateForm(false)}
+            title="New Application"
+          >
             <CreateAppForm
               project={selectedProject}
               onCreated={() => {
@@ -186,7 +191,7 @@ export function AppsPage() {
               onCancel={() => setShowCreateForm(false)}
               onElevationRequired={onElevationRequired}
             />
-          )}
+          </Modal>
 
           {loading && <p className="text-ink-secondary text-sm">Loading…</p>}
           {!loading && apps.length === 0 && (
@@ -273,8 +278,7 @@ function CreateAppForm({ project, onCreated, onCancel, onElevationRequired }: Cr
   };
 
   return (
-    <div className="mb-4 rounded-lg border border-line bg-surface p-4 space-y-3">
-      <h3 className="font-medium text-ink">New Application</h3>
+    <div className="space-y-4">
       {error && <ErrorNote error={error} />}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Slug">
@@ -765,9 +769,14 @@ function EnvTab({
       <div className="flex justify-end">
         <button className={secondaryButtonClass} onClick={() => setShowAdd(true)}>+ Add Variable</button>
       </div>
-      {showAdd && (
-        <div className="rounded-lg border border-line bg-surface p-3 space-y-2">
-          <div className="grid grid-cols-3 gap-2">
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Add Environment Variable"
+      >
+        <div className="space-y-4">
+          {error && <ErrorNote error={error} />}
+          <div className="grid grid-cols-1 gap-3">
             <Field label="Name">
               <input className={inputClass} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="PORT" />
             </Field>
@@ -781,12 +790,12 @@ function EnvTab({
               <input className={inputClass} value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder={newSource === 'literal' ? '3000' : 'secret://app/db-pass'} />
             </Field>
           </div>
-          <div className="flex gap-2">
-            <button className={primaryButtonClass} onClick={() => void addEnvVar()} disabled={saving || !newName || !newValue}>{saving ? 'Saving…' : 'Save'}</button>
+          <div className="flex gap-2 justify-end pt-2">
             <button className={secondaryButtonClass} onClick={() => setShowAdd(false)}>Cancel</button>
+            <button className={primaryButtonClass} onClick={() => void addEnvVar()} disabled={saving || !newName || !newValue}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
-      )}
+      </Modal>
       {loading && <p className="text-ink-secondary text-sm">Loading…</p>}
       {!loading && envVars.length === 0 && (
         <EmptyState title="No environment variables">
@@ -976,6 +985,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
   const [branch, setBranch] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [creating, setCreating] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
@@ -1007,6 +1017,7 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
         await api.createPreview(project.id, app.id, { branch: branch.trim(), pr_number: pr });
         setBranch('');
         setPrNumber('');
+        setIsCreateOpen(false);
         await loadPreviews();
       } catch (err: unknown) {
         if (isStepUpRequired(err)) {
@@ -1055,47 +1066,68 @@ function PreviewsTab({ app, project, onElevationRequired }: PreviewsTabProps) {
         confirmLabel="Yes, proceed"
         danger
       />
-      <div className="rounded-lg border border-line bg-surface p-4 space-y-4">
+      <div className="rounded-lg border border-line bg-surface p-4 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-ink">PR & Branch Preview Environments</h3>
           <p className="text-xs text-ink-muted mt-1">
             Deploy ephemeral branch-isolated testing environments with dedicated routing and automatic teardown.
           </p>
         </div>
-
-        {error && <ErrorNote error={error} onRetry={() => setError(null)} />}
-
-        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Git Branch">
-            <input
-              type="text"
-              required
-              placeholder="feat/preview-test"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Pull Request # (Optional)">
-            <input
-              type="number"
-              placeholder="42"
-              value={prNumber}
-              onChange={(e) => setPrNumber(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={creating || !branch.trim()}
-              className={`${primaryButtonClass} w-full`}
-            >
-              {creating ? 'Spawning Preview…' : 'Deploy Preview'}
-            </button>
-          </div>
-        </form>
+        <button
+          type="button"
+          onClick={() => setIsCreateOpen(true)}
+          className={primaryButtonClass}
+        >
+          + Deploy Preview
+        </button>
       </div>
+
+      <Modal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="Deploy Preview Environment"
+      >
+        <div className="space-y-4">
+          {error && <ErrorNote error={error} onRetry={() => setError(null)} />}
+          <form onSubmit={handleCreate} className="space-y-3">
+            <Field label="Git Branch">
+              <input
+                type="text"
+                required
+                placeholder="feat/preview-test"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Pull Request # (Optional)">
+              <input
+                type="number"
+                placeholder="42"
+                value={prNumber}
+                onChange={(e) => setPrNumber(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className={secondaryButtonClass}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={creating || !branch.trim()}
+                className={primaryButtonClass}
+              >
+                {creating ? 'Spawning Preview…' : 'Deploy Preview'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </Modal>
 
       <div className="space-y-3">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
