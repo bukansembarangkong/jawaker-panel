@@ -70,6 +70,13 @@ func (s *Store) Create(ctx context.Context, userID, name, kind string, scopes, c
 		return nil, fmt.Errorf("generate token: %w", err)
 	}
 
+	if scopes == nil {
+		scopes = []string{}
+	}
+	if cidrs == nil {
+		cidrs = []string{}
+	}
+
 	var t Token
 	t.UserID = userID
 	t.Name = name

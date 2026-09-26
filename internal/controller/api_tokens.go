@@ -114,6 +114,7 @@ func (h *APITokenHandlers) handleCreate(w http.ResponseWriter, r *http.Request) 
 
 	created, err := h.tokens.Create(r.Context(), principal.UserID, req.Name, req.Kind, req.Scopes, req.AllowedCIDRs, req.ExpiresAt)
 	if err != nil {
+		h.logger.Error("create token failed", "error", err, "user_id", principal.UserID)
 		httpserver.WriteError(w, r, apierr.Internal(err))
 		return
 	}
