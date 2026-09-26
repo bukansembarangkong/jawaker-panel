@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
 import { type CopilotApproval, type CopilotPlan, type CopilotSession, copilotApi } from '../api/client';
+import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
 type Tab = 'sessions' | 'plans' | 'approvals';
-
-const PROJECT_ID = 'default'; // ponytail: per-project selector; add when project switcher exists
 
 function planState(state: string): OperationalState {
   const map: Record<string, OperationalState> = {
@@ -31,6 +30,7 @@ function riskColor(risk: string): string {
 // ── Sessions tab ──────────────────────────────────────────────────────────────
 
 function SessionsTab() {
+  const projectId = useFirstProjectId();
   const [sessions, setSessions] = useState<CopilotSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -39,20 +39,22 @@ function SessionsTab() {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
+    if (!projectId) return;
     setLoading(true);
     copilotApi
-      .listSessions(PROJECT_ID)
+      .listSessions(projectId)
       .then((r) => setSessions(r.sessions ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (projectId) load(); }, [projectId]);
 
   const create = async () => {
+    if (!projectId) return;
     setSaving(true);
     try {
-      await copilotApi.createSession(PROJECT_ID, intent.trim() || 'General analysis');
+      await copilotApi.createSession(projectId, intent.trim() || 'General analysis');
       setCreating(false);
       setIntent('');
       load();
@@ -64,8 +66,9 @@ function SessionsTab() {
   };
 
   const close = async (id: string) => {
+    if (!projectId) return;
     try {
-      await copilotApi.closeSession(PROJECT_ID, id, 'completed');
+      await copilotApi.closeSession(projectId, id, 'completed');
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -158,24 +161,27 @@ function SessionsTab() {
 // ── Plans tab ─────────────────────────────────────────────────────────────────
 
 function PlansTab() {
+  const projectId = useFirstProjectId();
   const [plans, setPlans] = useState<CopilotPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const load = () => {
+    if (!projectId) return;
     setLoading(true);
     copilotApi
-      .listPlans(PROJECT_ID)
+      .listPlans(projectId)
       .then((r) => setPlans(r.plans ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (projectId) load(); }, [projectId]);
 
   const submit = async (id: string) => {
+    if (!projectId) return;
     try {
-      await copilotApi.submitPlan(PROJECT_ID, id);
+      await copilotApi.submitPlan(projectId, id);
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -183,9 +189,10 @@ function PlansTab() {
   };
 
   const cancel = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Cancel this plan?')) return;
     try {
-      await copilotApi.cancelPlan(PROJECT_ID, id);
+      await copilotApi.cancelPlan(projectId, id);
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -247,6 +254,7 @@ function PlansTab() {
 // ── Approvals tab ─────────────────────────────────────────────────────────────
 
 function ApprovalsTab() {
+  const projectId = useFirstProjectId();
   const [plans, setPlans] = useState<CopilotPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState('');
   const [approvals, setApprovals] = useState<CopilotApproval[]>([]);
@@ -254,29 +262,31 @@ function ApprovalsTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     copilotApi
-      .listPlans(PROJECT_ID)
+      .listPlans(projectId)
       .then((r) => {
         const ps = (r.plans ?? []).filter((p) => p.state === 'pending_approval');
         setPlans(ps);
         if (ps.length > 0) setSelectedPlan(ps[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedPlan) return;
+    if (!projectId || !selectedPlan) return;
     setLoading(true);
     copilotApi
-      .listApprovals(PROJECT_ID, selectedPlan)
+      .listApprovals(projectId, selectedPlan)
       .then((r) => setApprovals(r.approvals ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedPlan]);
+  }, [projectId, selectedPlan]);
 
   const review = async (id: string, state: string) => {
+    if (!projectId) return;
     try {
-      await copilotApi.reviewApproval(PROJECT_ID, selectedPlan, id, state, '');
+      await copilotApi.reviewApproval(projectId, selectedPlan, id, state, '');
       setApprovals((prev) => prev.map((a) => a.id === id ? { ...a, state } : a));
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));

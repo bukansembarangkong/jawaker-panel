@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
 import { type HADrill, type HAEvent, type HAMember, type HAPool, haApi } from '../api/client';
+import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
 type Tab = 'pools' | 'events' | 'drills';
-
-const PROJECT_ID = 'default'; // ponytail: per-project selector; add when project switcher exists
 
 function poolState(state: string): OperationalState {
   const map: Record<string, OperationalState> = {
@@ -41,25 +40,28 @@ function drillState(state: string): OperationalState {
 // ── Pool Members subcomponent ────────────────────────────────────────────────────
 
 function PoolMembersPanel({ pool }: { pool: HAPool }) {
+  const projectId = useFirstProjectId();
   const [members, setMembers] = useState<HAMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const load = () => {
+    if (!projectId) return;
     setLoading(true);
     haApi
-      .listMembers(PROJECT_ID, pool.id)
+      .listMembers(projectId, pool.id)
       .then((r) => setMembers(r.members ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [pool.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (projectId) load(); }, [pool.id, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drain = async (serverId: string) => {
+    if (!projectId) return;
     if (!window.confirm('Start drain for this server?')) return;
     try {
-      await haApi.startDrain(PROJECT_ID, pool.id, serverId, 'manual drain');
+      await haApi.startDrain(projectId, pool.id, serverId, 'manual drain');
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -67,9 +69,10 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
   };
 
   const remove = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Remove this server from the pool?')) return;
     try {
-      await haApi.removeMember(PROJECT_ID, pool.id, id);
+      await haApi.removeMember(projectId, pool.id, id);
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -119,6 +122,7 @@ function PoolMembersPanel({ pool }: { pool: HAPool }) {
 // ── Pools tab ────────────────────────────────────────────────────────────────────
 
 function PoolsTab() {
+  const projectId = useFirstProjectId();
   const [pools, setPools] = useState<HAPool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -129,21 +133,23 @@ function PoolsTab() {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
+    if (!projectId) return;
     setLoading(true);
     haApi
-      .listPools(PROJECT_ID)
+      .listPools(projectId)
       .then((r) => setPools(r.pools ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (projectId) load(); }, [projectId]);
 
   const create = async () => {
+    if (!projectId) return;
     if (!newName.trim()) return;
     setSaving(true);
     try {
-      await haApi.createPool(PROJECT_ID, newName.trim(), '', newMode, 1);
+      await haApi.createPool(projectId, newName.trim(), '', newMode, 1);
       setAdding(false);
       setNewName('');
       load();
@@ -155,9 +161,10 @@ function PoolsTab() {
   };
 
   const deletePool = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Delete this pool? All members and events will be removed.')) return;
     try {
-      await haApi.deletePool(PROJECT_ID, id);
+      await haApi.deletePool(projectId, id);
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -270,6 +277,7 @@ function PoolsTab() {
 // ── Events tab ────────────────────────────────────────────────────────────────────
 
 function EventsTab() {
+  const projectId = useFirstProjectId();
   const [pools, setPools] = useState<HAPool[]>([]);
   const [selectedPool, setSelectedPool] = useState('');
   const [events, setEvents] = useState<HAEvent[]>([]);
@@ -277,29 +285,31 @@ function EventsTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     haApi
-      .listPools(PROJECT_ID)
+      .listPools(projectId)
       .then((r) => {
         const ps = r.pools ?? [];
         setPools(ps);
         if (ps.length > 0) setSelectedPool(ps[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedPool) return;
+    if (!projectId || !selectedPool) return;
     setLoading(true);
     haApi
-      .listEvents(PROJECT_ID, selectedPool)
+      .listEvents(projectId, selectedPool)
       .then((r) => setEvents(r.events ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedPool]);
+  }, [projectId, selectedPool]);
 
   const resolve = async (id: string) => {
+    if (!projectId) return;
     try {
-      await haApi.resolveEvent(PROJECT_ID, selectedPool, id);
+      await haApi.resolveEvent(projectId, selectedPool, id);
       setEvents((prev) => prev.map((ev) => ev.id === id ? { ...ev, resolved: true } : ev));
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -356,6 +366,7 @@ function EventsTab() {
 // ── Drills tab ────────────────────────────────────────────────────────────────────
 
 function DrillsTab() {
+  const projectId = useFirstProjectId();
   const [pools, setPools] = useState<HAPool[]>([]);
   const [selectedPool, setSelectedPool] = useState('');
   const [drills, setDrills] = useState<HADrill[]>([]);
@@ -363,32 +374,33 @@ function DrillsTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     haApi
-      .listPools(PROJECT_ID)
+      .listPools(projectId)
       .then((r) => {
         const ps = r.pools ?? [];
         setPools(ps);
         if (ps.length > 0) setSelectedPool(ps[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedPool) return;
+    if (!projectId || !selectedPool) return;
     setLoading(true);
     haApi
-      .listDrills(PROJECT_ID, selectedPool)
+      .listDrills(projectId, selectedPool)
       .then((r) => setDrills(r.drills ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedPool]);
+  }, [projectId, selectedPool]);
 
   const runDrill = async () => {
-    if (!selectedPool) return;
+    if (!projectId || !selectedPool) return;
     try {
-      await haApi.createDrill(PROJECT_ID, selectedPool, 'manual', '');
+      await haApi.createDrill(projectId, selectedPool, 'manual', '');
       setLoading(true);
-      const r = await haApi.listDrills(PROJECT_ID, selectedPool);
+      const r = await haApi.listDrills(projectId, selectedPool);
       setDrills(r.drills ?? []);
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -398,8 +410,9 @@ function DrillsTab() {
   };
 
   const complete = async (id: string, state: string) => {
+    if (!projectId) return;
     try {
-      await haApi.completeDrill(PROJECT_ID, selectedPool, id, state, '');
+      await haApi.completeDrill(projectId, selectedPool, id, state, '');
       setDrills((prev) => prev.map((d) => d.id === id ? { ...d, state } : d));
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));

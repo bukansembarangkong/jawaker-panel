@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
 import { type MailAlias, type MailDomain, type MailMailbox, type MailQueueEntry, mailApi } from '../api/client';
+import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
 type Tab = 'domains' | 'mailboxes' | 'aliases' | 'queue';
-
-const PROJECT_ID = 'default'; // ponytail: per-project selector; add when project switcher exists
 
 function domainState(state: string): OperationalState {
   const map: Record<string, OperationalState> = {
@@ -23,6 +22,7 @@ function StateBadge({ state }: { state: string }) {
 // ── Domains tab ────────────────────────────────────────────────────────────────
 
 function DomainsTab() {
+  const projectId = useFirstProjectId();
   const [domains, setDomains] = useState<MailDomain[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -32,21 +32,22 @@ function DomainsTab() {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
+    if (!projectId) return;
     setLoading(true);
     mailApi
-      .listDomains(PROJECT_ID)
+      .listDomains(projectId)
       .then((r) => setDomains(r.domains ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async () => {
-    if (!newDomain.trim() || !newServer.trim()) return;
+    if (!projectId || !newDomain.trim() || !newServer.trim()) return;
     setSaving(true);
     try {
-      await mailApi.createDomain(PROJECT_ID, newServer.trim(), newDomain.trim());
+      await mailApi.createDomain(projectId, newServer.trim(), newDomain.trim());
       setAdding(false);
       setNewDomain('');
       setNewServer('');
@@ -59,16 +60,17 @@ function DomainsTab() {
   };
 
   const deleteDomain = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Delete this mail domain? All mailboxes and aliases will be removed.')) return;
     try {
-      await mailApi.deleteDomain(PROJECT_ID, id);
+      await mailApi.deleteDomain(projectId, id);
       load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     }
   };
 
-  if (loading) return <p className="text-ink-secondary text-sm">Loading domains…</p>;
+  if (!projectId || loading) return <p className="text-ink-secondary text-sm">Loading domains...</p>;
   if (error) return <ErrorNote error={error} title="Failed to load mail domains" onRetry={load} />;
 
   return (
@@ -162,6 +164,7 @@ function DomainsTab() {
 // ── Mailboxes tab ──────────────────────────────────────────────────────────────
 
 function MailboxesTab() {
+  const projectId = useFirstProjectId();
   const [domains, setDomains] = useState<MailDomain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState('');
   const [mailboxes, setMailboxes] = useState<MailMailbox[]>([]);
@@ -169,30 +172,32 @@ function MailboxesTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     mailApi
-      .listDomains(PROJECT_ID)
+      .listDomains(projectId)
       .then((r) => {
         const ds = r.domains ?? [];
         setDomains(ds);
         if (ds.length > 0) setSelectedDomain(ds[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedDomain) return;
+    if (!projectId || !selectedDomain) return;
     setLoading(true);
     mailApi
-      .listMailboxes(PROJECT_ID, selectedDomain)
+      .listMailboxes(projectId, selectedDomain)
       .then((r) => setMailboxes(r.mailboxes ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedDomain]);
+  }, [projectId, selectedDomain]);
 
   const deleteMailbox = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Delete this mailbox?')) return;
     try {
-      await mailApi.deleteMailbox(PROJECT_ID, selectedDomain, id);
+      await mailApi.deleteMailbox(projectId, selectedDomain, id);
       setMailboxes((prev) => prev.filter((m) => m.id !== id));
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -251,6 +256,7 @@ function MailboxesTab() {
 // ── Aliases tab ────────────────────────────────────────────────────────────────
 
 function AliasesTab() {
+  const projectId = useFirstProjectId();
   const [domains, setDomains] = useState<MailDomain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState('');
   const [aliases, setAliases] = useState<MailAlias[]>([]);
@@ -258,30 +264,32 @@ function AliasesTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     mailApi
-      .listDomains(PROJECT_ID)
+      .listDomains(projectId)
       .then((r) => {
         const ds = r.domains ?? [];
         setDomains(ds);
         if (ds.length > 0) setSelectedDomain(ds[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedDomain) return;
+    if (!projectId || !selectedDomain) return;
     setLoading(true);
     mailApi
-      .listAliases(PROJECT_ID, selectedDomain)
+      .listAliases(projectId, selectedDomain)
       .then((r) => setAliases(r.aliases ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedDomain]);
+  }, [projectId, selectedDomain]);
 
   const deleteAlias = async (id: string) => {
+    if (!projectId) return;
     if (!window.confirm('Delete this alias?')) return;
     try {
-      await mailApi.deleteAlias(PROJECT_ID, selectedDomain, id);
+      await mailApi.deleteAlias(projectId, selectedDomain, id);
       setAliases((prev) => prev.filter((a) => a.id !== id));
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -336,6 +344,7 @@ function AliasesTab() {
 // ── Queue Log tab ──────────────────────────────────────────────────────────────
 
 function QueueTab() {
+  const projectId = useFirstProjectId();
   const [domains, setDomains] = useState<MailDomain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState('');
   const [entries, setEntries] = useState<MailQueueEntry[]>([]);
@@ -343,25 +352,26 @@ function QueueTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     mailApi
-      .listDomains(PROJECT_ID)
+      .listDomains(projectId)
       .then((r) => {
         const ds = r.domains ?? [];
         setDomains(ds);
         if (ds.length > 0) setSelectedDomain(ds[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!selectedDomain) return;
+    if (!projectId || !selectedDomain) return;
     setLoading(true);
     mailApi
-      .listQueueLog(PROJECT_ID, selectedDomain)
+      .listQueueLog(projectId, selectedDomain)
       .then((r) => setEntries(r.entries ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
-  }, [selectedDomain]);
+  }, [projectId, selectedDomain]);
 
   if (error) return <ErrorNote error={error} title="Failed to load queue log" onRetry={() => setError(null)} />;
 
