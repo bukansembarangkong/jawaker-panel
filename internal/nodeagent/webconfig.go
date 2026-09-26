@@ -211,11 +211,14 @@ func (e *Executors) ValidateWebConfig(ctx context.Context, in nodewire.WebConfig
 		}
 	}
 
-	// The candidate is written with 0600: it is caller-supplied text, and until
-	// it has been validated there is no reason for any other local account to
-	// read it. writeFileAtomic also sets the mode before writing, so the file
-	// never exists with a wider mode even momentarily.
-	if err := writeFileAtomic(staged, []byte(in.Config), 0o600); err != nil {
+	// Standalone validation with nginx -t -c requires an events {} and http {} context.
+	// A site snippet (server { ... }) must be wrapped so nginx accepts the server block.
+	candidateBytes := []byte(in.Config)
+	if !strings.Contains(in.Config, "http {") {
+		candidateBytes = []byte("events {}\nhttp {\n" + in.Config + "\n}\n")
+	}
+
+	if err := writeFileAtomic(staged, candidateBytes, 0o600); err != nil {
 		return out, fmt.Errorf("nodeagent: stage candidate: %w", err)
 	}
 	// Removal is registered the moment the file exists, so no later return can
