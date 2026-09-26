@@ -28,7 +28,7 @@ import (
 //	GET    /api/v1/servers                       server.read    GLOBAL
 //	GET    /api/v1/servers/{id}                  server.read    SERVER(id)
 //	DELETE /api/v1/servers/{id}                  server.delete  SERVER(id), step-up
-//	GET    /api/v1/servers/enrollment-tokens     server.enroll  GLOBAL
+//	GET    /api/v1/servers/enrollment-tokens     server.read    GLOBAL
 //	POST   /api/v1/servers/enrollment-tokens     server.enroll  GLOBAL, step-up
 //	DELETE /api/v1/servers/enrollment-tokens/{id} server.enroll GLOBAL, step-up
 //	POST   /api/v1/node/enroll                    (none)        rate-limited, token
@@ -135,7 +135,7 @@ func (h *Handlers) Routes(mux *http.ServeMux) {
 		authsession.RequirePermission(h.now, "server.read", rbac.GlobalScope(), false,
 			http.HandlerFunc(h.handleListServers)))
 	mux.Handle("GET /api/v1/servers/enrollment-tokens",
-		authsession.RequirePermission(h.now, "server.enroll", rbac.GlobalScope(), false,
+		authsession.RequirePermission(h.now, "server.read", rbac.GlobalScope(), false,
 			http.HandlerFunc(h.handleListTokens)))
 	mux.Handle("POST /api/v1/servers/enrollment-tokens",
 		authsession.RequirePermission(h.now, "server.enroll", rbac.GlobalScope(), true,
