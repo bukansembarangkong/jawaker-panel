@@ -257,7 +257,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
         {/* Sidebar header */}
-        <div className="flex h-16 shrink-0 items-center border-b border-slate-100 px-4">
+        <div className="flex h-16 shrink-0 items-center justify-center border-b border-slate-100 px-4">
           <img src="/header.png" alt="JAWAKER" className="h-7 w-auto" />
         </div>
 
