@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   dnsTlsApi,
+  type CertOrder,
   type DNSProvider,
   type DNSZone,
   type DNSRecord,
@@ -10,6 +11,7 @@ import {
   EmptyState,
   ErrorNote,
   StatusBadge,
+  ConfirmModal,
   primaryButtonClass,
   inputClass,
 } from '../components/ui';
@@ -27,6 +29,7 @@ export function DNSTLSPage() {
 
   // Certs State
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [orders, setOrders] = useState<CertOrder[]>([]);
 
   // Forms & Error
   const [error, setError] = useState<Error | null>(null);
@@ -49,6 +52,15 @@ export function DNSTLSPage() {
   // Import Cert Form
   const [chainPEM, setChainPEM] = useState('');
   const [privKeyPEM, setPrivKeyPEM] = useState('');
+  const [showImport, setShowImport] = useState(false);
+
+  // ACME Order Form
+  const [orderDomains, setOrderDomains] = useState('');
+  const [challengeType, setChallengeType] = useState<'http-01' | 'dns-01'>('http-01');
+  const [orderBusy, setOrderBusy] = useState(false);
+
+  // Confirm modal for destructive actions
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadData = async () => {
     if (!projectId) return;
@@ -65,8 +77,12 @@ export function DNSTLSPage() {
           setSelectedZone(zRes.zones[0].id);
         }
       } else {
-        const cRes = await dnsTlsApi.listCertificates(projectId!);
+        const [cRes, oRes] = await Promise.all([
+          dnsTlsApi.listCertificates(projectId!),
+          dnsTlsApi.listOrders(projectId!),
+        ]);
         setCertificates(cRes.certificates || []);
+        setOrders(oRes.orders || []);
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -151,14 +167,40 @@ export function DNSTLSPage() {
       });
       setChainPEM('');
       setPrivKeyPEM('');
+      setShowImport(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     }
   };
 
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId || !orderDomains.trim()) return;
+    setOrderBusy(true);
+    try {
+      const identifiers = orderDomains.split(',').map((d) => d.trim()).filter(Boolean);
+      await dnsTlsApi.createOrder(projectId!, { identifiers });
+      setOrderDomains('');
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setOrderBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Are you sure?"
+        message={confirmState.message}
+        confirmLabel="Yes, proceed"
+        danger
+      />
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-ink">DNS & TLS Management</h2>
@@ -247,13 +289,19 @@ export function DNSTLSPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={async () => {
-                      try {
-                        await dnsTlsApi.deleteProvider(projectId!, p.id);
-                        await loadData();
-                      } catch (err) {
-                        setError(err instanceof Error ? err : new Error(String(err)));
-                      }
+                    onClick={() => {
+                      setConfirmState({
+                        open: true,
+                        message: `Delete DNS provider "${p.name}"? Any zones attached will lose DNS management capability.`,
+                        onConfirm: async () => {
+                          try {
+                            await dnsTlsApi.deleteProvider(projectId!, p.id);
+                            await loadData();
+                          } catch (err) {
+                            setError(err instanceof Error ? err : new Error(String(err)));
+                          }
+                        },
+                      });
                     }}
                     className="text-xs text-danger hover:underline"
                   >
@@ -395,14 +443,20 @@ export function DNSTLSPage() {
                               <td className="px-4 py-2">
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    try {
-                                      await dnsTlsApi.deleteRecord(projectId!, selectedZone, r.id);
-                                      const res = await dnsTlsApi.listRecords(projectId!, selectedZone);
-                                      setRecords(res.records || []);
-                                    } catch (err) {
-                                      setError(err instanceof Error ? err : new Error(String(err)));
-                                    }
+                                  onClick={() => {
+                                    setConfirmState({
+                                      open: true,
+                                      message: `Delete DNS record "${r.name} (${r.type})"? This cannot be undone.`,
+                                      onConfirm: async () => {
+                                        try {
+                                          await dnsTlsApi.deleteRecord(projectId!, selectedZone, r.id);
+                                          const res = await dnsTlsApi.listRecords(projectId!, selectedZone);
+                                          setRecords(res.records || []);
+                                        } catch (err) {
+                                          setError(err instanceof Error ? err : new Error(String(err)));
+                                        }
+                                      },
+                                    });
                                   }}
                                   className="text-xs text-danger hover:underline"
                                 >
@@ -422,34 +476,148 @@ export function DNSTLSPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Certificate Import Form */}
-          <section className="space-y-4">
-            <h3 className="text-base font-semibold text-ink">Import Custom TLS Certificate</h3>
-            <form onSubmit={handleImportCert} className="space-y-4 p-4 bg-surface rounded-lg border border-line">
+          {/* Option 1: Free SSL via Let's Encrypt */}
+          <section className="rounded-xl border border-line bg-surface p-5 space-y-4">
+            <div className="flex items-start justify-between">
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Certificate Chain (PEM)</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="-----BEGIN CERTIFICATE-----..."
-                  className={`${inputClass} font-mono text-xs`}
-                  value={chainPEM}
-                  onChange={(e) => setChainPEM(e.target.value)}
-                />
+                <h3 className="text-base font-semibold text-ink flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">FREE</span>
+                  Let's Encrypt / ACME Auto-Issue
+                </h3>
+                <p className="text-xs text-ink-muted mt-1">Get a free, auto-renewing SSL certificate. Works for single domains and multi-domain (SAN) certs. Wildcard (*.example.com) requires DNS API provider configured first.</p>
+              </div>
+            </div>
+            <form onSubmit={handleCreateOrder} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-ink-secondary mb-2">Verification Method</label>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="challengeType"
+                      value="http-01"
+                      checked={challengeType === 'http-01'}
+                      onChange={() => setChallengeType('http-01')}
+                      className="accent-indigo-600"
+                    />
+                    <span className="text-sm text-ink">HTTP-01 <span className="text-ink-muted">(standard, requires port 80 open)</span></span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="challengeType"
+                      value="dns-01"
+                      checked={challengeType === 'dns-01'}
+                      onChange={() => setChallengeType('dns-01')}
+                      className="accent-indigo-600"
+                    />
+                    <span className="text-sm text-ink">DNS-01 <span className="text-ink-muted">(wildcard support, uses DNS provider)</span></span>
+                  </label>
+                </div>
+                {challengeType === 'dns-01' && providers.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No DNS provider configured. Add a provider in the DNS tab first for DNS-01 challenges.</p>
+                )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1">Private Key (PEM - sealed)</label>
-                <textarea
+                <label className="block text-xs font-medium text-ink-secondary mb-1">Domain Name(s)</label>
+                <input
+                  className={inputClass}
+                  value={orderDomains}
+                  onChange={(e) => setOrderDomains(e.target.value)}
+                  placeholder={challengeType === 'dns-01' ? '*.example.com, example.com' : 'example.com, www.example.com'}
                   required
-                  rows={4}
-                  placeholder="-----BEGIN PRIVATE KEY-----..."
-                  className={`${inputClass} font-mono text-xs`}
-                  value={privKeyPEM}
-                  onChange={(e) => setPrivKeyPEM(e.target.value)}
                 />
+                <p className="text-xs text-ink-muted mt-1">Separate multiple domains with commas.{challengeType === 'dns-01' ? ' Wildcard ' : ' '}<span className="font-mono">{challengeType === 'dns-01' ? '*.example.com' : 'www.example.com'}</span> supported.</p>
               </div>
-              <button type="submit" className={primaryButtonClass}>Import Certificate</button>
+              <button type="submit" className={primaryButtonClass} disabled={orderBusy}>
+                {orderBusy ? 'Requesting...' : 'Issue Free SSL Certificate'}
+              </button>
             </form>
+          </section>
+
+          {/* ACME Orders Status */}
+          {orders.length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-ink">Certificate Orders</h3>
+              <div className="overflow-x-auto border border-line rounded-lg">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface text-ink-muted text-xs uppercase border-b border-line">
+                    <tr>
+                      <th className="px-4 py-2">Domains</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2">Requested</th>
+                      <th className="px-4 py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {orders.map((o) => (
+                      <tr key={o.id}>
+                        <td className="px-4 py-2 font-mono text-xs">{(o.identifiers || []).join(', ')}</td>
+                        <td className="px-4 py-2">
+                          <StatusBadge
+                            state={o.state === 'valid' ? 'Healthy' : o.state === 'pending' || o.state === 'processing' ? 'Pending' : o.state === 'canceled' ? 'Paused' : 'Failed'}
+                            detail={o.state}
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-xs text-ink-muted">{new Date(o.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-2">
+                          {(o.state === 'pending' || o.state === 'processing') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmState({
+                                  open: true,
+                                  message: `Cancel certificate order for ${(o.identifiers || []).join(', ')}?`,
+                                  onConfirm: async () => {
+                                    try {
+                                      await dnsTlsApi.cancelOrder(projectId!, o.id);
+                                      await loadData();
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err : new Error(String(err)));
+                                    }
+                                  },
+                                });
+                              }}
+                              className="text-xs text-danger hover:underline"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* Option 2: Custom Certificate Import */}
+          <section className="rounded-xl border border-line bg-surface p-5 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-ink">Custom / Paid Certificate</h3>
+              <p className="text-xs text-ink-muted mt-1">Import a certificate from Sectigo, DigiCert, Cloudflare Origin CA, or any other CA. Paste PEM-format chain and private key.</p>
+            </div>
+            {!showImport ? (
+              <button type="button" onClick={() => setShowImport(true)} className="text-sm text-accent hover:underline">
+                + Upload certificate (PEM)
+              </button>
+            ) : (
+              <form onSubmit={handleImportCert} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-ink-secondary mb-1">Certificate Chain (PEM)</label>
+                  <textarea required rows={4} placeholder="-----BEGIN CERTIFICATE-----..." className={`${inputClass} font-mono text-xs`} value={chainPEM} onChange={(e) => setChainPEM(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-secondary mb-1">Private Key (PEM)</label>
+                  <textarea required rows={4} placeholder="-----BEGIN PRIVATE KEY-----..." className={`${inputClass} font-mono text-xs`} value={privKeyPEM} onChange={(e) => setPrivKeyPEM(e.target.value)} />
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" className={primaryButtonClass}>Import Certificate</button>
+                  <button type="button" onClick={() => setShowImport(false)} className="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                </div>
+              </form>
+            )}
           </section>
 
           {/* Certificate Inventory */}
@@ -457,14 +625,14 @@ export function DNSTLSPage() {
             <h3 className="text-base font-semibold text-ink">Certificate Inventory</h3>
             {certificates.length === 0 ? (
               <EmptyState title="No Certificates">
-                No active or imported certificates found. Import or request one above.
+                No active certificates yet. Issue a free Let's Encrypt certificate or import a custom one above.
               </EmptyState>
             ) : (
               <div className="overflow-x-auto border border-line rounded-lg">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-surface text-ink-muted text-xs uppercase border-b border-line">
                     <tr>
-                      <th className="px-4 py-2">Identifiers</th>
+                      <th className="px-4 py-2">Domains</th>
                       <th className="px-4 py-2">Issuer</th>
                       <th className="px-4 py-2">Valid Until</th>
                       <th className="px-4 py-2">Status</th>
@@ -474,22 +642,12 @@ export function DNSTLSPage() {
                   <tbody className="divide-y divide-line">
                     {certificates.map((c) => (
                       <tr key={c.id}>
-                        <td className="px-4 py-2 font-mono">
-                          {c.identifiers ? c.identifiers.join(', ') : 'unknown'}
-                        </td>
+                        <td className="px-4 py-2 font-mono text-xs">{c.identifiers ? c.identifiers.join(', ') : 'unknown'}</td>
                         <td className="px-4 py-2">{c.issuer}</td>
-                        <td className="px-4 py-2 font-mono text-xs">
-                          {new Date(c.not_after).toLocaleDateString()}
-                        </td>
+                        <td className="px-4 py-2 font-mono text-xs">{new Date(c.not_after).toLocaleDateString()}</td>
                         <td className="px-4 py-2">
                           <StatusBadge
-                            state={
-                              c.state === 'active'
-                                ? 'Healthy'
-                                : c.state === 'expiring'
-                                ? 'Degraded'
-                                : 'Failed'
-                            }
+                            state={c.state === 'active' ? 'Healthy' : c.state === 'expiring' ? 'Degraded' : 'Failed'}
                             detail={c.state}
                           />
                         </td>
@@ -497,13 +655,19 @@ export function DNSTLSPage() {
                           {c.state !== 'revoked' && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
-                                  await loadData();
-                                } catch (err) {
-                                  setError(err instanceof Error ? err : new Error(String(err)));
-                                }
+                              onClick={() => {
+                                setConfirmState({
+                                  open: true,
+                                  message: `Revoke certificate for ${c.identifiers ? c.identifiers.join(', ') : 'this domain'}? This certificate will become invalid immediately.`,
+                                  onConfirm: async () => {
+                                    try {
+                                      await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
+                                      await loadData();
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err : new Error(String(err)));
+                                    }
+                                  },
+                                });
                               }}
                               className="text-xs text-danger hover:underline"
                             >
