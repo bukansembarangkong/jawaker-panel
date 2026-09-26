@@ -14,6 +14,7 @@ package sites
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -55,11 +56,13 @@ const (
 
 // Serving modes (PRD.md §9.1, IMPLEMENTATION_PLAN.md Phase 3). The schema CHECK
 // bounds `mode` to exactly these three; containerised and external-upstream modes
-// arrive with the phases that own them.
+// arrive with the phases that own them. ModeNodeJS extends Phase 3 with
+// per-site Node.js process management (migrations/0038).
 const (
 	ModeStatic       = "static"
 	ModePHP          = "php"
 	ModeReverseProxy = "reverse_proxy"
+	ModeNodeJS       = "nodejs"
 )
 
 // DefaultDeleteGrace is how long a site stays in pending_delete before it may be
@@ -575,29 +578,29 @@ func validateSlug(slug string) error {
 	return nil
 }
 
-// validateMode bounds the mode to the three Phase 3 serves.
+// validateMode bounds the mode to the Phase 3 serves plus nodejs.
 func validateMode(mode string) error {
 	switch mode {
-	case ModeStatic, ModePHP, ModeReverseProxy:
+	case ModeStatic, ModePHP, ModeReverseProxy, ModeNodeJS:
 		return nil
 	default:
-		return fmt.Errorf("%w: mode %q must be one of static, php, reverse_proxy", ErrInvalid, mode)
+		return fmt.Errorf("%w: mode %q must be one of static, php, reverse_proxy, nodejs", ErrInvalid, mode)
 	}
 }
 
-// validateModeFields enforces the two mode/field shape CHECKs in Go so the caller
+// validateModeFields enforces the mode/field shape CHECKs in Go so the caller
 // gets a precise message. The schema is still the authority; this only front-runs
 // it.
 //
-//	sites_upstream_matches_mode: (mode = 'reverse_proxy') = (upstream <> '')
+//	sites_upstream_matches_mode: (mode IN ('reverse_proxy','nodejs')) = (upstream <> '')
 //	sites_php_unit_matches_mode: mode = 'php' OR php_unit = ''
 func validateModeFields(mode, upstream, phpUnit string) error {
-	if mode == ModeReverseProxy {
+	if mode == ModeReverseProxy || mode == ModeNodeJS {
 		if upstream == "" {
-			return fmt.Errorf("%w: a reverse_proxy site requires an upstream", ErrInvalid)
+			return fmt.Errorf("%w: a %s site requires an upstream", ErrInvalid, mode)
 		}
 	} else if upstream != "" {
-		return fmt.Errorf("%w: only a reverse_proxy site may set an upstream", ErrInvalid)
+		return fmt.Errorf("%w: only a reverse_proxy or nodejs site may set an upstream", ErrInvalid)
 	}
 	if mode != ModePHP && phpUnit != "" {
 		return fmt.Errorf("%w: only a php site may set a php_unit", ErrInvalid)
@@ -631,4 +634,136 @@ func pgCode(err error) string {
 		return pgErr.Code
 	}
 	return ""
+}
+
+// ─── Node.js runtime configuration ───────────────────────────────────────────
+
+// NodeJSConfig holds the per-site Node.js runtime settings stored in
+// site_nodejs_configs (migrations/0038).
+type NodeJSConfig struct {
+	ID          string
+	SiteID      string
+	NodeVersion string
+	AppRoot     string
+	StartupFile string
+	StartArgs   []string
+	EnvVars     map[string]string
+	Port        int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// UpsertNodeJSConfigParams carries the fields an operator may set.
+type UpsertNodeJSConfigParams struct {
+	NodeVersion string
+	AppRoot     string
+	StartupFile string
+	StartArgs   []string
+	EnvVars     map[string]string
+	Port        int
+}
+
+const nodejsColumns = `id, site_id, node_version, app_root, startup_file, start_args, env_vars, port, created_at, updated_at`
+
+func scanNodeJSConfig(row pgx.Row) (NodeJSConfig, error) {
+	var c NodeJSConfig
+	var startArgs, envVars []byte
+	err := row.Scan(
+		&c.ID, &c.SiteID, &c.NodeVersion, &c.AppRoot, &c.StartupFile,
+		&startArgs, &envVars, &c.Port, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return NodeJSConfig{}, ErrNotFound
+	}
+	if err != nil {
+		return NodeJSConfig{}, fmt.Errorf("sites: scan nodejs config: %w", err)
+	}
+	if err := json.Unmarshal(startArgs, &c.StartArgs); err != nil {
+		return NodeJSConfig{}, fmt.Errorf("sites: unmarshal start_args: %w", err)
+	}
+	if err := json.Unmarshal(envVars, &c.EnvVars); err != nil {
+		return NodeJSConfig{}, fmt.Errorf("sites: unmarshal env_vars: %w", err)
+	}
+	return c, nil
+}
+
+// GetNodeJSConfig returns the Node.js config for the given site.
+// Returns ErrNotFound when no config row exists yet.
+func (s *Store) GetNodeJSConfig(ctx context.Context, siteID string) (NodeJSConfig, error) {
+	if strings.TrimSpace(siteID) == "" {
+		return NodeJSConfig{}, fmt.Errorf("%w: site_id is required", ErrInvalid)
+	}
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(
+		`SELECT %s FROM site_nodejs_configs WHERE site_id = $1`, nodejsColumns), siteID)
+	return scanNodeJSConfig(row)
+}
+
+// UpsertNodeJSConfig creates or replaces the Node.js config for a site.
+// The site must exist (FK enforced by schema). Updated fields replace all
+// existing values — this is a full overwrite, not a partial update.
+func (s *Store) UpsertNodeJSConfig(ctx context.Context, siteID string, p UpsertNodeJSConfigParams) (NodeJSConfig, error) {
+	if strings.TrimSpace(siteID) == "" {
+		return NodeJSConfig{}, fmt.Errorf("%w: site_id is required", ErrInvalid)
+	}
+	if p.Port != 0 && (p.Port < 1024 || p.Port > 65535) {
+		return NodeJSConfig{}, fmt.Errorf("%w: port must be between 1024 and 65535", ErrInvalid)
+	}
+	port := p.Port
+	if port == 0 {
+		port = 3000
+	}
+	startArgs := p.StartArgs
+	if startArgs == nil {
+		startArgs = []string{}
+	}
+	startArgsJSON, err := json.Marshal(startArgs)
+	if err != nil {
+		return NodeJSConfig{}, fmt.Errorf("%w: start_args: %v", ErrInvalid, err)
+	}
+	envVars := p.EnvVars
+	if envVars == nil {
+		envVars = map[string]string{}
+	}
+	envVarsJSON, err := json.Marshal(envVars)
+	if err != nil {
+		return NodeJSConfig{}, fmt.Errorf("%w: env_vars: %v", ErrInvalid, err)
+	}
+
+	nodeVersion := p.NodeVersion
+	if nodeVersion == "" {
+		nodeVersion = "system"
+	}
+	startupFile := p.StartupFile
+	if startupFile == "" {
+		startupFile = "server.js"
+	}
+
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		INSERT INTO site_nodejs_configs
+			(site_id, node_version, app_root, startup_file, start_args, env_vars, port, updated_at)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)
+		ON CONFLICT (site_id) DO UPDATE SET
+			node_version = EXCLUDED.node_version,
+			app_root     = EXCLUDED.app_root,
+			startup_file = EXCLUDED.startup_file,
+			start_args   = EXCLUDED.start_args,
+			env_vars     = EXCLUDED.env_vars,
+			port         = EXCLUDED.port,
+			updated_at   = EXCLUDED.updated_at
+		RETURNING %s`, nodejsColumns),
+		siteID, nodeVersion, p.AppRoot, startupFile,
+		string(startArgsJSON), string(envVarsJSON), port, s.clock())
+
+	c, err := scanNodeJSConfig(row)
+	if err != nil {
+		switch {
+		case isForeignKeyViolation(err):
+			return NodeJSConfig{}, fmt.Errorf("%w: site does not exist", ErrInvalid)
+		case isCheckViolation(err):
+			return NodeJSConfig{}, fmt.Errorf("sites: schema rejected nodejs config: %w", err)
+		default:
+			return NodeJSConfig{}, err
+		}
+	}
+	return c, nil
 }
