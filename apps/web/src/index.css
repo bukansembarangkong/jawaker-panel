@@ -106,3 +106,25 @@ body {
 .tnum {
   font-variant-numeric: tabular-nums;
 }
+
+/* Global clickable cursor — buttons, toggles, select, custom role=button */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"],
+select,
+summary,
+a {
+  cursor: pointer;
+}
+
+/* Disabled states show not-allowed */
+button:disabled,
+[role="button"][aria-disabled="true"],
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
