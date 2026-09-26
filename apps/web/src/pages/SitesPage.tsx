@@ -104,7 +104,7 @@ export function SitesPage() {
   const [showCreateSite, setShowCreateSite] = useState(false);
   const [siteSlug, setSiteSlug] = useState('');
   const [siteName, setSiteName] = useState('');
-  const [siteMode, setSiteMode] = useState<'static' | 'php' | 'reverse_proxy'>('static');
+  const [siteMode, setSiteMode] = useState<'static' | 'php' | 'reverse_proxy'>('php');
   const [siteServerId, setSiteServerId] = useState('');
   const [siteDocRoot, setSiteDocRoot] = useState('');
   const [siteUpstream, setSiteUpstream] = useState('');
@@ -346,10 +346,17 @@ function CreateSiteForm({
   siteUpstream, setSiteUpstream, sitePHPUnit, setSitePHPUnit,
   siteCreateError, busy, onSubmit, onCancel,
 }: CreateSiteFormProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
-    <form onSubmit={onSubmit} className="rounded-md border border-line bg-surface p-4 space-y-3">
-      <h3 className="text-sm font-medium text-ink">New site</h3>
+    <form onSubmit={onSubmit} className="rounded-md border border-line bg-surface p-5 space-y-4 max-w-xl">
+      <div>
+        <h3 className="text-base font-semibold text-ink">Add a new website</h3>
+        <p className="text-xs text-ink-muted mt-0.5">Configure domain, runtime mode, and root directory</p>
+      </div>
+
       {siteCreateError && <ErrorNote error={siteCreateError} title="Create failed" />}
+
       {/* Only show server picker if there are multiple servers */}
       {servers.length > 1 && (
         <Field label="Server">
@@ -359,47 +366,90 @@ function CreateSiteForm({
           </select>
         </Field>
       )}
-      <Field label="Name">
+
+      {/* Primary: Domain Name */}
+      <Field label="Domain Name">
         <input
           className={inputClass}
           value={siteName}
+          placeholder="example.com or sub.example.com"
           onChange={(e) => {
-            const name = e.target.value;
-            setSiteName(name);
-            const autoSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            const prevAutoSlug = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            if (!siteSlug || siteSlug === prevAutoSlug) {
-              setSiteSlug(autoSlug);
+            const domain = e.target.value.trim().toLowerCase();
+            setSiteName(domain);
+            // Auto-slug: replace dots and special chars with hyphens
+            const autoSlug = domain.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            setSiteSlug(autoSlug);
+            // Auto doc root
+            if (domain) {
+              setSiteDocRoot(`/var/www/${domain}`);
             }
           }}
           required
         />
+        <p className="text-xs text-ink-muted mt-1">Enter your full website domain or subdomain</p>
       </Field>
-      <Field label="Slug (URL-safe)">
-        <input className={inputClass} value={siteSlug} onChange={(e) => setSiteSlug(e.target.value)} required pattern="[a-z0-9-]+" placeholder="auto-filled from name" />
-      </Field>
-      <Field label="Mode">
+
+      {/* Website Mode */}
+      <Field label="Website Type">
         <select className={inputClass} value={siteMode} onChange={(e) => setSiteMode(e.target.value as typeof siteMode)}>
-          <option value="static">Static</option>
-          <option value="php">PHP</option>
-          <option value="reverse_proxy">Reverse proxy</option>
+          <option value="php">PHP (WordPress, Laravel, custom PHP)</option>
+          <option value="static">Static HTML / Jamstack</option>
+          <option value="reverse_proxy">Reverse Proxy (Node.js, Python, Docker app)</option>
         </select>
       </Field>
-      <Field label="Document root (optional)">
-        <input className={inputClass} value={siteDocRoot} onChange={(e) => setSiteDocRoot(e.target.value)} placeholder="/var/www/html" />
-      </Field>
+
       {siteMode === 'reverse_proxy' && (
         <Field label="Upstream URL">
           <input className={inputClass} value={siteUpstream} onChange={(e) => setSiteUpstream(e.target.value)} placeholder="http://127.0.0.1:3000" required />
+          <p className="text-xs text-ink-muted mt-1">Where your local app is listening (e.g. port 3000, 8080)</p>
         </Field>
       )}
+
       {siteMode === 'php' && (
-        <Field label="PHP-FPM socket / unit">
-          <input className={inputClass} value={sitePHPUnit} onChange={(e) => setSitePHPUnit(e.target.value)} placeholder="php8.2-fpm" required />
+        <Field label="PHP-FPM socket / unit (optional)">
+          <input className={inputClass} value={sitePHPUnit} onChange={(e) => setSitePHPUnit(e.target.value)} placeholder="Leave blank for system default (php8.3-fpm)" />
         </Field>
       )}
-      <div className="flex gap-2">
-        <button type="submit" className={primaryButtonClass} disabled={busy}>Create</button>
+
+      {/* Collapsible Advanced Settings */}
+      <div className="pt-1 border-t border-line">
+        <button
+          type="button"
+          className="text-xs font-medium text-accent hover:underline flex items-center gap-1"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+        >
+          {showAdvanced ? 'Hide advanced settings' : 'Show advanced settings (Slug, Document Root)'}
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-3 space-y-3 pl-2 border-l-2 border-line">
+            <Field label="Slug (Internal system identifier)">
+              <input
+                className={inputClass}
+                value={siteSlug}
+                onChange={(e) => setSiteSlug(e.target.value)}
+                required
+                pattern="[a-z0-9-]+"
+                placeholder="auto-derived from domain"
+              />
+              <p className="text-xs text-ink-muted mt-0.5">Used for Nginx config file names and system paths</p>
+            </Field>
+
+            <Field label="Document Root">
+              <input
+                className={inputClass}
+                value={siteDocRoot}
+                onChange={(e) => setSiteDocRoot(e.target.value)}
+                placeholder="/var/www/example.com"
+              />
+              <p className="text-xs text-ink-muted mt-0.5">Directory where web files are stored on the server</p>
+            </Field>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button type="submit" className={primaryButtonClass} disabled={busy}>Create Website</button>
         <button type="button" className={secondaryButtonClass} onClick={onCancel}>Cancel</button>
       </div>
     </form>
