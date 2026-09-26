@@ -13,9 +13,10 @@ import {
   primaryButtonClass,
   inputClass,
 } from '../components/ui';
+import { useFirstProjectId } from '../hooks/useFirstProjectId';
 
 export function DNSTLSPage() {
-  const [projectId, setProjectId] = useState<string>('default');
+  const projectId = useFirstProjectId();
   const [tab, setTab] = useState<'dns' | 'certs'>('dns');
 
   // DNS State
@@ -55,8 +56,8 @@ export function DNSTLSPage() {
     try {
       if (tab === 'dns') {
         const [pRes, zRes] = await Promise.all([
-          dnsTlsApi.listProviders(projectId),
-          dnsTlsApi.listZones(projectId),
+          dnsTlsApi.listProviders(projectId!),
+          dnsTlsApi.listZones(projectId!),
         ]);
         setProviders(pRes.providers || []);
         setZones(zRes.zones || []);
@@ -64,7 +65,7 @@ export function DNSTLSPage() {
           setSelectedZone(zRes.zones[0].id);
         }
       } else {
-        const cRes = await dnsTlsApi.listCertificates(projectId);
+        const cRes = await dnsTlsApi.listCertificates(projectId!);
         setCertificates(cRes.certificates || []);
       }
     } catch (err) {
@@ -81,7 +82,7 @@ export function DNSTLSPage() {
     if (selectedZone && tab === 'dns') {
       void (async () => {
         try {
-          const rRes = await dnsTlsApi.listRecords(projectId, selectedZone);
+          const rRes = await dnsTlsApi.listRecords(projectId!, selectedZone);
           setRecords(rRes.records || []);
         } catch (err) {
           setError(err instanceof Error ? err : new Error(String(err)));
@@ -95,7 +96,7 @@ export function DNSTLSPage() {
   const handleCreateProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await dnsTlsApi.createProvider(projectId, {
+      await dnsTlsApi.createProvider(projectId!, {
         name: providerName,
         provider: providerType,
         token: providerToken,
@@ -111,7 +112,7 @@ export function DNSTLSPage() {
   const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await dnsTlsApi.createZone(projectId, {
+      await dnsTlsApi.createZone(projectId!, {
         name: zoneName,
         provider_id: zoneProviderId,
       });
@@ -126,7 +127,7 @@ export function DNSTLSPage() {
     e.preventDefault();
     if (!selectedZone) return;
     try {
-      await dnsTlsApi.createRecord(projectId, selectedZone, {
+      await dnsTlsApi.createRecord(projectId!, selectedZone, {
         name: recName,
         type: recType,
         content: recContent,
@@ -134,7 +135,7 @@ export function DNSTLSPage() {
       });
       setRecName('');
       setRecContent('');
-      const rRes = await dnsTlsApi.listRecords(projectId, selectedZone);
+      const rRes = await dnsTlsApi.listRecords(projectId!, selectedZone);
       setRecords(rRes.records || []);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -144,7 +145,7 @@ export function DNSTLSPage() {
   const handleImportCert = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await dnsTlsApi.importCertificate(projectId, {
+      await dnsTlsApi.importCertificate(projectId!, {
         chain_pem: chainPEM,
         private_key_pem: privKeyPEM,
       });
@@ -162,15 +163,6 @@ export function DNSTLSPage() {
         <div>
           <h2 className="text-xl font-bold tracking-tight text-ink">DNS & TLS Management</h2>
           <p className="text-sm text-ink-secondary">Manage DNS providers, zones, records and TLS certificate lifecycle.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-ink-muted">Project ID:</label>
-          <input
-            type="text"
-            className={`${inputClass} w-36`}
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          />
         </div>
       </div>
 
@@ -257,7 +249,7 @@ export function DNSTLSPage() {
                     type="button"
                     onClick={async () => {
                       try {
-                        await dnsTlsApi.deleteProvider(projectId, p.id);
+                        await dnsTlsApi.deleteProvider(projectId!, p.id);
                         await loadData();
                       } catch (err) {
                         setError(err instanceof Error ? err : new Error(String(err)));
@@ -405,8 +397,8 @@ export function DNSTLSPage() {
                                   type="button"
                                   onClick={async () => {
                                     try {
-                                      await dnsTlsApi.deleteRecord(projectId, selectedZone, r.id);
-                                      const res = await dnsTlsApi.listRecords(projectId, selectedZone);
+                                      await dnsTlsApi.deleteRecord(projectId!, selectedZone, r.id);
+                                      const res = await dnsTlsApi.listRecords(projectId!, selectedZone);
                                       setRecords(res.records || []);
                                     } catch (err) {
                                       setError(err instanceof Error ? err : new Error(String(err)));
@@ -507,7 +499,7 @@ export function DNSTLSPage() {
                               type="button"
                               onClick={async () => {
                                 try {
-                                  await dnsTlsApi.revokeCertificate(projectId, c.id, 'operator manual revocation');
+                                  await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
                                   await loadData();
                                 } catch (err) {
                                   setError(err instanceof Error ? err : new Error(String(err)));
