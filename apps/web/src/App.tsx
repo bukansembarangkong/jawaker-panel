@@ -69,10 +69,10 @@ function routeFromHash(): Route {
   if (hash.startsWith('#/networking')) return 'networking';
   if (hash.startsWith('#/updates')) return 'updates';
   if (hash.startsWith('#/mail')) return 'mail';
-  if (hash.startsWith('#/ha')) return 'ha';
   if (hash.startsWith('#/copilot')) return 'copilot';
   if (hash.startsWith('#/plugins')) return 'plugins';
   if (hash.startsWith('#/hardening')) return 'hardening';
+  if (hash.startsWith('#/ha')) return 'ha';
   if (hash.startsWith('#/api-tokens')) return 'api-tokens';
   if (hash.startsWith('#/users')) return 'users';
   if (hash.startsWith('#/notifications')) return 'notifications';
