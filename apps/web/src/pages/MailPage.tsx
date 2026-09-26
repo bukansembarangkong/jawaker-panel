@@ -1,8 +1,7 @@
-import { useEffect, useCallback, useState } from 'react';
+﻿import { useEffect, useCallback, useState } from 'react';
 import { goeyToast } from 'goey-toast';
 import {
   type OperationalState,
-  EmptyState,
   ErrorNote,
   StatusBadge,
   ConfirmModal,
@@ -38,7 +37,15 @@ function StateBadge({ state }: { state: string }) {
   return <StatusBadge state={domainState(state)} detail={state} />;
 }
 
-// ── Domains tab ────────────────────────────────────────────────────────────────
+function DnsStatusPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+      {label} {ok ? '✓' : '✗'}
+    </span>
+  );
+}
+
+const thClass = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50';
 
 function DomainsTab() {
   const projectId = useFirstProjectId();
@@ -50,6 +57,7 @@ function DomainsTab() {
   const [newDomain, setNewDomain] = useState('');
   const [newServer, setNewServer] = useState('');
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadServers = useCallback(async () => {
@@ -122,11 +130,11 @@ function DomainsTab() {
     return servers.find((s) => s.id === serverId)?.name || 'Primary Node';
   };
 
-  if (!projectId || loading) return <p className="text-ink-secondary text-sm">Loading domains...</p>;
+  if (!projectId || loading) return <p className="text-slate-500 text-sm">Loading domains...</p>;
   if (error) return <ErrorNote error={error} title="Failed to load mail domains" onRetry={load} />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <ConfirmModal
         isOpen={confirmState.open}
         onClose={() => setConfirmState((s) => ({ ...s, open: false }))}
@@ -137,7 +145,6 @@ function DomainsTab() {
         danger
       />
 
-      {/* Add Domain Modal */}
       <Modal isOpen={adding} onClose={() => setAdding(false)} title="Add Mail Domain">
         <form onSubmit={create} className="space-y-4">
           <Field label="Mail Domain Name" hint="Domain for receiving and sending emails.">
@@ -171,10 +178,7 @@ function DomainsTab() {
           <div className="flex gap-2 justify-end pt-2">
             <button
               type="button"
-              onClick={() => {
-                setAdding(false);
-                setNewDomain('');
-              }}
+              onClick={() => { setAdding(false); setNewDomain(''); }}
               className={secondaryButtonClass}
             >
               Cancel
@@ -192,8 +196,8 @@ function DomainsTab() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Mail Domains ({domains.length})</h2>
-          <p className="text-xs text-ink-muted">Configure domains to receive and route incoming and outgoing emails.</p>
+          <h2 className="text-sm font-semibold text-slate-900">Mail Domains ({domains.length})</h2>
+          <p className="text-xs text-slate-500">Configure domains to receive and route incoming and outgoing emails.</p>
         </div>
         <button
           type="button"
@@ -210,36 +214,87 @@ function DomainsTab() {
       </div>
 
       {domains.length === 0 ? (
-        <EmptyState title="No mail domains configured">
-          <p className="text-sm text-ink-secondary">Add your first mail domain to configure mailboxes and aliases.</p>
-        </EmptyState>
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <span className="text-4xl">✉️</span>
+          <h3 className="mt-2 text-base font-semibold text-slate-900">No mail domains configured</h3>
+          <p className="mt-1 text-sm text-slate-500">Add your first mail domain to configure mailboxes and aliases.</p>
+        </div>
       ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
-          {domains.map((d) => (
-            <li key={d.id} className="flex items-center justify-between gap-4 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate font-mono text-sm font-medium text-ink">{d.domain}</p>
-                <p className="text-xs text-ink-muted">Host: {getServerName(d.server_id)}</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <StateBadge state={d.state} />
-                <button
-                  type="button"
-                  onClick={() => void deleteDomain(d.id)}
-                  className="text-xs text-danger hover:underline"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thClass}>Domain</th>
+                <th className={thClass}>Host</th>
+                <th className={thClass}>Status</th>
+                <th className={thClass}>DNS</th>
+                <th className={thClass}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {domains.map((d) => (
+                <>
+                  <tr key={d.id}>
+                    <td className="px-4 py-3 font-mono text-sm font-medium text-slate-900">{d.domain}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{getServerName(d.server_id)}</td>
+                    <td className="px-4 py-3">
+                      <StateBadge state={d.state} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        <DnsStatusPill ok={d.spf_ok} label="SPF" />
+                        <DnsStatusPill ok={d.dkim_ok} label="DKIM" />
+                        <DnsStatusPill ok={d.dmarc_ok} label="DMARC" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setExpanded(expanded === d.id ? null : d.id)}
+                          className={secondaryButtonClass}
+                        >
+                          {expanded === d.id ? 'Hide DNS' : 'DNS Setup'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteDomain(d.id)}
+                          className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expanded === d.id && (
+                    <tr key={`${d.id}-dns`}>
+                      <td colSpan={5} className="bg-slate-50 px-6 py-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">DNS Records for {d.domain}</p>
+                        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                          <pre className="p-4 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{`; SPF — add as TXT record on ${d.domain}
+${d.domain}.   IN TXT  "v=spf1 mx ~all"
+
+; DKIM — add as TXT record (replace KEY with your DKIM public key)
+mail._domainkey.${d.domain}.   IN TXT  "v=DKIM1; k=rsa; p=<YOUR_PUBLIC_KEY>"
+
+; DMARC — add as TXT record on _dmarc.${d.domain}
+_dmarc.${d.domain}.   IN TXT  "v=DMARC1; p=quarantine; rua=mailto:dmarc@${d.domain}"
+
+; MX — point mail to your server
+${d.domain}.   IN MX  10 ${d.domain}.`}</pre>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
-
-// ── Mailboxes tab ──────────────────────────────────────────────────────────────
 
 function MailboxesTab() {
   const projectId = useFirstProjectId();
@@ -294,7 +349,7 @@ function MailboxesTab() {
   if (error) return <ErrorNote error={error} title="Failed to load mailboxes" onRetry={() => setError(null)} />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <ConfirmModal
         isOpen={confirmState.open}
         onClose={() => setConfirmState(s => ({ ...s, open: false }))}
@@ -305,11 +360,11 @@ function MailboxesTab() {
         danger
       />
       <div className="flex items-center gap-3">
-        <label className="text-sm text-ink-secondary">Domain</label>
+        <label className="text-sm font-medium text-slate-700">Domain</label>
         <select
           value={selectedDomain}
           onChange={(e) => setSelectedDomain(e.target.value)}
-          className="rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
+          className={inputClass}
         >
           {domains.map((d) => (
             <option key={d.id} value={d.id}>{d.domain}</option>
@@ -317,39 +372,51 @@ function MailboxesTab() {
         </select>
       </div>
 
-      {loading ? (
-        <p className="text-ink-secondary text-sm">Loading mailboxes…</p>
-      ) : mailboxes.length === 0 ? (
-        <EmptyState title="No mailboxes">
-          <p className="text-sm text-ink-secondary">No mailboxes configured for this domain.</p>
-        </EmptyState>
-      ) : (
-        <ul className="divide-y divide-line rounded-md border border-line">
-          {mailboxes.map((mb) => (
-            <li key={mb.id} className="flex items-center justify-between gap-4 px-4 py-3">
-              <div>
-                <p className="font-mono text-sm text-ink">{mb.local_part}</p>
-                <p className="text-xs text-ink-muted">Quota: {mb.quota_mb} MB</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <StateBadge state={mb.state} />
-                <button
-                  type="button"
-                  onClick={() => void deleteMailbox(mb.id)}
-                  className="text-xs text-ink-secondary hover:text-danger"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">Loading mailboxes…</p>
+        ) : mailboxes.length === 0 ? (
+          <div className="flex flex-col items-center py-12 gap-2 text-center">
+            <span className="text-3xl">📬</span>
+            <p className="font-medium text-slate-700">No mailboxes</p>
+            <p className="text-sm text-slate-500">No mailboxes configured for this domain.</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thClass}>Local Part</th>
+                <th className={thClass}>Quota</th>
+                <th className={thClass}>Status</th>
+                <th className={thClass}></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {mailboxes.map((mb) => (
+                <tr key={mb.id}>
+                  <td className="px-4 py-3 font-mono text-sm text-slate-900">{mb.local_part}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{mb.quota_mb} MB</td>
+                  <td className="px-4 py-3">
+                    <StateBadge state={mb.state} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => void deleteMailbox(mb.id)}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
-
-// ── Aliases tab ────────────────────────────────────────────────────────────────
 
 function AliasesTab() {
   const projectId = useFirstProjectId();
@@ -404,7 +471,7 @@ function AliasesTab() {
   if (error) return <ErrorNote error={error} title="Failed to load aliases" onRetry={() => setError(null)} />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <ConfirmModal
         isOpen={confirmState.open}
         onClose={() => setConfirmState(s => ({ ...s, open: false }))}
@@ -415,11 +482,11 @@ function AliasesTab() {
         danger
       />
       <div className="flex items-center gap-3">
-        <label className="text-sm text-ink-secondary">Domain</label>
+        <label className="text-sm font-medium text-slate-700">Domain</label>
         <select
           value={selectedDomain}
           onChange={(e) => setSelectedDomain(e.target.value)}
-          className="rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
+          className={inputClass}
         >
           {domains.map((d) => (
             <option key={d.id} value={d.id}>{d.domain}</option>
@@ -427,35 +494,47 @@ function AliasesTab() {
         </select>
       </div>
 
-      {loading ? (
-        <p className="text-ink-secondary text-sm">Loading aliases…</p>
-      ) : aliases.length === 0 ? (
-        <EmptyState title="No aliases">
-          <p className="text-sm text-ink-secondary">No aliases configured for this domain.</p>
-        </EmptyState>
-      ) : (
-        <ul className="divide-y divide-line rounded-md border border-line">
-          {aliases.map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-4 px-4 py-3">
-              <div>
-                <p className="font-mono text-sm text-ink">{a.local_part} → {a.destination}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void deleteAlias(a.id)}
-                className="text-xs text-ink-secondary hover:text-danger"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">Loading aliases…</p>
+        ) : aliases.length === 0 ? (
+          <div className="flex flex-col items-center py-12 gap-2 text-center">
+            <span className="text-3xl">↩️</span>
+            <p className="font-medium text-slate-700">No aliases</p>
+            <p className="text-sm text-slate-500">No aliases configured for this domain.</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thClass}>Alias</th>
+                <th className={thClass}>Destination</th>
+                <th className={thClass}></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {aliases.map((a) => (
+                <tr key={a.id}>
+                  <td className="px-4 py-3 font-mono text-sm text-slate-900">{a.local_part}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-slate-600">{a.destination}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => void deleteAlias(a.id)}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
-
-// ── Queue Log tab ──────────────────────────────────────────────────────────────
 
 function QueueTab() {
   const projectId = useFirstProjectId();
@@ -490,13 +569,13 @@ function QueueTab() {
   if (error) return <ErrorNote error={error} title="Failed to load queue log" onRetry={() => setError(null)} />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <label className="text-sm text-ink-secondary">Domain</label>
+        <label className="text-sm font-medium text-slate-700">Domain</label>
         <select
           value={selectedDomain}
           onChange={(e) => setSelectedDomain(e.target.value)}
-          className="rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
+          className={inputClass}
         >
           {domains.map((d) => (
             <option key={d.id} value={d.id}>{d.domain}</option>
@@ -504,30 +583,51 @@ function QueueTab() {
         </select>
       </div>
 
-      {loading ? (
-        <p className="text-ink-secondary text-sm">Loading queue log…</p>
-      ) : entries.length === 0 ? (
-        <EmptyState title="No queue entries">
-          <p className="text-sm text-ink-secondary">No mail queue entries recorded yet.</p>
-        </EmptyState>
-      ) : (
-        <ul className="divide-y divide-line rounded-md border border-line font-mono text-xs">
-          {entries.map((e) => (
-            <li key={e.id} className="flex items-start gap-4 px-4 py-2">
-              <span className="shrink-0 text-ink-muted w-32 truncate">{e.queued_at?.slice(0, 19).replace('T', ' ')}</span>
-              <span className="text-ink truncate">{e.sender} → {e.recipients}</span>
-              <span className={`shrink-0 ${e.status === 'delivered' ? 'text-green-600' : e.status === 'bounced' ? 'text-danger' : 'text-ink-secondary'}`}>
-                {e.status}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">Loading queue log…</p>
+        ) : entries.length === 0 ? (
+          <div className="flex flex-col items-center py-12 gap-2 text-center">
+            <span className="text-3xl">📨</span>
+            <p className="font-medium text-slate-700">No queue entries</p>
+            <p className="text-sm text-slate-500">No mail queue entries recorded yet.</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className={thClass}>Queued at</th>
+                <th className={thClass}>Sender</th>
+                <th className={thClass}>Recipients</th>
+                <th className={thClass}>Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500 shrink-0">
+                    {e.queued_at?.slice(0, 19).replace('T', ' ')}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-800 truncate">{e.sender}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-700 truncate">{e.recipients}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      e.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' :
+                      e.status === 'bounced' ? 'bg-red-100 text-red-600' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>
+                      {e.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
-
-// ── Page shell ─────────────────────────────────────────────────────────────────
 
 export function MailPage() {
   const [tab, setTab] = useState<Tab>('domains');
@@ -539,26 +639,31 @@ export function MailPage() {
     { id: 'queue', label: 'Queue Log' },
   ];
 
+  const tabClass = (t: Tab) =>
+    `px-4 py-2 text-sm font-medium transition-colors ${
+      tab === t
+        ? 'border-b-2 border-indigo-600 text-indigo-600'
+        : 'text-slate-500 hover:text-slate-700'
+    }`;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold tracking-wide text-ink">Mail Platform</h1>
-        <p className="mt-1 text-sm text-ink-secondary">
-          Manage mail domains, mailboxes, aliases, and delivery queue.
-        </p>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Mail Platform</h1>
+          <p className="text-sm text-slate-500">
+            Manage mail domains, mailboxes, aliases, and delivery queue.
+          </p>
+        </div>
       </div>
 
-      <div className="flex gap-1 border-b border-line">
+      <div className="flex gap-1 border-b border-slate-200">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm ${
-              tab === t.id
-                ? 'border-b-2 border-accent font-medium text-ink'
-                : 'text-ink-secondary hover:text-ink'
-            }`}
+            className={tabClass(t.id)}
           >
             {t.label}
           </button>

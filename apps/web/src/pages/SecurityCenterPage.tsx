@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { goeyToast } from 'goey-toast';
 
 import {
@@ -16,7 +16,6 @@ import {
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
 import {
-  EmptyState,
   ErrorNote,
   Field,
   Modal,
@@ -42,7 +41,7 @@ function severityClass(s: string): string {
     case 'high':     return 'text-orange-600 font-semibold';
     case 'medium':   return 'text-yellow-600';
     case 'low':      return 'text-blue-600';
-    default:         return 'text-ink-secondary';
+    default:         return 'text-slate-500';
   }
 }
 
@@ -55,7 +54,31 @@ function statusIcon(s: string): string {
   }
 }
 
+function wafActionBadge(action: string) {
+  const cls =
+    action === 'block'     ? 'bg-red-100 text-red-700' :
+    action === 'allow'     ? 'bg-emerald-100 text-emerald-700' :
+    action === 'challenge' ? 'bg-amber-100 text-amber-700' :
+                             'bg-slate-100 text-slate-600';
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}>
+      {action.toUpperCase()}
+    </span>
+  );
+}
+
+function eventKindIcon(kind: string): string {
+  if (kind.includes('ssh') || kind.includes('auth')) return '🔑';
+  if (kind.includes('ban') || kind.includes('block')) return '🚫';
+  if (kind.includes('scan') || kind.includes('probe')) return '🔍';
+  if (kind.includes('ddos') || kind.includes('flood')) return '🌊';
+  return '⚠️';
+}
+
 interface ServerOption { id: string; name: string; }
+
+const thClass = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50';
+const tdClass = 'px-4 py-3 text-sm text-slate-800';
 
 export function SecurityCenterPage() {
   const [servers, setServers] = useState<ServerOption[]>([]);
@@ -241,30 +264,41 @@ export function SecurityCenterPage() {
   }
 
   const tabClass = (t: Tab) =>
-    `px-3 py-1.5 text-sm rounded-md ${tab === t ? 'bg-elevated font-medium text-ink' : 'text-ink-secondary hover:text-ink'}`;
+    `px-4 py-2 text-sm font-medium transition-colors ${
+      tab === t
+        ? 'border-b-2 border-indigo-600 text-indigo-600'
+        : 'text-slate-500 hover:text-slate-700'
+    }`;
 
-  if (!serverId) return <p className="text-sm text-ink-secondary">No servers available.</p>;
+  if (!serverId) return <p className="text-sm text-slate-500">No servers available.</p>;
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-base font-semibold">Security Center</h2>
-        <select className={inputClass} value={serverId} onChange={(e) => { setServerId(e.target.value); void loadAttackMode(e.target.value); }} aria-label="Select server">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Security Center</h1>
+          <p className="text-sm text-slate-500">WAF rules, IP bans, hardening checks, and security events.</p>
+        </div>
+        <select
+          className={inputClass}
+          value={serverId}
+          onChange={(e) => { setServerId(e.target.value); void loadAttackMode(e.target.value); }}
+          aria-label="Select server"
+        >
           {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
 
-      {/* Under Attack Mode Banner (PRD §21.4) */}
-      <div className={`rounded-lg border p-4 flex items-center justify-between ${
+      <div className={`rounded-xl border-2 p-5 flex items-start justify-between gap-4 ${
         attackMode?.enabled
-          ? 'border-red-400 bg-red-50 dark:bg-red-950/20'
-          : 'border-border bg-surface'
+          ? 'border-red-400 bg-red-50'
+          : 'border-slate-200 bg-white shadow-sm'
       }`}>
         <div>
-          <p className={`text-sm font-semibold ${attackMode?.enabled ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>
-            {attackMode?.enabled ? '🚨 Under Attack Mode - ACTIVE' : 'Under Attack Mode'}
+          <p className={`text-sm font-semibold ${attackMode?.enabled ? 'text-red-700' : 'text-slate-900'}`}>
+            {attackMode?.enabled ? '🚨 Under Attack Mode — ACTIVE' : '🛡️ Under Attack Mode'}
           </p>
-          <p className="text-xs text-ink-secondary mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             {attackMode?.enabled
               ? `Activated: ${attackMode.activated_at ? new Date(attackMode.activated_at).toLocaleString() : 'just now'}. Rate limits tightened ${attackMode.rate_limit_multiplier}×. Suspicious traffic challenged.`
               : 'Temporarily tightens rate limits, challenges suspicious traffic, restricts expensive endpoints.'}
@@ -273,8 +307,10 @@ export function SecurityCenterPage() {
         <button
           onClick={() => void handleToggleAttackMode()}
           disabled={attackModeLoading}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
-            attackMode?.enabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition-all active:scale-95 disabled:opacity-50 ${
+            attackMode?.enabled
+              ? 'bg-emerald-600 hover:bg-emerald-700'
+              : 'bg-red-600 hover:bg-red-700'
           }`}
         >
           {attackModeLoading ? 'Updating…' : attackMode?.enabled ? 'Deactivate' : 'Activate Under Attack Mode'}
@@ -290,7 +326,7 @@ export function SecurityCenterPage() {
         />
       )}
 
-      <nav aria-label="Security tabs" className="flex flex-wrap gap-2">
+      <div className="flex gap-1 border-b border-slate-200">
         {(['hardening', 'ssh', 'events', 'bans', 'waf'] as Tab[]).map((t) => (
           <button key={t} type="button" className={tabClass(t)} onClick={() => setTab(t)}>
             {t === 'hardening' ? 'Hardening' :
@@ -299,13 +335,12 @@ export function SecurityCenterPage() {
              t === 'bans' ? 'Bans' : 'WAF Rules'}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {loading && <p className="text-sm text-ink-secondary">Loading…</p>}
+      {loading && <p className="text-sm text-slate-500">Loading…</p>}
 
-      {/* ─── Hardening ─── */}
       {tab === 'hardening' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <button type="button" className={primaryButtonClass}
             onClick={() => { void runScan(); }}
             disabled={scanRunning}>
@@ -313,29 +348,35 @@ export function SecurityCenterPage() {
           </button>
 
           {findings != null && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Scan results ({findings.length} findings)</h3>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900">Scan results ({findings.length} findings)</h3>
+              </div>
               {findings.length === 0 ? (
-                <p className="text-sm text-ink-secondary">No findings - all checks passed.</p>
+                <div className="flex flex-col items-center py-12 gap-2 text-center">
+                  <span className="text-3xl">✅</span>
+                  <p className="font-medium text-slate-700">All checks passed</p>
+                  <p className="text-sm text-slate-500">No findings.</p>
+                </div>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full">
                   <thead>
-                    <tr className="border-b border-line text-left text-ink-secondary">
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Severity</th>
-                      <th className="py-2 pr-4">Check</th>
-                      <th className="py-2 pr-4">Title</th>
-                      <th className="py-2">Remediation</th>
+                    <tr>
+                      <th className={thClass}>Status</th>
+                      <th className={thClass}>Severity</th>
+                      <th className={thClass}>Check</th>
+                      <th className={thClass}>Title</th>
+                      <th className={thClass}>Remediation</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100">
                     {findings.map((f, i) => (
-                      <tr key={i} className="border-b border-line">
-                        <td className="py-2 pr-4">{statusIcon(f.status)}</td>
-                        <td className={`py-2 pr-4 ${severityClass(f.severity)}`}>{f.severity}</td>
-                        <td className="py-2 pr-4 font-mono text-xs">{f.check_name}</td>
-                        <td className="py-2 pr-4">{f.title}</td>
-                        <td className="py-2 text-xs text-ink-secondary">{f.remediation || '-'}</td>
+                      <tr key={i}>
+                        <td className={tdClass}>{statusIcon(f.status)}</td>
+                        <td className={`${tdClass} ${severityClass(f.severity)}`}>{f.severity}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-700">{f.check_name}</td>
+                        <td className={tdClass}>{f.title}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{f.remediation || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -344,31 +385,35 @@ export function SecurityCenterPage() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium">Stored checks</h3>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">Stored checks</h3>
+            </div>
             {checks.length === 0 && !loading ? (
-              <EmptyState title="No hardening checks recorded.">
-                <span>Run a scan to populate findings.</span>
-              </EmptyState>
+              <div className="flex flex-col items-center py-12 gap-2 text-center">
+                <span className="text-3xl">🔒</span>
+                <p className="font-medium text-slate-700">No hardening checks recorded</p>
+                <p className="text-sm text-slate-500">Run a scan to populate findings.</p>
+              </div>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b border-line text-left text-ink-secondary">
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Severity</th>
-                    <th className="py-2 pr-4">Category</th>
-                    <th className="py-2 pr-4">Title</th>
-                    <th className="py-2">Observed</th>
+                  <tr>
+                    <th className={thClass}>Status</th>
+                    <th className={thClass}>Severity</th>
+                    <th className={thClass}>Category</th>
+                    <th className={thClass}>Title</th>
+                    <th className={thClass}>Observed</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {checks.map((c) => (
-                    <tr key={c.id} className="border-b border-line">
-                      <td className="py-2 pr-4">{statusIcon(c.status)}</td>
-                      <td className={`py-2 pr-4 ${severityClass(c.severity)}`}>{c.severity}</td>
-                      <td className="py-2 pr-4">{c.category}</td>
-                      <td className="py-2 pr-4">{c.title}</td>
-                      <td className="py-2 text-xs text-ink-secondary">{formatTs(c.observed_at)}</td>
+                    <tr key={c.id}>
+                      <td className={tdClass}>{statusIcon(c.status)}</td>
+                      <td className={`${tdClass} ${severityClass(c.severity)}`}>{c.severity}</td>
+                      <td className={tdClass}>{c.category}</td>
+                      <td className={tdClass}>{c.title}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatTs(c.observed_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -378,73 +423,72 @@ export function SecurityCenterPage() {
         </div>
       )}
 
-      {/* ─── SSH Posture ─── */}
       {tab === 'ssh' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <button type="button" className={primaryButtonClass}
             onClick={() => { void loadSSHPosture(); }}
             disabled={postureLoading}>
             {postureLoading ? 'Reading…' : 'Read SSH Posture'}
           </button>
           {posture && (
-            <table className="w-full max-w-lg text-sm">
-              <tbody>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900">SSH Configuration</h3>
+              </div>
+              <ul className="divide-y divide-slate-100">
                 {([
-                  ['Port', String(posture.port)],
-                  ['PermitRootLogin', posture.permit_root_login],
-                  ['PasswordAuthentication', posture.password_auth],
-                  ['PubkeyAuthentication', posture.pubkey_auth],
-                  ['Protocol', posture.protocol_versions || '2'],
-                  ['Active sessions', String(posture.active_sessions)],
-                  ['Auth failures (1h)', String(posture.auth_failures_1h)],
-                  ['Observed', formatTs(posture.observed_at)],
-                ] as [string, string][]).map(([label, value]) => (
-                  <tr key={label} className="border-b border-line">
-                    <td className="py-2 pr-4 text-ink-secondary text-xs">{label}</td>
-                    <td className="py-2 font-mono text-xs">{value}</td>
-                  </tr>
+                  ['Port', String(posture.port), posture.port !== 22 ? '✅' : '⚠️'],
+                  ['PermitRootLogin', posture.permit_root_login, posture.permit_root_login === 'no' ? '✅' : '❌'],
+                  ['PasswordAuthentication', posture.password_auth, posture.password_auth === 'no' ? '✅' : '❌'],
+                  ['PubkeyAuthentication', posture.pubkey_auth, posture.pubkey_auth === 'yes' ? '✅' : '⚠️'],
+                  ['Protocol', posture.protocol_versions || '2', '✅'],
+                  ['Active sessions', String(posture.active_sessions), ''],
+                  ['Auth failures (1h)', String(posture.auth_failures_1h), posture.auth_failures_1h > 10 ? '⚠️' : '✅'],
+                  ['Observed', formatTs(posture.observed_at), ''],
+                ] as [string, string, string][]).map(([label, value, icon]) => (
+                  <li key={label} className="flex items-center gap-4 px-6 py-3">
+                    <span className="text-base w-6 shrink-0">{icon}</span>
+                    <span className="text-xs text-slate-500 w-48 shrink-0">{label}</span>
+                    <span className="font-mono text-sm text-slate-800">{value}</span>
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ul>
+            </div>
           )}
         </div>
       )}
 
-      {/* ─── Events ─── */}
       {tab === 'events' && (
-        <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           {events.length === 0 && !loading ? (
-            <EmptyState title="No security events recorded."><span /></EmptyState>
+            <div className="flex flex-col items-center py-12 gap-2 text-center">
+              <span className="text-3xl">📋</span>
+              <p className="font-medium text-slate-700">No security events</p>
+              <p className="text-sm text-slate-500">Events will appear here when detected.</p>
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">When</th>
-                  <th className="py-2 pr-4">Kind</th>
-                  <th className="py-2 pr-4">Source</th>
-                  <th className="py-2 pr-4">Remote IP</th>
-                  <th className="py-2">Service</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr key={e.id} className="border-b border-line">
-                    <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(e.observed_at)}</td>
-                    <td className="py-2 pr-4">{e.kind}</td>
-                    <td className="py-2 pr-4">{e.source}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{e.remote_ip || '-'}</td>
-                    <td className="py-2 text-xs">{e.service || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="divide-y divide-slate-100">
+              {events.map((e) => (
+                <li key={e.id} className="flex items-start gap-4 px-6 py-4">
+                  <span className="text-xl shrink-0 mt-0.5">{eventKindIcon(e.kind)}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800">{e.kind}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {e.source && <span className="mr-2">{e.source}</span>}
+                      {e.remote_ip && <span className="font-mono mr-2">{e.remote_ip}</span>}
+                      {e.service && <span>{e.service}</span>}
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0 mt-0.5">{formatTs(e.observed_at)}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
 
-      {/* ─── Bans ─── */}
       {tab === 'bans' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="flex gap-2">
             <button type="button" className={primaryButtonClass}
               onClick={withStepUp(async () => setShowCreateBan(true))}>+ Ban IP</button>
@@ -487,25 +531,30 @@ export function SecurityCenterPage() {
           </Modal>
 
           {liveBans != null && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Live bans from node ({liveBans.length})</h3>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900">Live bans from node ({liveBans.length})</h3>
+              </div>
               {liveBans.length === 0 ? (
-                <p className="text-sm text-ink-secondary">No live bans.</p>
+                <div className="flex flex-col items-center py-8 gap-2 text-center">
+                  <span className="text-2xl">✅</span>
+                  <p className="text-sm text-slate-500">No live bans.</p>
+                </div>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full">
                   <thead>
-                    <tr className="border-b border-line text-left text-ink-secondary">
-                      <th className="py-2 pr-4">IP</th>
-                      <th className="py-2 pr-4">Source</th>
-                      <th className="py-2">Jail</th>
+                    <tr>
+                      <th className={thClass}>IP</th>
+                      <th className={thClass}>Source</th>
+                      <th className={thClass}>Jail</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100">
                     {liveBans.map((b, i) => (
-                      <tr key={i} className="border-b border-line">
-                        <td className="py-2 pr-4 font-mono text-xs">{b.ip}</td>
-                        <td className="py-2 pr-4">{b.source}</td>
-                        <td className="py-2 text-xs">{b.jail || '-'}</td>
+                      <tr key={i}>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-800">{b.ip}</td>
+                        <td className={tdClass}>{b.source}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{b.jail || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -514,45 +563,54 @@ export function SecurityCenterPage() {
             </div>
           )}
 
-          {bans.length === 0 && !loading ? (
-            <EmptyState title="No active bans."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">IP</th>
-                  <th className="py-2 pr-4">Source</th>
-                  <th className="py-2 pr-4">Reason</th>
-                  <th className="py-2 pr-4">Banned</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {bans.map((b) => (
-                  <tr key={b.id} className="border-b border-line">
-                    <td className="py-2 pr-4 font-mono text-xs">{b.ip}</td>
-                    <td className="py-2 pr-4">{b.source}</td>
-                    <td className="py-2 pr-4 text-xs">{b.reason || '-'}</td>
-                    <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(b.banned_at)}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await securityCenterApi.removeBan(serverId, b.id);
-                          goeyToast.success('Ban removed');
-                          loadData();
-                        })}>Unban</button>
-                    </td>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">Active bans</h3>
+            </div>
+            {bans.length === 0 && !loading ? (
+              <div className="flex flex-col items-center py-12 gap-2 text-center">
+                <span className="text-3xl">✅</span>
+                <p className="font-medium text-slate-700">No active bans</p>
+                <p className="text-sm text-slate-500">No IPs are currently banned.</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={thClass}>IP</th>
+                    <th className={thClass}>Source</th>
+                    <th className={thClass}>Reason</th>
+                    <th className={thClass}>Banned at</th>
+                    <th className={thClass}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {bans.map((b) => (
+                    <tr key={b.id}>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{b.ip}</td>
+                      <td className={tdClass}>{b.source}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{b.reason || '-'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatTs(b.banned_at)}</td>
+                      <td className="px-4 py-3">
+                        <button type="button"
+                          className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                          onClick={withStepUp(async () => {
+                            await securityCenterApi.removeBan(serverId, b.id);
+                            goeyToast.success('Ban removed');
+                            loadData();
+                          })}>Unban</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ─── WAF Rules ─── */}
       {tab === 'waf' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <button type="button" className={primaryButtonClass}
             onClick={withStepUp(async () => setShowCreateWAF(true))}>+ Rule</button>
 
@@ -600,43 +658,54 @@ export function SecurityCenterPage() {
             </form>
           </Modal>
 
-          {wafRules.length === 0 && !loading ? (
-            <EmptyState title="No WAF rules configured."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">Kind</th>
-                  <th className="py-2 pr-4">Pattern</th>
-                  <th className="py-2 pr-4">Action</th>
-                  <th className="py-2 pr-4">Priority</th>
-                  <th className="py-2 pr-4">Enabled</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {wafRules.map((r) => (
-                  <tr key={r.id} className="border-b border-line">
-                    <td className="py-2 pr-4">{r.kind}</td>
-                    <td className="py-2 pr-4 font-mono text-xs max-w-[12rem] truncate">{r.pattern}</td>
-                    <td className="py-2 pr-4">{r.action}</td>
-                    <td className="py-2 pr-4">{r.priority}</td>
-                    <td className="py-2 pr-4">{r.enabled ? 'Yes' : 'No'}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await securityCenterApi.deleteWAFRule(serverId, r.id);
-                          goeyToast.success('WAF rule deleted');
-                          loadData();
-                        })}>Delete</button>
-                    </td>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {wafRules.length === 0 && !loading ? (
+              <div className="flex flex-col items-center py-12 gap-2 text-center">
+                <span className="text-3xl">🛡️</span>
+                <p className="font-medium text-slate-700">No WAF rules</p>
+                <p className="text-sm text-slate-500">Add rules to filter malicious traffic.</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={thClass}>Kind</th>
+                    <th className={thClass}>Pattern</th>
+                    <th className={thClass}>Action</th>
+                    <th className={thClass}>Priority</th>
+                    <th className={thClass}>Enabled</th>
+                    <th className={thClass}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {wafRules.map((r) => (
+                    <tr key={r.id}>
+                      <td className={tdClass}>{r.kind}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700 max-w-[12rem] truncate">{r.pattern}</td>
+                      <td className="px-4 py-3">{wafActionBadge(r.action)}</td>
+                      <td className={tdClass}>{r.priority}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${r.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {r.enabled ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button type="button"
+                          className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                          onClick={withStepUp(async () => {
+                            await securityCenterApi.deleteWAFRule(serverId, r.id);
+                            goeyToast.success('WAF rule deleted');
+                            loadData();
+                          })}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
