@@ -49,7 +49,8 @@ export class ApiError extends Error {
 
 /** True when the failure means "no valid session", rather than a fault. */
 export function isUnauthenticated(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 401;
+  if (err instanceof ApiError) return err.status === 401;
+  return typeof err === 'object' && err !== null && (err as { status?: number }).status === 401;
 }
 
 /**
@@ -62,7 +63,8 @@ export function isUnauthenticated(err: unknown): boolean {
  * what keeps those two paths from collapsing into one.
  */
 export function isStepUpRequired(err: unknown): boolean {
-  return err instanceof ApiError && err.code === 'step_up_required';
+  if (err instanceof ApiError) return err.code === 'step_up_required';
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'step_up_required';
 }
 
 function newCorrelationId(): string {
