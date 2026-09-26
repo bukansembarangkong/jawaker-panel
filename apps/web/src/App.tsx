@@ -56,7 +56,7 @@ type Route = 'dashboard' | 'servers' | 'security' | 'sites' | 'apps' | 'database
 function routeFromHash(): Route {
   if (window.location.hash === '#/security') return 'security';
   if (window.location.hash === '#/servers') return 'servers';
-  if (window.location.hash === '#/sites') return 'sites';
+  if (window.location.hash.startsWith('#/sites')) return 'sites';
   if (window.location.hash === '#/apps') return 'apps';
   if (window.location.hash === '#/databases') return 'databases';
   if (window.location.hash === '#/backups') return 'backups';

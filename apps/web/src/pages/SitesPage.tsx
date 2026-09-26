@@ -102,8 +102,7 @@ export function SitesPage() {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const selectSite = (s: Site | null) => {
     setSelectedSite(s);
-    if (s) sessionStorage.setItem('sites_selected_id', s.id);
-    else sessionStorage.removeItem('sites_selected_id');
+    window.location.hash = s ? `/sites/${s.id}` : '/sites';
   };
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,10 +146,12 @@ export function SitesPage() {
     try {
       const page = await api.listSites(projectId);
       setSites(page.sites);
-      // Restore previously selected site after refresh
-      const savedId = sessionStorage.getItem('sites_selected_id');
-      if (savedId && page.sites) {
-        const match = page.sites.find((s) => s.id === savedId);
+      // Restore previously selected site from URL hash: #/sites/SITE_ID
+      const siteIdFromHash = window.location.hash.startsWith('#/sites/')
+        ? window.location.hash.slice('#/sites/'.length)
+        : null;
+      if (siteIdFromHash && page.sites) {
+        const match = page.sites.find((s) => s.id === siteIdFromHash);
         if (match) setSelectedSite(match);
       }
     } catch (err) {
@@ -179,6 +180,22 @@ export function SitesPage() {
     if (selectedProject) void loadSites(selectedProject.id);
     else setSites(null);
   }, [selectedProject, loadSites]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash;
+      if (!h.startsWith('#/sites/')) {
+        setSelectedSite(null);
+      } else if (sites) {
+        const id = h.slice('#/sites/'.length);
+        const match = sites.find((s) => s.id === id);
+        if (match) setSelectedSite(match);
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [sites]);
 
   const createSite = async (e: React.FormEvent) => {
     e.preventDefault();
