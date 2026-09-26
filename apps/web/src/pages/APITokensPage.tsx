@@ -5,14 +5,10 @@ import { tokenApi, ApiError } from '../api/client';
 import type { APIToken, CreatedAPIToken } from '../api/client';
 import {
   ErrorNote,
-  EmptyState,
-  StatusBadge,
   Modal,
   ConfirmModal,
   Field,
   inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
 } from '../components/ui';
 
 export function APITokensPage() {
@@ -135,14 +131,14 @@ export function APITokensPage() {
             <button
               type="button"
               onClick={() => setIsCreateOpen(false)}
-              className={secondaryButtonClass}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || !name.trim()}
-              className={primaryButtonClass}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50"
             >
               {submitting ? 'Creating…' : 'Generate Token'}
             </button>
@@ -150,31 +146,34 @@ export function APITokensPage() {
         </form>
       </Modal>
 
-      {/* Token Created Alert Modal */}
+      {/* Token Reveal Modal */}
       {created && (
         <Modal isOpen={true} onClose={() => setCreated(null)} title="New API Token Generated">
           <div className="space-y-4">
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
-              <strong>Make sure to copy your token now.</strong> You won't be able to see it again!
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <span className="text-lg">⚠️</span>
+              <p className="text-xs text-amber-800">
+                <strong>Copy your token now.</strong> You won't be able to see it again after closing this dialog.
+              </p>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-ink-secondary mb-1">
-                Token ({created.name})
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Token — <span className="font-semibold text-slate-800">{created.name}</span>
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   readOnly
                   value={created.plaintext}
-                  className={`${inputClass} font-mono text-xs select-all`}
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 select-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={() => void copyToken(created.plaintext)}
-                  className={primaryButtonClass}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
                 >
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? '✓ Copied!' : 'Copy'}
                 </button>
               </div>
             </div>
@@ -183,7 +182,7 @@ export function APITokensPage() {
               <button
                 type="button"
                 onClick={() => setCreated(null)}
-                className={secondaryButtonClass}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
               >
                 I have saved this token
               </button>
@@ -193,17 +192,15 @@ export function APITokensPage() {
       )}
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-ink">API Tokens</h2>
-          <p className="text-sm text-ink-secondary">
-            Personal and service tokens for programmatic API access and CLI automation.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">API Tokens</h1>
+          <p className="text-sm text-slate-500">Personal and service tokens for programmatic API access and CLI automation.</p>
         </div>
         <button
           type="button"
           onClick={() => setIsCreateOpen(true)}
-          className={primaryButtonClass}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all w-fit"
         >
           + Create Token
         </button>
@@ -212,66 +209,76 @@ export function APITokensPage() {
       {error && <ErrorNote error={error} title="Token operation failed" onRetry={() => void load()} />}
 
       {/* Token Table */}
-      {loading ? (
-        <p className="text-sm text-ink-secondary">Loading tokens…</p>
-      ) : tokens.length === 0 ? (
-        <EmptyState title="No API Tokens">
-          Create an API token to integrate external CI/CD pipelines, CLI scripts, or automated workflows.
-        </EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-line bg-elevated/50 text-xs font-semibold uppercase tracking-wider text-ink-muted">
-              <tr>
-                <th className="px-4 py-3">Token Name</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Prefix</th>
-                <th className="px-4 py-3">Last Used</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {tokens.map((t) => (
-                <tr key={t.id} className="hover:bg-elevated/40 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-ink">{t.name}</p>
-                    <p className="text-xs text-ink-muted">Created {new Date(t.created_at).toLocaleDateString()}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-md bg-elevated px-2 py-0.5 text-xs font-medium text-ink-secondary capitalize">
-                      {t.kind}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-ink-secondary">
-                    {t.token_prefix}••••••••
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-muted">
-                    {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : 'Never'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge
-                      state={t.revoked_at ? 'Disabled' : 'Healthy'}
-                      detail={t.revoked_at ? 'Revoked' : 'Active'}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {!t.revoked_at && (
-                      <button
-                        type="button"
-                        className="text-xs text-danger hover:underline font-medium"
-                        onClick={() => void handleRevoke(t.id, t.name)}
-                      >
-                        Revoke
-                      </button>
-                    )}
-                  </td>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="px-6 py-12 text-center text-sm text-slate-500">Loading tokens…</div>
+        ) : tokens.length === 0 ? (
+          <div className="px-6 py-16 text-center">
+            <div className="text-4xl mb-3">🔑</div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">No API Tokens</h3>
+            <p className="text-sm text-slate-500">Create an API token to integrate CI/CD pipelines, CLI scripts, or automated workflows.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Kind</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Prefix</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Last Used</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {tokens.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-900">{t.name}</p>
+                      <p className="text-xs text-slate-400">Created {new Date(t.created_at).toLocaleDateString()}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${t.kind === 'service' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {t.kind}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                      {t.token_prefix}<span className="tracking-widest">••••••</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : <span className="text-slate-400">Never</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {t.revoked_at ? (
+                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-50 text-red-700">
+                          Revoked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Active
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!t.revoked_at && (
+                        <button
+                          type="button"
+                          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
+                          onClick={() => void handleRevoke(t.id, t.name)}
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

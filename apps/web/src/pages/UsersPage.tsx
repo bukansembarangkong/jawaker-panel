@@ -5,14 +5,10 @@ import { userApi, ApiError } from '../api/client';
 import type { PlatformUser } from '../api/client';
 import {
   ErrorNote,
-  EmptyState,
-  StatusBadge,
   Modal,
   ConfirmModal,
   Field,
   inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
 } from '../components/ui';
 
 function UserAvatar({ name, email }: { name: string; email: string }) {
@@ -23,9 +19,38 @@ function UserAvatar({ name, email }: { name: string; email: string }) {
     .slice(0, 2)
     .toUpperCase();
   return (
-    <div className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+    <div className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 ring-2 ring-white">
       {initials}
     </div>
+  );
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const map: Record<string, string> = {
+    customer: 'bg-slate-100 text-slate-600',
+    staff: 'bg-blue-50 text-blue-700',
+    admin: 'bg-purple-50 text-purple-700',
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${map[role] ?? 'bg-slate-100 text-slate-600'}`}>
+      {role}
+    </span>
+  );
+}
+
+function StateBadge({ state }: { state: string }) {
+  if (state === 'active') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Active
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 capitalize">
+      {state}
+    </span>
   );
 }
 
@@ -195,7 +220,7 @@ export function UsersPage() {
               <button
                 type="button"
                 onClick={generatePassword}
-                className={secondaryButtonClass}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
                 title="Generate secure password"
               >
                 Generate
@@ -218,14 +243,14 @@ export function UsersPage() {
             <button
               type="button"
               onClick={() => { setIsInviteOpen(false); setFormError(null); }}
-              className={secondaryButtonClass}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || !email.trim() || !displayName.trim() || !password.trim()}
-              className={primaryButtonClass}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50"
             >
               {submitting ? 'Creating…' : 'Create User'}
             </button>
@@ -240,8 +265,9 @@ export function UsersPage() {
         title={`Impersonate: ${impersonateTarget?.display_name ?? ''}`}
       >
         <form onSubmit={handleImpersonate} className="space-y-4">
-          <div className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs text-purple-800">
-            This creates a read-only session as the selected user. All actions are audited.
+          <div className="flex items-start gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5">
+            <span className="text-base">🔍</span>
+            <p className="text-xs text-purple-800">This creates a read-only session as the selected user. All actions are audited.</p>
           </div>
           <Field label="Reason / Ticket ID" hint="Required for audit trail.">
             <textarea
@@ -257,14 +283,14 @@ export function UsersPage() {
             <button
               type="button"
               onClick={() => { setImpersonateTarget(null); setImpersonateReason(''); }}
-              className={secondaryButtonClass}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={impersonating || !impersonateReason.trim()}
-              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-purple-700 active:scale-95 transition-all disabled:opacity-50"
             >
               {impersonating ? 'Starting…' : 'Start Session'}
             </button>
@@ -274,27 +300,27 @@ export function UsersPage() {
 
       {/* Impersonation active banner */}
       {impersonationBanner && (
-        <div className="rounded-lg border border-purple-400 bg-purple-50 px-4 py-3 flex items-center gap-3">
-          <span className="rounded bg-purple-600 px-1.5 py-0.5 text-xs font-bold text-white uppercase">Impersonation Active</span>
+        <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3">
+          <span className="rounded-md bg-purple-600 px-2 py-0.5 text-xs font-bold text-white uppercase tracking-wide">Impersonation Active</span>
           <p className="text-sm text-purple-800 flex-1">
-            Read-only session as <strong>{impersonationBanner.email}</strong> - expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
+            Read-only session as <strong>{impersonationBanner.email}</strong> — expires {new Date(impersonationBanner.expiresAt).toLocaleString()}.
           </p>
-          <button onClick={() => setImpersonationBanner(null)} className="text-xs text-purple-600 hover:underline">
+          <button onClick={() => setImpersonationBanner(null)} className="text-xs font-medium text-purple-600 hover:underline">
             Dismiss
           </button>
         </div>
       )}
 
       {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-ink">Users</h2>
-          <p className="text-sm text-ink-secondary">Manage platform users, their roles, and account states.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Users</h1>
+          <p className="text-sm text-slate-500">Manage platform users, their roles, and account states.</p>
         </div>
         <button
           type="button"
           onClick={() => setIsInviteOpen(true)}
-          className={primaryButtonClass}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all w-fit"
         >
           + Invite User
         </button>
@@ -303,78 +329,79 @@ export function UsersPage() {
       {error && <ErrorNote error={error} title="Failed to load users" onRetry={() => void load()} />}
 
       {/* Users table */}
-      {loading ? (
-        <p className="text-sm text-ink-secondary">Loading…</p>
-      ) : users.length === 0 ? (
-        <EmptyState title="No users yet">No platform users have been created yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-line bg-elevated/50 text-xs font-semibold uppercase tracking-wider text-ink-muted">
-              <tr>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-elevated/40 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <UserAvatar name={u.display_name} email={u.email} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-ink truncate">{u.display_name}</p>
-                          {u.is_owner && (
-                            <span className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
-                              Owner
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-ink-muted truncate">{u.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-md bg-elevated px-2 py-0.5 text-xs font-medium text-ink-secondary capitalize">
-                      {u.account_type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge
-                      state={u.state === 'active' ? 'Healthy' : 'Paused'}
-                      detail={u.state}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    {!u.is_owner && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
-                          className={secondaryButtonClass}
-                        >
-                          {u.state === 'active' ? 'Suspend' : 'Activate'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setImpersonateTarget(u)}
-                          className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
-                          title="Impersonate as read-only session"
-                        >
-                          Impersonate
-                        </button>
-                      </div>
-                    )}
-                  </td>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="px-6 py-12 text-center text-sm text-slate-500">Loading users…</div>
+        ) : users.length === 0 ? (
+          <div className="px-6 py-16 text-center">
+            <div className="text-4xl mb-3">👥</div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">No users yet</h3>
+            <p className="text-sm text-slate-500">No platform users have been created yet. Invite one to get started.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {users.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <UserAvatar name={u.display_name} email={u.email} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-slate-900 truncate">{u.display_name}</p>
+                            {u.is_owner && (
+                              <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                Owner
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <RoleBadge role={u.account_type} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StateBadge state={u.state} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {!u.is_owner && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSetState(u, u.state === 'active' ? 'suspended' : 'active')}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                          >
+                            {u.state === 'active' ? 'Suspend' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setImpersonateTarget(u)}
+                            className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-all"
+                            title="Impersonate as read-only session"
+                          >
+                            Impersonate
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
