@@ -151,7 +151,7 @@ export function SecurityPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <MetricCard
           label="Two-factor authentication"

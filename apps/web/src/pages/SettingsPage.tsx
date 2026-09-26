@@ -71,7 +71,7 @@ export function SettingsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -306,7 +306,7 @@ export function SettingsPage() {
 
       {/* ── TAB: SECURITY POLICY ──────────────────────────────────── */}
       {tab === 'security' && (
-        <div className="max-w-3xl space-y-6">
+        <div className="mx-auto max-w-3xl space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Platform Security Guardrails</h2>
@@ -389,7 +389,7 @@ export function SettingsPage() {
 
       {/* ── TAB: SESSIONS & AUTH ─────────────────────────────────── */}
       {tab === 'sessions' && (
-        <div className="max-w-2xl space-y-6">
+        <div className="mx-auto max-w-2xl space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Session Policies</h2>
@@ -465,7 +465,7 @@ export function SettingsPage() {
 
       {/* ── TAB: AUDIT & COMPLIANCE ──────────────────────────────── */}
       {tab === 'audit' && (
-        <div className="max-w-3xl space-y-6">
+        <div className="mx-auto max-w-3xl space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
