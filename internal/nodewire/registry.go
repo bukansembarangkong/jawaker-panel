@@ -763,6 +763,50 @@ var Operations = map[Operation]Descriptor{
 		Rollback:    "the atomic rename leaves the previous binary in place if verification fails; no explicit rollback step is needed",
 		Mutating:    true,
 	},
+
+	OpSiteNodeJSManage: {
+		Operation:  OpSiteNodeJSManage,
+		Permission: "site.manage",
+		InputSchema: "{project_slug, site_slug, action: \"start\"|\"stop\"|\"restart\"|\"npm_install\", " +
+			"node_version?, app_root?, startup_file?, start_args?, env_vars?, port?}",
+		Validation: "project_slug and site_slug must be non-empty; action must be one of the four enumerated values; " +
+			"the unit name is derived as jw-<project_slug>-site-<site_slug>.service and validated before systemctl is called; " +
+			"node binary is resolved from nvm paths or falls back to PATH node; " +
+			"env_vars keys must not contain = or NUL; no argv element may contain NUL",
+		OSSupport: []string{"linux"},
+		Scope: Scope{
+			FilesystemWrite: []string{"/etc/systemd/system", "/var/www/jawaker"},
+			// systemd and npm subprocess; no static service list because unit names
+			// are derived dynamically from project/site slugs at call time.
+			Network: "none",
+		},
+		LockKeys:    []string{"site.nodejs.manage"},
+		Timeout:     120 * time.Second,
+		AuditAction: "site.nodejs.manage",
+		Retry:       RetryPolicy{Idempotent: false, MaxAttempts: 1},
+		Rollback:    "start/restart: if the unit fails to reach active state the error is returned; the previous unit file is not removed. " +
+			"stop: stopping an already-stopped unit is a no-op. " +
+			"npm_install: a failed install leaves node_modules in an indeterminate state; re-running the action retries the install.",
+		Mutating: true,
+	},
+
+	OpSiteNodeJSStatus: {
+		Operation:   OpSiteNodeJSStatus,
+		Permission:  "site.read",
+		InputSchema: "{project_slug, site_slug}",
+		Validation:  "project_slug and site_slug must be non-empty; the unit name is derived as jw-<project_slug>-site-<site_slug>.service",
+		OSSupport:   []string{"linux"},
+		Scope: Scope{
+			// systemctl show reads unit state from the systemd D-Bus API; no
+			// file is opened and no process is spawned beyond systemctl itself.
+			FilesystemRead: []string{"/run/systemd"},
+			Network:        "none",
+		},
+		Timeout:     10 * time.Second,
+		AuditAction: "site.nodejs.status",
+		Retry:       RetryPolicy{Idempotent: true, MaxAttempts: 2},
+		Mutating:    false,
+	},
 }
 
 // Lookup returns the descriptor for an operation. The second result is false for
@@ -1457,4 +1501,62 @@ func (in AppDeployInput) Validate() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// SiteNodeJSManageInput is the typed payload for OpSiteNodeJSManage.
+type SiteNodeJSManageInput struct {
+	ProjectSlug string            `json:"project_slug"`
+	SiteSlug    string            `json:"site_slug"`
+	Action      string            `json:"action"`       // "start", "stop", "restart", "npm_install"
+	NodeVersion string            `json:"node_version"` // "system", "18", "20", "22", …
+	AppRoot     string            `json:"app_root"`     // relative path inside site dir, or ""
+	StartupFile string            `json:"startup_file"`
+	StartArgs   []string          `json:"start_args,omitempty"`
+	EnvVars     map[string]string `json:"env_vars,omitempty"`
+	Port        int               `json:"port,omitempty"`
+}
+
+// Validate checks the manage input at the controller boundary.
+func (in SiteNodeJSManageInput) Validate() error {
+	if in.ProjectSlug == "" || in.SiteSlug == "" {
+		return errors.New("project_slug and site_slug required")
+	}
+	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "npm_install": true}
+	if !validActions[in.Action] {
+		return fmt.Errorf("invalid action %q", in.Action)
+	}
+	return nil
+}
+
+// SiteNodeJSManageResult is the reply from OpSiteNodeJSManage.
+type SiteNodeJSManageResult struct {
+	Action   string `json:"action"`
+	UnitName string `json:"unit_name"`
+	State    string `json:"state"` // "active", "inactive", "failed", …
+	Message  string `json:"message,omitempty"`
+}
+
+// SiteNodeJSStatusInput is the typed payload for OpSiteNodeJSStatus.
+type SiteNodeJSStatusInput struct {
+	ProjectSlug string `json:"project_slug"`
+	SiteSlug    string `json:"site_slug"`
+}
+
+// Validate checks the status input at the controller boundary.
+func (in SiteNodeJSStatusInput) Validate() error {
+	if in.ProjectSlug == "" || in.SiteSlug == "" {
+		return errors.New("project_slug and site_slug required")
+	}
+	return nil
+}
+
+// SiteNodeJSStatusResult is the reply from OpSiteNodeJSStatus.
+type SiteNodeJSStatusResult struct {
+	UnitName      string `json:"unit_name"`
+	Active        bool   `json:"active"`
+	State         string `json:"state"`
+	PID           int    `json:"pid,omitempty"`
+	Since         string `json:"since,omitempty"`
+	MainPID       int    `json:"main_pid,omitempty"`
+	MemoryCurrent string `json:"memory_current,omitempty"`
 }

@@ -983,6 +983,50 @@ func (d *Dispatcher) UpdateNodeAgent(ctx context.Context, serverID, requestID st
 	return out, nil
 }
 
+// ManageSiteNodeJS starts, stops, restarts, or runs npm install for a per-site
+// Node.js systemd unit (jw-<proj>-site-<site>.service).
+func (d *Dispatcher) ManageSiteNodeJS(ctx context.Context, serverID, requestID string, in nodewire.SiteNodeJSManageInput) (nodewire.SiteNodeJSManageResult, error) {
+	var out nodewire.SiteNodeJSManageResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid site nodejs manage input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSiteNodeJSManage,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode site nodejs manage result: %w", err)
+	}
+	return out, nil
+}
+
+// GetSiteNodeJSStatus reports the running state of a per-site Node.js
+// systemd unit without mutating anything.
+func (d *Dispatcher) GetSiteNodeJSStatus(ctx context.Context, serverID, requestID string, in nodewire.SiteNodeJSStatusInput) (nodewire.SiteNodeJSStatusResult, error) {
+	var out nodewire.SiteNodeJSStatusResult
+	if err := in.Validate(); err != nil {
+		return out, fmt.Errorf("nodes: invalid site nodejs status input: %w", err)
+	}
+	raw, err := d.Call(ctx, CallRequest{
+		ServerID:  serverID,
+		Operation: nodewire.OpSiteNodeJSStatus,
+		RequestID: requestID,
+		Input:     in,
+	})
+	if err != nil {
+		return out, err
+	}
+	if err := decodeStrict(raw, &out); err != nil {
+		return out, fmt.Errorf("nodes: decode site nodejs status result: %w", err)
+	}
+	return out, nil
+}
+
 // decodeStrict decodes a node's result, refusing unknown fields.
 //
 // A node newer than the controller may send fields the controller does not know.

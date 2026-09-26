@@ -218,6 +218,15 @@ const (
 	// The binary source URL must be the artifact URL from a verified release;
 	// the controller never hands an arbitrary URL to this operation.
 	OpUpdateNodeAgent Operation = "update.node.agent" //nolint:gosec // G101: operation wire name, not a credential
+
+	// OpSiteNodeJSManage starts, stops, restarts, or installs npm packages for
+	// a Node.js site managed as a per-site systemd unit (jw-<proj>-site-<site>.service).
+	// The action enum keeps this from being a generic process launcher.
+	OpSiteNodeJSManage Operation = "site.nodejs.manage" //nolint:gosec // G101: operation wire name, not a credential
+
+	// OpSiteNodeJSStatus inspects the running state of a per-site Node.js
+	// systemd unit without changing anything.
+	OpSiteNodeJSStatus Operation = "site.nodejs.status" //nolint:gosec // G101: operation wire name, not a credential
 )
 
 // Scope describes what an operation may touch. It is part of the descriptor, not

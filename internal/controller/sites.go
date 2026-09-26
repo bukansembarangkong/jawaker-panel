@@ -98,6 +98,10 @@ func (h *SiteHandlers) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/sites/{id}/validate", h.handleValidateConfig)
 	mux.HandleFunc("POST /api/v1/projects/{project_id}/sites/{id}/apply", h.handleApplyConfig)
 	mux.HandleFunc("GET /api/v1/projects/{project_id}/sites/{id}/logs", h.handleReadLogs)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/sites/{id}/nodejs", h.handleGetNodeJSConfig)
+	mux.HandleFunc("PUT /api/v1/projects/{project_id}/sites/{id}/nodejs", h.handleUpsertNodeJSConfig)
+	mux.HandleFunc("POST /api/v1/projects/{project_id}/sites/{id}/nodejs/action", h.handleNodeJSAction)
+	mux.HandleFunc("GET /api/v1/projects/{project_id}/sites/{id}/nodejs/status", h.handleNodeJSStatus)
 }
 
 // --- CRUD -------------------------------------------------------------------
@@ -580,6 +584,235 @@ func (h *SiteHandlers) handleReadLogs(w http.ResponseWriter, r *http.Request) {
 				"request_id": reqID,
 			})
 		})).ServeHTTP(w, r)
+}
+
+
+// --- Node.js runtime --------------------------------------------------------
+
+// handleGetNodeJSConfig returns the Node.js runtime config for a site.
+func (h *SiteHandlers) handleGetNodeJSConfig(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "site.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Cross-project 404 guard: GetInProject filters by project_id.
+			if _, err := h.sites.GetInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			cfg, err := h.sites.GetNodeJSConfig(r.Context(), id)
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"nodejs_config": nodejsConfigResponse(cfg),
+				"request_id":   httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+type upsertNodeJSConfigRequest struct {
+	NodeVersion string            `json:"node_version,omitempty"`
+	AppRoot     string            `json:"app_root,omitempty"`
+	StartupFile string            `json:"startup_file"`
+	StartArgs   []string          `json:"start_args,omitempty"`
+	EnvVars     map[string]string `json:"env_vars,omitempty"`
+	Port        int               `json:"port,omitempty"`
+}
+
+// handleUpsertNodeJSConfig creates or replaces the Node.js config for a site.
+func (h *SiteHandlers) handleUpsertNodeJSConfig(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "site.manage", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := h.sites.GetInProject(r.Context(), projectID, id); err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			var req upsertNodeJSConfigRequest
+			if apiErr := decodeJSONStrict(r, &req); apiErr != nil {
+				httpserver.WriteError(w, r, apiErr)
+				return
+			}
+			if req.StartupFile == "" {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("startup_file is required.", map[string]any{"field": "startup_file"}))
+				return
+			}
+			if req.Port != 0 && (req.Port < 1024 || req.Port > 65535) {
+				httpserver.WriteError(w, r, apierr.InvalidRequest("port must be between 1024 and 65535.", map[string]any{"field": "port"}))
+				return
+			}
+			cfg, err := h.sites.UpsertNodeJSConfig(r.Context(), id, sites.UpsertNodeJSConfigParams{
+				NodeVersion: req.NodeVersion,
+				AppRoot:     req.AppRoot,
+				StartupFile: req.StartupFile,
+				StartArgs:   req.StartArgs,
+				EnvVars:     req.EnvVars,
+				Port:        req.Port,
+			})
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "site.nodejs.config.updated",
+				ResourceType: "site",
+				ResourceID:   id,
+				Result:       audit.ResultSuccess,
+				Context:      map[string]any{"project_id": projectID},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"nodejs_config": nodejsConfigResponse(cfg),
+				"request_id":   httpserver.RequestIDFromRequest(r),
+			})
+		})).ServeHTTP(w, r)
+}
+
+type nodejsActionRequest struct {
+	Action string `json:"action"` // start | stop | restart | npm_install
+}
+
+// handleNodeJSAction performs a lifecycle action on the site's Node.js service.
+func (h *SiteHandlers) handleNodeJSAction(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	// step-up=true: mutates a running process.
+	authsession.RequirePermission(h.now, "site.manage", rbac.ProjectScope(projectID), true,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			site, err := h.sites.GetInProject(r.Context(), projectID, id)
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			var req nodejsActionRequest
+			if apiErr := decodeJSONStrict(r, &req); apiErr != nil {
+				httpserver.WriteError(w, r, apiErr)
+				return
+			}
+			validActions := map[string]bool{"start": true, "stop": true, "restart": true, "npm_install": true}
+			if !validActions[req.Action] {
+				httpserver.WriteError(w, r, apierr.InvalidRequest(`action must be "start", "stop", "restart", or "npm_install".`, map[string]any{"field": "action"}))
+				return
+			}
+			if h.dispatcher == nil {
+				httpserver.WriteError(w, r, apierr.ServiceUnavailable("Node dispatcher is not available on this controller."))
+				return
+			}
+			// Fetch nodejs config for service parameters.
+			nodeCfg, err := h.sites.GetNodeJSConfig(r.Context(), id)
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			// Fetch project slug.
+			var projectSlug string
+			if scanErr := h.pool.QueryRow(r.Context(),
+				`SELECT slug FROM projects WHERE id = $1 AND deleted_at IS NULL`,
+				projectID).Scan(&projectSlug); scanErr != nil {
+				httpserver.WriteError(w, r, apierr.Internal(scanErr))
+				return
+			}
+			reqID := httpserver.RequestIDFromRequest(r)
+			result, actErr := h.dispatcher.ManageSiteNodeJS(r.Context(), site.ServerID, reqID, nodewire.SiteNodeJSManageInput{
+				ProjectSlug: projectSlug,
+				SiteSlug:    site.Slug,
+				Action:      req.Action,
+				NodeVersion: nodeCfg.NodeVersion,
+				AppRoot:     nodeCfg.AppRoot,
+				StartupFile: nodeCfg.StartupFile,
+				StartArgs:   nodeCfg.StartArgs,
+				EnvVars:     nodeCfg.EnvVars,
+				Port:        nodeCfg.Port,
+			})
+			if actErr != nil {
+				if errors.Is(actErr, nodes.ErrNodeUnreachable) {
+					httpserver.WriteError(w, r, apierr.ServiceUnavailable("The node hosting this site is not reachable."))
+					return
+				}
+				httpserver.WriteError(w, r, apierr.Internal(actErr))
+				return
+			}
+			h.recordAudit(r, audit.Event{
+				ActorType:    audit.ActorUser,
+				ActorID:      principalUserID(r),
+				Action:       "site.nodejs." + req.Action,
+				ResourceType: "site",
+				ResourceID:   id,
+				Result:       audit.ResultSuccess,
+				Context:      map[string]any{"project_id": projectID, "action": req.Action},
+			})
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"result":     result,
+				"request_id": reqID,
+			})
+		})).ServeHTTP(w, r)
+}
+
+// handleNodeJSStatus returns the current systemd state of the site's Node.js service.
+// Node unreachable is not an error; it returns {"active": false, "state": "unknown"}.
+func (h *SiteHandlers) handleNodeJSStatus(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("project_id")
+	id := r.PathValue("id")
+	authsession.RequirePermission(h.now, "site.read", rbac.ProjectScope(projectID), false,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			site, err := h.sites.GetInProject(r.Context(), projectID, id)
+			if err != nil {
+				httpserver.WriteError(w, r, siteErr(err))
+				return
+			}
+			if h.dispatcher == nil {
+				httpserver.WriteError(w, r, apierr.ServiceUnavailable("Node dispatcher is not available on this controller."))
+				return
+			}
+			// Fetch project slug.
+			var projectSlug string
+			if scanErr := h.pool.QueryRow(r.Context(),
+				`SELECT slug FROM projects WHERE id = $1 AND deleted_at IS NULL`,
+				projectID).Scan(&projectSlug); scanErr != nil {
+				httpserver.WriteError(w, r, apierr.Internal(scanErr))
+				return
+			}
+			reqID := httpserver.RequestIDFromRequest(r)
+			status, statErr := h.dispatcher.GetSiteNodeJSStatus(r.Context(), site.ServerID, reqID, nodewire.SiteNodeJSStatusInput{
+				ProjectSlug: projectSlug,
+				SiteSlug:    site.Slug,
+			})
+			if statErr != nil {
+				// Node unreachable → degraded response, not error (D-xxx).
+				if errors.Is(statErr, nodes.ErrNodeUnreachable) {
+					writeJSONResponse(w, http.StatusOK, map[string]any{
+						"status":     map[string]any{"active": false, "state": "unknown"},
+						"request_id": reqID,
+					})
+					return
+				}
+				httpserver.WriteError(w, r, apierr.Internal(statErr))
+				return
+			}
+			writeJSONResponse(w, http.StatusOK, map[string]any{
+				"status":     status,
+				"request_id": reqID,
+			})
+		})).ServeHTTP(w, r)
+}
+
+func nodejsConfigResponse(c sites.NodeJSConfig) map[string]any {
+	return map[string]any{
+		"id":           c.ID,
+		"site_id":      c.SiteID,
+		"node_version": c.NodeVersion,
+		"app_root":     c.AppRoot,
+		"startup_file": c.StartupFile,
+		"start_args":   c.StartArgs,
+		"env_vars":     c.EnvVars,
+		"port":         c.Port,
+		"created_at":   c.CreatedAt,
+		"updated_at":   c.UpdatedAt,
+	}
 }
 
 // --- helpers ----------------------------------------------------------------

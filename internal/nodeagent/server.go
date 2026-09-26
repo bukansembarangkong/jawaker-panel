@@ -213,6 +213,13 @@ func servedOperations(e *Executors) map[nodewire.Operation]bool {
 		served[nodewire.OpSecWAFApply] = true
 		served[nodewire.OpUpdateNodeAgent] = true
 	}
+	// site.nodejs.* manages per-site Node.js systemd units. Requires systemd
+	// and Linux, same gates as service.* — a node without systemd cannot
+	// write a unit file and expect it to be picked up.
+	if e.hasSystemd && supportedOS() {
+		served[nodewire.OpSiteNodeJSManage] = true
+		served[nodewire.OpSiteNodeJSStatus] = true
+	}
 	return served
 }
 
@@ -853,6 +860,34 @@ func (a *Agent) dispatch(ctx context.Context, req nodewire.Request) (json.RawMes
 			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
 		}
 		result, err := a.exec.UpdateNodeAgent(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSiteNodeJSManage:
+		in, err := nodewire.DecodeInput[nodewire.SiteNodeJSManageInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.ManageSiteNodeJS(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		return nodewire.EncodeResult(result)
+
+	case nodewire.OpSiteNodeJSStatus:
+		in, err := nodewire.DecodeInput[nodewire.SiteNodeJSStatusInput](req)
+		if err != nil {
+			return nil, err
+		}
+		if err = in.Validate(); err != nil {
+			return nil, &nodewire.Error{Code: nodewire.CodeInvalidInput, Message: err.Error()}
+		}
+		result, err := a.exec.StatusSiteNodeJS(ctx, in)
 		if err != nil {
 			return nil, err
 		}
