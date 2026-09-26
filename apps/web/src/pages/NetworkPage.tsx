@@ -14,13 +14,9 @@ import {
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
 import {
-  EmptyState,
   ErrorNote,
   Field,
   Modal,
-  inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
 } from '../components/ui';
 
 type Tab = 'firewall' | 'forwards' | 'zones' | 'wireguard' | 'diag' | 'applylog';
@@ -32,6 +28,12 @@ function formatTs(v: string | null | undefined): string {
 
 function toError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
+}
+
+function truncateKey(key: string, head = 8, tail = 8): string {
+  if (!key) return '-';
+  if (key.length <= head + tail + 3) return key;
+  return `${key.slice(0, head)}…${key.slice(-tail)}`;
 }
 
 interface ServerOption { id: string; name: string; }
@@ -273,27 +275,85 @@ export function NetworkPage() {
     }
   }
 
-  const tabClass = (t: Tab) =>
-    `px-3 py-1.5 text-sm rounded-md ${tab === t ? 'bg-elevated font-medium text-ink' : 'text-ink-secondary hover:text-ink'}`;
+  const tabs: { id: Tab; label: string; icon: string }[] = [
+    {
+      id: 'firewall',
+      label: 'Firewall Rules',
+      icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+    },
+    {
+      id: 'forwards',
+      label: 'Port Forwards',
+      icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
+    },
+    {
+      id: 'zones',
+      label: 'Zones',
+      icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+    },
+    {
+      id: 'wireguard',
+      label: 'WireGuard',
+      icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
+    },
+    {
+      id: 'diag',
+      label: 'Diagnostics',
+      icon: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
+    },
+    {
+      id: 'applylog',
+      label: 'Apply Log',
+      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+    },
+  ];
 
-  if (!serverId) {
-    return <p className="text-sm text-ink-secondary">No servers available.</p>;
+  if (!serverId && servers.length === 0 && !loading) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <span className="text-4xl mb-3 block">🌐</span>
+          <h2 className="text-base font-semibold text-slate-900">No servers available</h2>
+          <p className="text-sm text-slate-500 mt-1">Enroll a server first to configure networking and firewall rules.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-base font-semibold">Networking</h2>
-        <select
-          className={inputClass}
-          value={serverId}
-          onChange={(e) => setServerId(e.target.value)}
-          aria-label="Select server"
-        >
-          {servers.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Networking & Firewall</h1>
+          <p className="text-sm text-slate-500">Manage packet filtering, NAT port forwarding, WireGuard VPN tunnels, and network telemetry.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label htmlFor="server-select" className="text-xs font-medium text-slate-500">Target Server:</label>
+            <select
+              id="server-select"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              value={serverId}
+              onChange={(e) => setServerId(e.target.value)}
+              aria-label="Select target server"
+            >
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={withStepUp(applyFirewall)}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-1.5"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Apply to Server
+          </button>
+        </div>
       </div>
 
       {error && <ErrorNote error={error} onRetry={loadData} />}
@@ -308,488 +368,879 @@ export function NetworkPage() {
         />
       )}
 
-      {/* Tabs */}
-      <nav aria-label="Networking tabs" className="flex flex-wrap gap-2">
-        {(['firewall', 'forwards', 'zones', 'wireguard', 'diag', 'applylog'] as Tab[]).map((t) => (
-          <button key={t} type="button" className={tabClass(t)} onClick={() => setTab(t)}>
-            {t === 'firewall' ? 'Firewall' :
-             t === 'forwards' ? 'Port Forwards' :
-             t === 'zones' ? 'Zones' :
-             t === 'wireguard' ? 'WireGuard' :
-             t === 'diag' ? 'Diagnostics' : 'Apply Log'}
-          </button>
-        ))}
-      </nav>
+      {/* Navigation Tabs */}
+      <div className="flex overflow-x-auto border-b border-slate-200 gap-1 pb-px">
+        {tabs.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-3.5 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                active
+                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-md'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={t.icon} />
+              </svg>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
-      {loading && <p className="text-sm text-ink-secondary">Loading…</p>}
+      {loading && <p className="text-sm text-slate-500">Syncing network configuration…</p>}
 
-      {/* ─── Firewall Tab ─── */}
+      {/* ─── FIREWALL TAB ─── */}
       {tab === 'firewall' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={primaryButtonClass}
-              onClick={withStepUp(applyFirewall)}>Apply to server</button>
-            <button type="button" className={secondaryButtonClass}
-              onClick={() => { void doLoadLive(); }}>Read live state</button>
-            <button type="button" className={secondaryButtonClass}
-              onClick={() => setShowCreateRule(true)}>+ Rule</button>
-          </div>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Firewall Rules ({rules.length})</h2>
+                <p className="text-xs text-slate-500">Netfilter iptables packet rules configured for this node.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                  onClick={() => { void doLoadLive(); }}
+                >
+                  {liveLoading ? 'Reading iptables…' : 'Read Live State'}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                  onClick={() => setShowCreateRule(true)}
+                >
+                  + Add Rule
+                </button>
+              </div>
+            </div>
 
-          {liveLoading && <p className="text-sm text-ink-secondary">Reading iptables…</p>}
-          {liveChains != null && (
-            <pre className="overflow-auto rounded-md bg-elevated p-3 text-xs text-ink">{liveChains}</pre>
-          )}
+            {liveChains != null && (
+              <div className="rounded-lg border border-slate-200 bg-slate-900 p-4 text-xs font-mono text-slate-100 overflow-x-auto">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-slate-400">
+                  <span>Live Kernel iptables State</span>
+                  <button type="button" onClick={() => setLiveChains(null)} className="text-slate-400 hover:text-white">✕ Close</button>
+                </div>
+                <pre>{liveChains}</pre>
+              </div>
+            )}
+
+            {rules.length === 0 && !loading ? (
+              <div className="py-12 text-center">
+                <span className="text-4xl mb-2 block">🛡️</span>
+                <h3 className="text-sm font-semibold text-slate-900">No firewall rules defined</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Create rules to allow or drop traffic according to ports, protocols, and CIDRs.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="pb-3 pr-4">Chain</th>
+                      <th className="pb-3 pr-4">Protocol</th>
+                      <th className="pb-3 pr-4">Source CIDR</th>
+                      <th className="pb-3 pr-4">Port Range</th>
+                      <th className="pb-3 pr-4">Action</th>
+                      <th className="pb-3 pr-4">State</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rules.map((rule) => {
+                      const isAllow = rule.action.toUpperCase() === 'ACCEPT';
+                      const portRange = rule.dest_port_min > 0
+                        ? (rule.dest_port_max && rule.dest_port_max !== rule.dest_port_min
+                            ? `${rule.dest_port_min}–${rule.dest_port_max}`
+                            : `${rule.dest_port_min}`)
+                        : 'Any';
+
+                      return (
+                        <tr key={rule.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 pr-4 font-mono text-xs font-semibold text-slate-700">{rule.chain}</td>
+                          <td className="py-3 pr-4">
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                              {rule.protocol}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 font-mono text-xs text-slate-600">{rule.source_cidr || '0.0.0.0/0'}</td>
+                          <td className="py-3 pr-4 font-mono text-xs text-slate-800">{portRange}</td>
+                          <td className="py-3 pr-4">
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              isAllow
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
+                              {rule.action}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              rule.enabled ? 'bg-slate-100 text-slate-700' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                              {rule.state || (rule.enabled ? 'Active' : 'Disabled')}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            <button
+                              type="button"
+                              className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 transition-all"
+                              onClick={withStepUp(async () => {
+                                await networkApi.deleteRule(serverId, rule.id);
+                                goeyToast.success('Firewall rule deleted');
+                                loadData();
+                              })}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           <Modal
             isOpen={showCreateRule}
             onClose={() => setShowCreateRule(false)}
             title="New Firewall Rule"
           >
-            <form className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); void handleCreateRule(); }}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleCreateRule(); }}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Chain">
-                  <select className={inputClass} value={newRule.chain}
-                    onChange={(e) => setNewRule({ ...newRule, chain: e.target.value })}>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newRule.chain}
+                    onChange={(e) => setNewRule({ ...newRule, chain: e.target.value })}
+                  >
                     {['INPUT', 'OUTPUT', 'FORWARD'].map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </Field>
                 <Field label="Priority">
-                  <input className={inputClass} value={newRule.priority} type="number"
-                    onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newRule.priority}
+                    type="number"
+                    onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })}
+                  />
                 </Field>
                 <Field label="Protocol">
-                  <select className={inputClass} value={newRule.protocol}
-                    onChange={(e) => setNewRule({ ...newRule, protocol: e.target.value })}>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newRule.protocol}
+                    onChange={(e) => setNewRule({ ...newRule, protocol: e.target.value })}
+                  >
                     {['tcp', 'udp', 'icmp', 'all'].map((p) => <option key={p}>{p}</option>)}
                   </select>
                 </Field>
                 <Field label="Action">
-                  <select className={inputClass} value={newRule.action}
-                    onChange={(e) => setNewRule({ ...newRule, action: e.target.value })}>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newRule.action}
+                    onChange={(e) => setNewRule({ ...newRule, action: e.target.value })}
+                  >
                     {['ACCEPT', 'DROP', 'REJECT'].map((a) => <option key={a}>{a}</option>)}
                   </select>
                 </Field>
                 <Field label="Source CIDR">
-                  <input className={inputClass} placeholder="0.0.0.0/0" value={newRule.source_cidr}
-                    onChange={(e) => setNewRule({ ...newRule, source_cidr: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="0.0.0.0/0"
+                    value={newRule.source_cidr}
+                    onChange={(e) => setNewRule({ ...newRule, source_cidr: e.target.value })}
+                  />
                 </Field>
                 <Field label="Dest CIDR">
-                  <input className={inputClass} placeholder="0.0.0.0/0" value={newRule.dest_cidr}
-                    onChange={(e) => setNewRule({ ...newRule, dest_cidr: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="0.0.0.0/0"
+                    value={newRule.dest_cidr}
+                    onChange={(e) => setNewRule({ ...newRule, dest_cidr: e.target.value })}
+                  />
                 </Field>
-                <Field label="Dest port min">
-                  <input className={inputClass} type="number" min="1" max="65535" value={newRule.dest_port_min}
-                    onChange={(e) => setNewRule({ ...newRule, dest_port_min: e.target.value })} />
+                <Field label="Dest Port Min">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={newRule.dest_port_min}
+                    onChange={(e) => setNewRule({ ...newRule, dest_port_min: e.target.value })}
+                  />
                 </Field>
-                <Field label="Dest port max">
-                  <input className={inputClass} type="number" min="1" max="65535" value={newRule.dest_port_max}
-                    onChange={(e) => setNewRule({ ...newRule, dest_port_max: e.target.value })} />
+                <Field label="Dest Port Max">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={newRule.dest_port_max}
+                    onChange={(e) => setNewRule({ ...newRule, dest_port_max: e.target.value })}
+                  />
                 </Field>
                 <Field label="Description">
-                  <input className={inputClass} value={newRule.description}
-                    onChange={(e) => setNewRule({ ...newRule, description: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newRule.description}
+                    onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
+                  />
                 </Field>
-                <Field label="Enabled">
-                  <input type="checkbox" checked={newRule.enabled}
-                    onChange={(e) => setNewRule({ ...newRule, enabled: e.target.checked })} />
-                </Field>
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    id="rule-enabled"
+                    type="checkbox"
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    checked={newRule.enabled}
+                    onChange={(e) => setNewRule({ ...newRule, enabled: e.target.checked })}
+                  />
+                  <label htmlFor="rule-enabled" className="text-sm font-medium text-slate-700">Enabled</label>
+                </div>
               </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className={secondaryButtonClass}
-                  onClick={() => setShowCreateRule(false)}>Cancel</button>
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                  onClick={() => setShowCreateRule(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  Create Rule
+                </button>
               </div>
             </form>
           </Modal>
-
-          {rules.length === 0 && !loading ? (
-            <EmptyState title="No firewall rules defined."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">Chain</th>
-                  <th className="py-2 pr-4">Protocol</th>
-                  <th className="py-2 pr-4">Source</th>
-                  <th className="py-2 pr-4">Dest port</th>
-                  <th className="py-2 pr-4">Action</th>
-                  <th className="py-2 pr-4">State</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr key={rule.id} className="border-b border-line">
-                    <td className="py-2 pr-4 font-mono text-xs">{rule.chain}</td>
-                    <td className="py-2 pr-4">{rule.protocol}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{rule.source_cidr || '-'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">
-                      {rule.dest_port_min > 0 ? `${rule.dest_port_min}–${rule.dest_port_max}` : '-'}
-                    </td>
-                    <td className="py-2 pr-4">{rule.action}</td>
-                    <td className="py-2 pr-4">{rule.state}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await networkApi.deleteRule(serverId, rule.id);
-                          goeyToast.success('Firewall rule deleted');
-                          loadData();
-                        })}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       )}
 
-      {/* ─── Port Forwards Tab ─── */}
+      {/* ─── PORT FORWARDS TAB ─── */}
       {tab === 'forwards' && (
-        <div className="space-y-4">
-          <button type="button" className={primaryButtonClass}
-            onClick={() => setShowCreateForward(true)}>+ Forward</button>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">NAT Port Forwards ({forwards.length})</h2>
+                <p className="text-xs text-slate-500">Route inbound public traffic directly into internal services and containers.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                onClick={() => setShowCreateForward(true)}
+              >
+                + Add Forward
+              </button>
+            </div>
+
+            {forwards.length === 0 && !loading ? (
+              <div className="py-12 text-center">
+                <span className="text-4xl mb-2 block">🔀</span>
+                <h3 className="text-sm font-semibold text-slate-900">No port forwards configured</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Map external ports to destination IPs and internal ports.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="pb-3 pr-4">Protocol</th>
+                      <th className="pb-3 pr-4">Listen Socket</th>
+                      <th className="pb-3 pr-4">Destination Target</th>
+                      <th className="pb-3 pr-4">State</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {forwards.map((f) => (
+                      <tr key={f.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3 pr-4">
+                          <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                            {f.protocol}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 font-mono text-xs text-slate-800">
+                          {f.listen_address ? `${f.listen_address}:` : '0.0.0.0:'}{f.listen_port}
+                        </td>
+                        <td className="py-3 pr-4 font-mono text-xs text-indigo-600 font-medium">
+                          {f.dest_address}:{f.dest_port}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {f.state || 'Active'}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            type="button"
+                            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 transition-all"
+                            onClick={withStepUp(async () => {
+                              await networkApi.deleteForward(serverId, f.id);
+                              goeyToast.success('Port forward deleted');
+                              loadData();
+                            })}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           <Modal
             isOpen={showCreateForward}
             onClose={() => setShowCreateForward(false)}
             title="New Port Forward"
           >
-            <form className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); void handleCreateForward(); }}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleCreateForward(); }}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Protocol">
-                  <select className={inputClass} value={newFwd.protocol}
-                    onChange={(e) => setNewFwd({ ...newFwd, protocol: e.target.value })}>
-                    <option>tcp</option><option>udp</option>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newFwd.protocol}
+                    onChange={(e) => setNewFwd({ ...newFwd, protocol: e.target.value })}
+                  >
+                    <option>tcp</option>
+                    <option>udp</option>
                   </select>
                 </Field>
-                <Field label="Listen address (optional)">
-                  <input className={inputClass} placeholder="0.0.0.0" value={newFwd.listen_address}
-                    onChange={(e) => setNewFwd({ ...newFwd, listen_address: e.target.value })} />
+                <Field label="Listen Address (Optional)">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="0.0.0.0"
+                    value={newFwd.listen_address}
+                    onChange={(e) => setNewFwd({ ...newFwd, listen_address: e.target.value })}
+                  />
                 </Field>
-                <Field label="Listen port">
-                  <input className={inputClass} type="number" required min="1" max="65535"
+                <Field label="Listen Port">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    type="number"
+                    required
+                    min="1"
+                    max="65535"
                     value={newFwd.listen_port}
-                    onChange={(e) => setNewFwd({ ...newFwd, listen_port: e.target.value })} />
+                    onChange={(e) => setNewFwd({ ...newFwd, listen_port: e.target.value })}
+                  />
                 </Field>
-                <Field label="Dest address">
-                  <input className={inputClass} required value={newFwd.dest_address}
-                    onChange={(e) => setNewFwd({ ...newFwd, dest_address: e.target.value })} />
+                <Field label="Destination Address">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    required
+                    placeholder="127.0.0.1 or internal IP"
+                    value={newFwd.dest_address}
+                    onChange={(e) => setNewFwd({ ...newFwd, dest_address: e.target.value })}
+                  />
                 </Field>
-                <Field label="Dest port">
-                  <input className={inputClass} type="number" required min="1" max="65535"
+                <Field label="Destination Port">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    type="number"
+                    required
+                    min="1"
+                    max="65535"
                     value={newFwd.dest_port}
-                    onChange={(e) => setNewFwd({ ...newFwd, dest_port: e.target.value })} />
+                    onChange={(e) => setNewFwd({ ...newFwd, dest_port: e.target.value })}
+                  />
                 </Field>
                 <Field label="Description">
-                  <input className={inputClass} value={newFwd.description}
-                    onChange={(e) => setNewFwd({ ...newFwd, description: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newFwd.description}
+                    onChange={(e) => setNewFwd({ ...newFwd, description: e.target.value })}
+                  />
                 </Field>
               </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className={secondaryButtonClass}
-                  onClick={() => setShowCreateForward(false)}>Cancel</button>
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                  onClick={() => setShowCreateForward(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  Create Forward
+                </button>
               </div>
             </form>
           </Modal>
-
-          {forwards.length === 0 && !loading ? (
-            <EmptyState title="No port forwards configured."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">Protocol</th>
-                  <th className="py-2 pr-4">Listen</th>
-                  <th className="py-2 pr-4">Destination</th>
-                  <th className="py-2 pr-4">State</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {forwards.map((f) => (
-                  <tr key={f.id} className="border-b border-line">
-                    <td className="py-2 pr-4">{f.protocol}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">
-                      {f.listen_address ? `${f.listen_address}:` : ''}{f.listen_port}
-                    </td>
-                    <td className="py-2 pr-4 font-mono text-xs">{f.dest_address}:{f.dest_port}</td>
-                    <td className="py-2 pr-4">{f.state}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await networkApi.deleteForward(serverId, f.id);
-                          goeyToast.success('Port forward deleted');
-                          loadData();
-                        })}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       )}
 
-      {/* ─── Zones Tab ─── */}
+      {/* ─── ZONES TAB ─── */}
       {tab === 'zones' && (
-        <div className="space-y-4">
-          <button type="button" className={primaryButtonClass}
-            onClick={() => setShowCreateZone(true)}>+ Zone</button>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Network Security Zones ({zones.length})</h2>
+                <p className="text-xs text-slate-500">Group physical and virtual network interfaces into isolated trust domains.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                onClick={() => setShowCreateZone(true)}
+              >
+                + Add Zone
+              </button>
+            </div>
+
+            {zones.length === 0 && !loading ? (
+              <div className="py-12 text-center">
+                <span className="text-4xl mb-2 block">🌐</span>
+                <h3 className="text-sm font-semibold text-slate-900">No network zones defined</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Group network adapters into internal, DMZ, or external perimeter zones.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="pb-3 pr-4">Zone Name</th>
+                      <th className="pb-3 pr-4">Kind</th>
+                      <th className="pb-3 pr-4">Interfaces</th>
+                      <th className="pb-3 pr-4">Created At</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {zones.map((z) => (
+                      <tr key={z.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3 pr-4 font-semibold text-slate-800">{z.name}</td>
+                        <td className="py-3 pr-4">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            z.kind === 'internal'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : z.kind === 'dmz'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-purple-50 text-purple-700 border border-purple-200'
+                          }`}>
+                            {z.kind}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 font-mono text-xs text-slate-600">{z.interfaces || '-'}</td>
+                        <td className="py-3 pr-4 text-xs text-slate-500">{formatTs(z.created_at)}</td>
+                        <td className="py-3 text-right">
+                          <button
+                            type="button"
+                            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 transition-all"
+                            onClick={withStepUp(async () => {
+                              await networkApi.deleteZone(serverId, z.id);
+                              goeyToast.success('Network zone deleted');
+                              loadData();
+                            })}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           <Modal
             isOpen={showCreateZone}
             onClose={() => setShowCreateZone(false)}
             title="New Network Zone"
           >
-            <form className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); void handleCreateZone(); }}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleCreateZone(); }}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Name">
-                  <input className={inputClass} required value={newZone.name}
-                    onChange={(e) => setNewZone({ ...newZone, name: e.target.value })} />
+                <Field label="Zone Name">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    required
+                    value={newZone.name}
+                    onChange={(e) => setNewZone({ ...newZone, name: e.target.value })}
+                  />
                 </Field>
                 <Field label="Kind">
-                  <select className={inputClass} value={newZone.kind}
-                    onChange={(e) => setNewZone({ ...newZone, kind: e.target.value })}>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={newZone.kind}
+                    onChange={(e) => setNewZone({ ...newZone, kind: e.target.value })}
+                  >
                     {['internal', 'dmz', 'external'].map((k) => <option key={k}>{k}</option>)}
                   </select>
                 </Field>
                 <Field label="Interfaces">
-                  <input className={inputClass} placeholder="eth0 eth1" value={newZone.interfaces}
-                    onChange={(e) => setNewZone({ ...newZone, interfaces: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="eth0 eth1"
+                    value={newZone.interfaces}
+                    onChange={(e) => setNewZone({ ...newZone, interfaces: e.target.value })}
+                  />
                 </Field>
               </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className={secondaryButtonClass}
-                  onClick={() => setShowCreateZone(false)}>Cancel</button>
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                  onClick={() => setShowCreateZone(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  Create Zone
+                </button>
               </div>
             </form>
           </Modal>
-
-          {zones.length === 0 && !loading ? (
-            <EmptyState title="No network zones defined."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Kind</th>
-                  <th className="py-2 pr-4">Interfaces</th>
-                  <th className="py-2 pr-4">Created</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {zones.map((z) => (
-                  <tr key={z.id} className="border-b border-line">
-                    <td className="py-2 pr-4">{z.name}</td>
-                    <td className="py-2 pr-4">{z.kind}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{z.interfaces || '-'}</td>
-                    <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(z.created_at)}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await networkApi.deleteZone(serverId, z.id);
-                          goeyToast.success('Network zone deleted');
-                          loadData();
-                        })}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       )}
 
-      {/* ─── WireGuard Tab ─── */}
+      {/* ─── WIREGUARD PEERS (CARD LIST) ─── */}
       {tab === 'wireguard' && (
-        <div className="space-y-4">
-          <button type="button" className={primaryButtonClass}
-            onClick={() => setShowCreatePeer(true)}>+ Peer</button>
+        <div className="space-y-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">WireGuard VPN Peers ({peers.length})</h2>
+              <p className="text-xs text-slate-500">Cryptographic mesh connections for point-to-point server and client tunnels.</p>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+              onClick={() => setShowCreatePeer(true)}
+            >
+              + Add Peer
+            </button>
+          </div>
+
+          {peers.length === 0 && !loading ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+              <span className="text-4xl mb-3 block">🔒</span>
+              <h3 className="text-base font-semibold text-slate-900">No WireGuard peers configured</h3>
+              <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
+                Add public keys and endpoint tunnels to interconnect with other nodes securely.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {peers.map((p) => (
+                <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4 hover:border-slate-300 transition-all flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🔐</span>
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-900">{p.label || 'Unnamed Peer'}</h3>
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium mt-0.5 ${
+                            p.enabled
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {p.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-xs pt-1">
+                      <div>
+                        <span className="text-slate-400 font-medium">Public Key</span>
+                        <p className="font-mono text-slate-700 bg-slate-50 rounded px-2 py-1 mt-0.5 select-all border border-slate-100" title={p.public_key}>
+                          {truncateKey(p.public_key, 10, 10)}
+                        </p>
+                      </div>
+
+                      <div className="flex justify-between py-1 border-b border-slate-100">
+                        <span className="text-slate-500">Allowed IPs</span>
+                        <span className="font-mono text-slate-800 font-medium">{p.allowed_ips || '-'}</span>
+                      </div>
+
+                      <div className="flex justify-between py-1 border-b border-slate-100">
+                        <span className="text-slate-500">Endpoint</span>
+                        <span className="font-mono text-slate-800 font-medium">{p.endpoint || 'Dynamic / None'}</span>
+                      </div>
+
+                      <div className="flex justify-between py-1">
+                        <span className="text-slate-500">Keepalive</span>
+                        <span className="font-mono text-slate-800">{p.persistent_keepalive ? `${p.persistent_keepalive}s` : 'Off'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex justify-end">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 transition-all"
+                      onClick={withStepUp(async () => {
+                        await networkApi.deletePeer(serverId, p.id);
+                        goeyToast.success('WireGuard peer deleted');
+                        loadData();
+                      })}
+                    >
+                      Delete Peer
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <Modal
             isOpen={showCreatePeer}
             onClose={() => setShowCreatePeer(false)}
             title="New WireGuard Peer"
           >
-            <form className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); void handleCreatePeer(); }}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleCreatePeer(); }}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Public key">
-                  <input className={inputClass} required value={newPeer.public_key}
-                    onChange={(e) => setNewPeer({ ...newPeer, public_key: e.target.value })} />
-                </Field>
-                <Field label="Label">
-                  <input className={inputClass} value={newPeer.label}
-                    onChange={(e) => setNewPeer({ ...newPeer, label: e.target.value })} />
+                <div className="sm:col-span-2">
+                  <Field label="Public Key">
+                    <input
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                      required
+                      placeholder="e.g. 4s7D...="
+                      value={newPeer.public_key}
+                      onChange={(e) => setNewPeer({ ...newPeer, public_key: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <Field label="Label / Friendly Name">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    placeholder="e.g. edge-router-singapore"
+                    value={newPeer.label}
+                    onChange={(e) => setNewPeer({ ...newPeer, label: e.target.value })}
+                  />
                 </Field>
                 <Field label="Allowed IPs">
-                  <input className={inputClass} placeholder="10.0.0.2/32" value={newPeer.allowed_ips}
-                    onChange={(e) => setNewPeer({ ...newPeer, allowed_ips: e.target.value })} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="10.0.0.2/32"
+                    value={newPeer.allowed_ips}
+                    onChange={(e) => setNewPeer({ ...newPeer, allowed_ips: e.target.value })}
+                  />
                 </Field>
-                <Field label="Endpoint">
-                  <input className={inputClass} placeholder="host:port" value={newPeer.endpoint}
-                    onChange={(e) => setNewPeer({ ...newPeer, endpoint: e.target.value })} />
+                <Field label="Endpoint (Host:Port)">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    placeholder="vpn.example.com:51820"
+                    value={newPeer.endpoint}
+                    onChange={(e) => setNewPeer({ ...newPeer, endpoint: e.target.value })}
+                  />
                 </Field>
-                <Field label="Persistent keepalive (s)">
-                  <input className={inputClass} type="number" min="0" value={newPeer.persistent_keepalive}
-                    onChange={(e) => setNewPeer({ ...newPeer, persistent_keepalive: e.target.value })} />
+                <Field label="Persistent Keepalive (seconds)">
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    type="number"
+                    min="0"
+                    value={newPeer.persistent_keepalive}
+                    onChange={(e) => setNewPeer({ ...newPeer, persistent_keepalive: e.target.value })}
+                  />
                 </Field>
-                <Field label="Enabled">
-                  <input type="checkbox" checked={newPeer.enabled}
-                    onChange={(e) => setNewPeer({ ...newPeer, enabled: e.target.checked })} />
-                </Field>
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    id="peer-enabled"
+                    type="checkbox"
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    checked={newPeer.enabled}
+                    onChange={(e) => setNewPeer({ ...newPeer, enabled: e.target.checked })}
+                  />
+                  <label htmlFor="peer-enabled" className="text-sm font-medium text-slate-700">Enabled</label>
+                </div>
               </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className={secondaryButtonClass}
-                  onClick={() => setShowCreatePeer(false)}>Cancel</button>
-                <button type="submit" className={primaryButtonClass}>Create</button>
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                  onClick={() => setShowCreatePeer(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  Save Peer
+                </button>
               </div>
             </form>
           </Modal>
-
-          {peers.length === 0 && !loading ? (
-            <EmptyState title="No WireGuard peers configured."><span /></EmptyState>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">Label</th>
-                  <th className="py-2 pr-4">Public key</th>
-                  <th className="py-2 pr-4">Allowed IPs</th>
-                  <th className="py-2 pr-4">Endpoint</th>
-                  <th className="py-2 pr-4">Enabled</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {peers.map((p) => (
-                  <tr key={p.id} className="border-b border-line">
-                    <td className="py-2 pr-4">{p.label || '-'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs max-w-[10rem] truncate">{p.public_key}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{p.allowed_ips || '-'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{p.endpoint || '-'}</td>
-                    <td className="py-2 pr-4">{p.enabled ? 'Yes' : 'No'}</td>
-                    <td className="py-2">
-                      <button type="button" className={secondaryButtonClass}
-                        onClick={withStepUp(async () => {
-                          await networkApi.deletePeer(serverId, p.id);
-                          goeyToast.success('WireGuard peer deleted');
-                          loadData();
-                        })}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       )}
 
-      {/* ─── Diagnostics Tab ─── */}
+      {/* ─── DIAGNOSTICS TAB ─── */}
       {tab === 'diag' && (
         <div className="space-y-6">
-          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void runDiag(); }}>
-            <h3 className="text-sm font-medium">Network Diagnostics</h3>
-            <div className="flex flex-wrap gap-3">
-              <div className="flex-1">
-                <Field label="Target (IP or hostname)">
-                  <input className={inputClass} required value={diagTarget}
-                    placeholder="8.8.8.8"
-                    onChange={(e) => setDiagTarget(e.target.value)} />
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Network Diagnostics</h2>
+              <p className="text-xs text-slate-500">Run ping and traceroute tests directly from the remote server node.</p>
+            </div>
+
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void runDiag(); }}>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="sm:col-span-2">
+                  <Field label="Target (IP or Hostname)">
+                    <input
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                      required
+                      placeholder="e.g. 1.1.1.1 or google.com"
+                      value={diagTarget}
+                      onChange={(e) => setDiagTarget(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <Field label="Tool Mode">
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={diagMode}
+                    onChange={(e) => setDiagMode(e.target.value as 'ping' | 'trace')}
+                  >
+                    <option value="ping">Ping (ICMP Echo)</option>
+                    <option value="trace">Traceroute (Hop Path)</option>
+                  </select>
                 </Field>
               </div>
-              <Field label="Mode">
-                <select className={inputClass} value={diagMode}
-                  onChange={(e) => setDiagMode(e.target.value as 'ping' | 'trace')}>
-                  <option value="ping">Ping</option>
-                  <option value="trace">Traceroute</option>
-                </select>
-              </Field>
-            </div>
-            <button type="submit" disabled={diagRunning} className={primaryButtonClass}>
-              {diagRunning ? 'Running…' : 'Run'}
-            </button>
-          </form>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={diagRunning}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {diagRunning ? 'Running Probe…' : 'Run Diagnostic Probe'}
+                </button>
+              </div>
+            </form>
 
-          {diagResult && (
-            <div className="space-y-1">
-              <p className="text-xs text-ink-secondary">
-                {diagResult.mode} → {diagResult.target} - {diagResult.success ? 'success' : 'failed'} - {formatTs(diagResult.observed_at)}
-              </p>
-              <pre className="overflow-auto rounded-md bg-elevated p-3 text-xs text-ink">{diagResult.output}</pre>
-            </div>
-          )}
+            {diagResult && (
+              <div className="rounded-lg border border-slate-200 bg-slate-900 p-4 font-mono text-xs text-slate-100 space-y-2">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-slate-400">
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${diagResult.success ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                    {diagResult.mode.toUpperCase()} → {diagResult.target}
+                  </span>
+                  <span>{formatTs(diagResult.observed_at)}</span>
+                </div>
+                <pre className="overflow-x-auto whitespace-pre">{diagResult.output}</pre>
+              </div>
+            )}
+          </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <h3 className="text-sm font-medium">Listening Ports</h3>
-              <button type="button" className={secondaryButtonClass}
-                onClick={() => { void loadPorts(); }}>
-                {portsLoading ? 'Loading…' : 'Refresh'}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Listening Socket Inventory</h2>
+                <p className="text-xs text-slate-500">Live active daemon sockets listening on host interfaces.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                onClick={() => { void loadPorts(); }}
+              >
+                {portsLoading ? 'Probing Sockets…' : 'Inspect Listening Sockets'}
               </button>
             </div>
-            {ports.length > 0 && (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line text-left text-ink-secondary">
-                    <th className="py-2 pr-4">Protocol</th>
-                    <th className="py-2 pr-4">Address</th>
-                    <th className="py-2 pr-4">Port</th>
-                    <th className="py-2 pr-4">Process</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ports.map((p, i) => (
-                    <tr key={i} className="border-b border-line">
-                      <td className="py-2 pr-4">{p.protocol}</td>
-                      <td className="py-2 pr-4 font-mono text-xs">{p.local_address}</td>
-                      <td className="py-2 pr-4 font-mono text-xs">{p.local_port}</td>
-                      <td className="py-2 pr-4 text-xs">{p.process_name ?? '-'}</td>
+
+            {ports.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-400">
+                Click "Inspect Listening Sockets" to query open ports.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="pb-3 pr-4">Protocol</th>
+                      <th className="pb-3 pr-4">Listen Address</th>
+                      <th className="pb-3 pr-4">Port</th>
+                      <th className="pb-3">Bound Process</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ports.map((p, i) => (
+                      <tr key={i} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-2.5 pr-4">
+                          <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 uppercase">
+                            {p.protocol}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4 font-mono text-xs text-slate-700">{p.local_address}</td>
+                        <td className="py-2.5 pr-4 font-mono text-xs font-semibold text-indigo-600">{p.local_port}</td>
+                        <td className="py-2.5 text-xs text-slate-600 font-mono">{p.process_name || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ─── Apply Log Tab ─── */}
+      {/* ─── APPLY LOG TAB ─── */}
       {tab === 'applylog' && (
-        <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Firewall Apply Audit Log ({applyLog.length})</h2>
+            <p className="text-xs text-slate-500">History of firewall sync transactions executed on this server.</p>
+          </div>
+
           {applyLog.length === 0 && !loading ? (
-            <EmptyState title="No apply events recorded."><span /></EmptyState>
+            <div className="py-12 text-center">
+              <span className="text-4xl mb-2 block">📋</span>
+              <h3 className="text-sm font-semibold text-slate-900">No apply events recorded</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Transactions will be recorded here when rules are deployed.</p>
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-ink-secondary">
-                  <th className="py-2 pr-4">When</th>
-                  <th className="py-2 pr-4">Applied by</th>
-                  <th className="py-2 pr-4">Outcome</th>
-                  <th className="py-2">Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {applyLog.map((log) => (
-                  <tr key={log.id} className="border-b border-line">
-                    <td className="py-2 pr-4 text-xs text-ink-secondary">{formatTs(log.created_at)}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{log.applied_by}</td>
-                    <td className="py-2 pr-4">{log.outcome}</td>
-                    <td className="py-2 text-xs text-ink-secondary">{log.error_message || '-'}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="pb-3 pr-4">Timestamp</th>
+                    <th className="pb-3 pr-4">Applied By</th>
+                    <th className="pb-3 pr-4">Outcome</th>
+                    <th className="pb-3">Details / Error</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {applyLog.map((log) => {
+                    const isSuccess = log.outcome.toLowerCase() === 'success' || log.outcome.toLowerCase() === 'applied';
+                    return (
+                      <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3 pr-4 text-xs text-slate-500">{formatTs(log.created_at)}</td>
+                        <td className="py-3 pr-4 font-mono text-xs text-slate-700">{log.applied_by}</td>
+                        <td className="py-3 pr-4">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            isSuccess
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}>
+                            {log.outcome}
+                          </span>
+                        </td>
+                        <td className="py-3 text-xs text-slate-500 font-mono">{log.error_message || '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
