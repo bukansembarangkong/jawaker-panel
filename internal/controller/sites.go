@@ -329,6 +329,7 @@ func (h *SiteHandlers) handleValidateConfig(w http.ResponseWriter, r *http.Reque
 					httpserver.WriteError(w, r, apierr.ServiceUnavailable("The host web server is not available or does not support validation."))
 					return
 				}
+				h.logger.Error("validate web config failed", "site_id", site.ID, "server_id", site.ServerID, "error", valErr)
 				httpserver.WriteError(w, r, apierr.Internal(valErr))
 				return
 			}
