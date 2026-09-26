@@ -520,6 +520,7 @@ function SiteDetail({ site, project, onBack, onDeleted, onElevationRequired }: S
         onDeleted();
       } catch (err) {
         if (isStepUpRequired(err)) {
+          setDeleting(false); // close delete modal first
           onElevationRequired(() => { void run(); });
         } else {
           setDeleteError(err instanceof Error ? err : new Error(String(err)));
