@@ -16,6 +16,7 @@ import {
   Field,
   MetricCard,
   StatusBadge,
+  ConfirmModal,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
@@ -105,6 +106,9 @@ export function ServersPage() {
   // caller's decision, not an automatic retry: the operator has just typed a
   // password and should see the action complete, not have it replay silently.
   const [pendingElevation, setPendingElevation] = useState<(() => void) | null>(null);
+
+  // Confirm modal for destructive actions
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadServers = useCallback(async () => {
     try {
@@ -200,6 +204,15 @@ export function ServersPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={confirmState.onConfirm}
+        title="Remove server from fleet?"
+        message={confirmState.message}
+        confirmLabel="Yes, remove"
+        danger
+      />
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard label="Servers" value={servers?.length ?? '…'} mono />
         <MetricCard
@@ -273,35 +286,62 @@ export function ServersPage() {
                 </tr>
               </thead>
               <tbody>
-                {servers.map((server) => (
-                  <tr key={server.id} className="border-b border-line align-top">
-                    <td className="py-3 pr-4">
-                      <p className="font-medium text-ink">{server.name}</p>
-                      <p className="font-mono text-xs text-ink-muted">{server.address || server.id}</p>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge state={mapServerState(server)} />
-                    </td>
-                    <td className="py-3 pr-4 text-ink-secondary">{certLabel(server)}</td>
-                    <td className="py-3 pr-4 text-ink-secondary">
-                      {server.os_family
-                        ? `${server.os_family} ${server.os_version}`.trim()
-                        : 'Not reported'}
-                    </td>
-                    <td className="py-3 pr-4 text-ink-secondary">{formatTimestamp(server.last_seen_at)}</td>
-                    <td className="py-3">
-                      <button
-                        type="button"
-                        disabled={busy || server.status === 'deleted'}
-                        onClick={() => void deleteServer(server.id)}
-                        className={secondaryButtonClass}
-                        aria-label={`Remove ${server.name} from the fleet`}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {servers.map((server) => {
+                  // The primary node is the sole server OR the first enrolled server.
+                  // It hosts the control plane itself and cannot be cleanly removed.
+                  const isPrimary = servers.length === 1 || servers.indexOf(server) === 0;
+                  return (
+                    <tr key={server.id} className="border-b border-line align-top">
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-ink">{server.name}</p>
+                          {isPrimary && (
+                            <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-mono text-xs text-ink-muted">{server.address || server.id}</p>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <StatusBadge state={mapServerState(server)} />
+                      </td>
+                      <td className="py-3 pr-4 text-ink-secondary">{certLabel(server)}</td>
+                      <td className="py-3 pr-4 text-ink-secondary">
+                        {server.os_family
+                          ? `${server.os_family} ${server.os_version}`.trim()
+                          : 'Not reported'}
+                      </td>
+                      <td className="py-3 pr-4 text-ink-secondary">{formatTimestamp(server.last_seen_at)}</td>
+                      <td className="py-3">
+                        {isPrimary ? (
+                          <span
+                            className="text-xs text-ink-muted cursor-not-allowed"
+                            title="The primary node hosts the control plane and cannot be removed. Add another node first."
+                          >
+                            Cannot remove
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={busy || server.status === 'deleted'}
+                            onClick={() => {
+                              setConfirmState({
+                                open: true,
+                                message: `Remove "${server.name}" from the fleet? All sites, apps, and databases hosted on this node will stop being managed. This cannot be undone.`,
+                                onConfirm: () => void deleteServer(server.id),
+                              });
+                            }}
+                            className={secondaryButtonClass}
+                            aria-label={`Remove ${server.name} from the fleet`}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -384,7 +424,13 @@ export function ServersPage() {
                       <button
                         type="button"
                         disabled={busy || token.state !== 'live'}
-                        onClick={() => void revokeToken(token.id)}
+                        onClick={() => {
+                          setConfirmState({
+                            open: true,
+                            message: `Revoke enrollment token for "${token.node_name}"? Any machine using this token will no longer be able to enroll.`,
+                            onConfirm: () => void revokeToken(token.id),
+                          });
+                        }}
                         className={secondaryButtonClass}
                         aria-label={`Revoke the token for ${token.node_name}`}
                       >
