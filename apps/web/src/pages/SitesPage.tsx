@@ -94,19 +94,11 @@ function formatTs(value: string | null | undefined): string {
 // ─── SitesPage ───────────────────────────────────────────────────────────────
 
 export function SitesPage() {
-  const [projects, setProjects] = useState<Project[] | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // Create project form
-  const [showCreateProject, setShowCreateProject] = useState(false);
-  const [projectSlug, setProjectSlug] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [projectDesc, setProjectDesc] = useState('');
-  const [projectCreateError, setProjectCreateError] = useState<Error | null>(null);
 
   // Create site form
   const [showCreateSite, setShowCreateSite] = useState(false);
@@ -126,7 +118,17 @@ export function SitesPage() {
   const loadProjects = useCallback(async () => {
     try {
       const page = await api.listProjects({ state: 'active' });
-      setProjects(page.projects);
+      if (page.projects && page.projects.length > 0) {
+        setSelectedProject(page.projects[0]);
+      } else {
+        // Auto-create a default project silently so user goes straight to sites
+        const created = await api.createProject({
+          slug: 'default',
+          name: 'Default',
+          description: 'Default project workspace',
+        });
+        setSelectedProject(created.project);
+      }
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err : new Error(String(err)));
@@ -146,10 +148,13 @@ export function SitesPage() {
     try {
       const page = await api.listServers();
       setServers(page.servers.map((s) => ({ id: s.id, name: s.name })));
+      if (page.servers.length > 0 && !siteServerId) {
+        setSiteServerId(page.servers[0].id);
+      }
     } catch {
       // Best-effort: server dropdown degrades to free-text
     }
-  }, []);
+  }, [siteServerId]);
 
   useEffect(() => {
     void loadProjects();
@@ -162,31 +167,6 @@ export function SitesPage() {
     setSelectedSite(null);
   }, [selectedProject, loadSites]);
 
-  const createProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setProjectCreateError(null);
-    const doCreate = async () => {
-      try {
-        const res = await api.createProject({ slug: projectSlug, name: projectName, description: projectDesc });
-        setShowCreateProject(false);
-        setProjectSlug('');
-        setProjectName('');
-        setProjectDesc('');
-        await loadProjects();
-        setSelectedProject(res.project);
-      } catch (err) {
-        if (isStepUpRequired(err)) {
-          setPendingElevation(() => () => { void doCreate(); });
-        } else {
-          setProjectCreateError(err instanceof Error ? err : new Error(String(err)));
-        }
-      } finally {
-        setBusy(false);
-      }
-    };
-    await doCreate();
-  };
 
   const createSite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,138 +242,82 @@ export function SitesPage() {
     );
   }
 
-  // ── Project picker + sites list ──────────────────────────────────────────────
+  // ── Direct sites list & creation ─────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-ink">Sites</h2>
-        <button type="button" className={secondaryButtonClass} onClick={() => setShowCreateProject(true)}>
-          New project
-        </button>
+        <div>
+          <h2 className="text-base font-semibold text-ink">Websites</h2>
+          <p className="text-xs text-ink-muted mt-0.5">Manage domains, Nginx configuration, and web hosting</p>
+        </div>
+        {!showCreateSite && (
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={() => { void loadServers(); setShowCreateSite(true); }}
+            disabled={!selectedProject}
+          >
+            + New site
+          </button>
+        )}
       </div>
 
-      {showCreateProject && (
-        <form onSubmit={(e) => void createProject(e)} className="rounded-md border border-line bg-surface p-4 space-y-3">
-          <h3 className="text-sm font-medium text-ink">New project</h3>
-          {projectCreateError && <ErrorNote error={projectCreateError} title="Create failed" />}
-          <Field label="Name">
-            <input
-              className={inputClass}
-              value={projectName}
-              onChange={(e) => {
-                const name = e.target.value;
-                setProjectName(name);
-                // Auto-fill slug only if user hasn't manually edited it
-                setProjectSlug((prev) => {
-                  const autoSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                  const prevAutoSlug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                  return prev === prevAutoSlug ? autoSlug : prev;
-                });
-              }}
-              required
-            />
-          </Field>
-          <Field label="Slug (URL-safe, immutable)">
-            <input className={inputClass} value={projectSlug} onChange={(e) => setProjectSlug(e.target.value)} required pattern="[a-z0-9-]+" placeholder="auto-filled from name" />
-          </Field>
-          <Field label="Description (optional)">
-            <input className={inputClass} value={projectDesc} onChange={(e) => setProjectDesc(e.target.value)} />
-          </Field>
-          <div className="flex gap-2">
-            <button type="submit" className={primaryButtonClass} disabled={busy}>Create</button>
-            <button type="button" className={secondaryButtonClass} onClick={() => setShowCreateProject(false)}>Cancel</button>
-          </div>
-        </form>
+      {showCreateSite && (
+        <CreateSiteForm
+          servers={servers}
+          siteSlug={siteSlug} setSiteSlug={setSiteSlug}
+          siteName={siteName} setSiteName={setSiteName}
+          siteMode={siteMode} setSiteMode={setSiteMode}
+          siteServerId={siteServerId} setSiteServerId={setSiteServerId}
+          siteDocRoot={siteDocRoot} setSiteDocRoot={setSiteDocRoot}
+          siteUpstream={siteUpstream} setSiteUpstream={setSiteUpstream}
+          sitePHPUnit={sitePHPUnit} setSitePHPUnit={setSitePHPUnit}
+          siteCreateError={siteCreateError}
+          busy={busy}
+          onSubmit={(e) => void createSite(e)}
+          onCancel={() => setShowCreateSite(false)}
+        />
       )}
 
-      {projects !== null && projects.length > 0 && (
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-ink-secondary uppercase tracking-wider">Project</label>
-          <div className="flex flex-wrap gap-2">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setSelectedProject(selectedProject?.id === p.id ? null : p)}
-                className={`rounded-md px-3 py-1.5 text-sm border ${
-                  selectedProject?.id === p.id
-                    ? 'border-line bg-elevated font-medium text-ink'
-                    : 'border-line text-ink-secondary hover:text-ink'
-                }`}
-              >
-                {p.slug}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {selectedProject && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-ink">{selectedProject.name}</h3>
+      {sites === null ? (
+        <p role="status" className="text-sm text-ink-secondary">Loading sites...</p>
+      ) : sites.length === 0 ? (
+        <EmptyState title="No sites yet">
+          <p className="text-sm text-ink-secondary mb-3">You do not have any websites hosted yet.</p>
+          {!showCreateSite && (
             <button
               type="button"
-              className={secondaryButtonClass}
+              className={primaryButtonClass}
               onClick={() => { void loadServers(); setShowCreateSite(true); }}
             >
-              New site
+              Add your first site
             </button>
-          </div>
-
-          {showCreateSite && (
-            <CreateSiteForm
-              servers={servers}
-              siteSlug={siteSlug} setSiteSlug={setSiteSlug}
-              siteName={siteName} setSiteName={setSiteName}
-              siteMode={siteMode} setSiteMode={setSiteMode}
-              siteServerId={siteServerId} setSiteServerId={setSiteServerId}
-              siteDocRoot={siteDocRoot} setSiteDocRoot={setSiteDocRoot}
-              siteUpstream={siteUpstream} setSiteUpstream={setSiteUpstream}
-              sitePHPUnit={sitePHPUnit} setSitePHPUnit={setSitePHPUnit}
-              siteCreateError={siteCreateError}
-              busy={busy}
-              onSubmit={(e) => void createSite(e)}
-              onCancel={() => setShowCreateSite(false)}
-            />
           )}
-
-          {sites === null ? (
-            <p role="status" className="text-sm text-ink-secondary">Loading sites…</p>
-          ) : sites.length === 0 ? (
-            <EmptyState title="No sites yet">Create a site to start managing web hosting for this project.</EmptyState>
-          ) : (
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface">
-              {sites.map((site) => (
-                <li key={site.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <StatusBadge state={mapSiteState(site)} />
-                      <span className="truncate font-medium text-ink text-sm">{site.slug}</span>
-                      <span className="text-xs text-ink-muted">{site.mode}</span>
-                    </div>
-                    {site.name !== site.slug && (
-                      <p className="mt-0.5 text-xs text-ink-secondary">{site.name}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className={secondaryButtonClass}
-                    onClick={() => setSelectedSite(site)}
-                  >
-                    Manage
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {projects !== null && projects.length === 0 && !showCreateProject && (
-        <EmptyState title="No projects">
-          Create a project to organise your sites, databases, and deployments.
         </EmptyState>
+      ) : (
+        <ul className="divide-y divide-line rounded-md border border-line bg-surface">
+          {sites.map((site) => (
+            <li key={site.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <StatusBadge state={mapSiteState(site)} />
+                  <span className="truncate font-medium text-ink text-sm">{site.slug}</span>
+                  <span className="text-xs text-ink-muted uppercase">{site.mode}</span>
+                </div>
+                {site.name !== site.slug && (
+                  <p className="mt-0.5 text-xs text-ink-secondary">{site.name}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                onClick={() => setSelectedSite(site)}
+              >
+                Manage
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
