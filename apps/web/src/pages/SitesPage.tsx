@@ -352,12 +352,34 @@ function CreateSiteForm({
   siteCreateError, busy, onSubmit, onCancel,
 }: CreateSiteFormProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // appType drives mode + upstream behind the scenes
+  const [appType, setAppType] = useState<string>('php');
+  const [customPort, setCustomPort] = useState('8080');
+
+  function handleAppTypeChange(type: string) {
+    setAppType(type);
+    const portMap: Record<string, { mode: 'php' | 'static' | 'reverse_proxy'; port?: string }> = {
+      php:     { mode: 'php' },
+      static:  { mode: 'static' },
+      nodejs:  { mode: 'reverse_proxy', port: '3000' },
+      python:  { mode: 'reverse_proxy', port: '8000' },
+      custom:  { mode: 'reverse_proxy', port: customPort },
+    };
+    const cfg = portMap[type];
+    setSiteMode(cfg.mode);
+    if (cfg.port) setSiteUpstream(`http://127.0.0.1:${cfg.port}`);
+    else setSiteUpstream('');
+  }
+
+  function handlePortChange(port: string) {
+    setCustomPort(port);
+    setSiteUpstream(`http://127.0.0.1:${port}`);
+  }
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {siteCreateError && <ErrorNote error={siteCreateError} title="Create failed" />}
 
-      {/* Only show server picker if there are multiple servers */}
       {servers.length > 1 && (
         <Field label="Server">
           <select className={inputClass} value={siteServerId} onChange={(e) => setSiteServerId(e.target.value)} required>
@@ -367,83 +389,78 @@ function CreateSiteForm({
         </Field>
       )}
 
-      {/* Primary: Domain Name */}
       <Field label="Domain Name">
         <input
           className={inputClass}
           value={siteName}
-          placeholder="example.com or sub.example.com"
+          placeholder="example.com"
           onChange={(e) => {
             const domain = e.target.value.trim().toLowerCase();
             setSiteName(domain);
-            // Auto-slug: replace dots and special chars with hyphens
-            const autoSlug = domain.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            setSiteSlug(autoSlug);
-            // Auto doc root
-            if (domain) {
-              setSiteDocRoot(`/var/www/${domain}`);
-            }
+            setSiteSlug(domain.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
+            if (domain) setSiteDocRoot(`/var/www/${domain}`);
           }}
           required
         />
-        <p className="text-xs text-ink-muted mt-1">Enter your full website domain or subdomain</p>
       </Field>
 
-      {/* Website Mode */}
       <Field label="Website Type">
-        <select className={inputClass} value={siteMode} onChange={(e) => setSiteMode(e.target.value as typeof siteMode)}>
-          <option value="php">PHP (WordPress, Laravel, custom PHP)</option>
-          <option value="static">Static HTML / Jamstack</option>
-          <option value="reverse_proxy">Reverse Proxy (Node.js, Python, Docker app)</option>
+        <select
+          className={inputClass}
+          value={appType}
+          onChange={(e) => handleAppTypeChange(e.target.value)}
+        >
+          <option value="php">PHP Website (WordPress, Laravel, CodeIgniter)</option>
+          <option value="static">Static Website (HTML, CSS, JS)</option>
+          <option value="nodejs">Node.js App (Next.js, Express, Fastify)</option>
+          <option value="python">Python App (FastAPI, Flask, Django)</option>
+          <option value="custom">Other App / Docker (I will specify port)</option>
         </select>
       </Field>
 
-      {siteMode === 'reverse_proxy' && (
-        <Field label="Upstream URL">
-          <input className={inputClass} value={siteUpstream} onChange={(e) => setSiteUpstream(e.target.value)} placeholder="http://127.0.0.1:3000" required />
-          <p className="text-xs text-ink-muted mt-1">Where your local app is listening (e.g. port 3000, 8080)</p>
+      {appType === 'custom' && (
+        <Field label="App Port">
+          <input
+            className={inputClass}
+            type="number"
+            min="1"
+            max="65535"
+            value={customPort}
+            onChange={(e) => handlePortChange(e.target.value)}
+            placeholder="8080"
+            required
+          />
+          <p className="text-xs text-ink-muted mt-1">Port where your app is listening on this server</p>
         </Field>
       )}
 
-      {siteMode === 'php' && (
-        <Field label="PHP-FPM socket / unit (optional)">
-          <input className={inputClass} value={sitePHPUnit} onChange={(e) => setSitePHPUnit(e.target.value)} placeholder="Leave blank for system default (php8.3-fpm)" />
-        </Field>
-      )}
-
-      {/* Collapsible Advanced Settings */}
+      {/* Advanced */}
       <div className="pt-1 border-t border-line">
         <button
           type="button"
-          className="text-xs font-medium text-accent hover:underline flex items-center gap-1"
+          className="text-xs font-medium text-accent hover:underline"
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
-          {showAdvanced ? 'Hide advanced settings' : 'Show advanced settings (Slug, Document Root)'}
+          {showAdvanced ? 'Hide advanced settings' : 'Advanced settings'}
         </button>
-
         {showAdvanced && (
           <div className="mt-3 space-y-3 pl-2 border-l-2 border-line">
-            <Field label="Slug (Internal system identifier)">
-              <input
-                className={inputClass}
-                value={siteSlug}
-                onChange={(e) => setSiteSlug(e.target.value)}
-                required
-                pattern="[a-z0-9-]+"
-                placeholder="auto-derived from domain"
-              />
-              <p className="text-xs text-ink-muted mt-0.5">Used for Nginx config file names and system paths</p>
+            <Field label="Slug">
+              <input className={inputClass} value={siteSlug} onChange={(e) => setSiteSlug(e.target.value)} required pattern="[a-z0-9-]+" placeholder="auto-derived from domain" />
             </Field>
-
             <Field label="Document Root">
-              <input
-                className={inputClass}
-                value={siteDocRoot}
-                onChange={(e) => setSiteDocRoot(e.target.value)}
-                placeholder="/var/www/example.com"
-              />
-              <p className="text-xs text-ink-muted mt-0.5">Directory where web files are stored on the server</p>
+              <input className={inputClass} value={siteDocRoot} onChange={(e) => setSiteDocRoot(e.target.value)} placeholder="/var/www/example.com" />
             </Field>
+            {siteMode === 'php' && (
+              <Field label="PHP-FPM unit">
+                <input className={inputClass} value={sitePHPUnit} onChange={(e) => setSitePHPUnit(e.target.value)} placeholder="Leave blank for system default" />
+              </Field>
+            )}
+            {siteMode === 'reverse_proxy' && (
+              <Field label="Upstream URL">
+                <input className={inputClass} value={siteUpstream} onChange={(e) => setSiteUpstream(e.target.value)} placeholder="http://127.0.0.1:3000" />
+              </Field>
+            )}
           </div>
         )}
       </div>
