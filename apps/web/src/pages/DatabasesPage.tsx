@@ -432,18 +432,18 @@ export function DatabasesPage() {
       )}
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-ink">Databases</h2>
-          <p className="text-xs text-ink-muted">
-            Managed relational databases (PostgreSQL & MariaDB) with scoped credentials and verified backups.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Databases</h1>
+          <p className="text-sm text-slate-500">
+            Managed relational databases (PostgreSQL &amp; MariaDB) with scoped credentials and verified backups.
           </p>
         </div>
         {selectedProject && !selectedDb && (
           <button
             type="button"
             onClick={() => setShowCreateForm(true)}
-            className={primaryButtonClass}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
           >
             + New Database
           </button>
@@ -454,7 +454,7 @@ export function DatabasesPage() {
 
       {/* Project Selector */}
       <div className="flex items-center gap-3">
-        <label htmlFor="db-project-select" className="text-xs font-medium text-ink-secondary">
+        <label htmlFor="db-project-select" className="text-xs font-medium text-slate-600">
           Project:
         </label>
         <select
@@ -482,72 +482,75 @@ export function DatabasesPage() {
       ) : selectedDb ? (
         /* Database Detail View */
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="space-y-1">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => selectDb(null)}
-                  className="text-xs text-ink-muted hover:text-ink"
+                  className="text-xs text-slate-500 hover:text-slate-900 transition-colors"
                 >
                   &larr; All databases
                 </button>
-                <h3 className="text-lg font-semibold text-ink">{selectedDb.name}</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{selectedDb.name}</h3>
                 <StatusBadge state={mapDbState(selectedDb)} detail={selectedDb.state} />
               </div>
-              <p className="font-mono text-xs text-ink-secondary">
+              <p className="font-mono text-xs text-slate-500">
                 {selectedDb.slug} &bull; {selectedDb.engine} {selectedDb.engine_version} &bull; db: {selectedDb.db_name}
               </p>
             </div>
             <button
               type="button"
               onClick={() => void handleDeleteDb(selectedDb)}
-              className="rounded-md border border-line px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-all"
             >
               Delete Database
             </button>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 border-b border-line pb-2">
-            {(['overview', 'users', 'ops', 'metrics', 'query'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                  tab === t
-                    ? 'bg-elevated font-semibold text-ink'
-                    : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                {t === 'ops' ? 'Backups & Restore' : t === 'query' ? '🔍 Query Console' : t}
-              </button>
-            ))}
+          <div className="flex overflow-x-auto border-b border-slate-200 gap-1 pb-px">
+            {(['overview', 'users', 'ops', 'metrics', 'query'] as const).map((t) => {
+              const active = tab === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  className={`px-3.5 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors capitalize ${
+                    active
+                      ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-md'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  }`}
+                >
+                  {t === 'ops' ? 'Backups & Restore' : t === 'query' ? '🔍 Query Console' : t}
+                </button>
+              );
+            })}
           </div>
 
           {/* Overview Tab */}
           {tab === 'overview' && (
-            <div className="space-y-4 rounded-lg border border-line bg-surface p-4">
-              <h4 className="text-sm font-semibold text-ink">Connection & Information</h4>
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h2 className="text-base font-semibold text-slate-900">Connection &amp; Information</h2>
               <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
                 <div>
-                  <dt className="text-ink-muted">Server ID</dt>
-                  <dd className="font-mono text-ink">{selectedDb.server_id}</dd>
+                  <dt className="text-slate-500">Server ID</dt>
+                  <dd className="font-mono text-slate-900">{selectedDb.server_id}</dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">Created</dt>
-                  <dd className="text-ink">{formatTs(selectedDb.created_at)}</dd>
+                  <dt className="text-slate-500">Created</dt>
+                  <dd className="text-slate-900">{formatTs(selectedDb.created_at)}</dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">Engine</dt>
-                  <dd className="capitalize text-ink">
+                  <dt className="text-slate-500">Engine</dt>
+                  <dd className="capitalize text-slate-900">
                     {selectedDb.engine} {selectedDb.engine_version}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">Database Name</dt>
-                  <dd className="font-mono text-ink">{selectedDb.db_name}</dd>
+                  <dt className="text-slate-500">Database Name</dt>
+                  <dd className="font-mono text-slate-900">{selectedDb.db_name}</dd>
                 </div>
               </dl>
 
@@ -1093,24 +1096,41 @@ export function DatabasesPage() {
               No managed databases found in this project. Create one to get started.
             </EmptyState>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {databases.map((db) => (
-                <div
-                  key={db.id}
-                  onClick={() => selectDb(db)}
-                  className="cursor-pointer rounded-lg border border-line bg-surface p-4 transition-all hover:border-line-hover hover:shadow-sm space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-ink text-sm">{db.name}</h4>
-                    <StatusBadge state={mapDbState(db)} detail={db.state} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {databases.map((db) => {
+                const isPostgres = db.engine === 'postgresql';
+                const engineBadge = isPostgres
+                  ? 'rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-medium text-blue-700'
+                  : 'rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-medium text-amber-700';
+                const statusColor =
+                  db.state === 'active'
+                    ? 'bg-emerald-500'
+                    : db.state === 'suspended' || db.state === 'pending_delete'
+                    ? 'bg-amber-400'
+                    : 'bg-red-500';
+                return (
+                  <div
+                    key={db.id}
+                    onClick={() => selectDb(db)}
+                    className="cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300 hover:shadow-md transition-all space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${statusColor}`} />
+                          <h4 className="text-sm font-semibold text-slate-900 truncate">{db.name}</h4>
+                        </div>
+                        <p className="font-mono text-xs text-slate-400 truncate mt-0.5">{db.slug}</p>
+                      </div>
+                      <span className={engineBadge}>{db.engine} {db.engine_version}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                      <span className="capitalize">{db.state.replace('_', ' ')}</span>
+                      <span>{formatTs(db.created_at)}</span>
+                    </div>
                   </div>
-                  <p className="font-mono text-xs text-ink-secondary truncate">{db.slug}</p>
-                  <div className="flex items-center justify-between pt-2 border-t border-line text-xs text-ink-muted">
-                    <span className="capitalize">{db.engine} {db.engine_version}</span>
-                    <span>{formatTs(db.created_at)}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

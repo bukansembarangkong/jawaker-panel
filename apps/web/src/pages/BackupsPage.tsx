@@ -602,14 +602,16 @@ export function BackupsPage() {
           {tab === 'runs' && (
             <div className="space-y-4">
               {createdLink && (
-                <div className="space-y-2 rounded-lg border border-line bg-surface p-4">
-                  <h4 className="text-sm font-semibold text-ink">Download link created</h4>
-                  <p className="text-xs text-ink-muted">
-                    Shown once. Expires {formatTs(createdLink.expires_at)}.
-                    {createdLink.single_use ? ' Single use.' : ''}
-                  </p>
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Download link created</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Shown once. Expires {formatTs(createdLink.expires_at)}.
+                      {createdLink.single_use ? ' Single use.' : ''}
+                    </p>
+                  </div>
                   <div className="relative">
-                    <pre className="overflow-x-auto rounded-md bg-canvas p-3 font-mono text-xs text-ink">
+                    <pre className="overflow-x-auto rounded-lg bg-slate-50 border border-slate-200 p-3 font-mono text-xs text-slate-800">
                       {`${window.location.origin}/api/v1/backup-links/${createdLink.token}`}
                     </pre>
                     <button
@@ -621,7 +623,7 @@ export function BackupsPage() {
                         setCopied(true);
                         setTimeout(() => setCopied(false), 2000);
                       }}
-                      className="absolute right-2 top-2 rounded border border-line bg-surface px-2 py-1 text-xs text-ink-secondary shadow-sm hover:text-ink"
+                      className="absolute right-2 top-2 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-all"
                     >
                       {copied ? 'Copied!' : 'Copy'}
                     </button>
@@ -634,66 +636,80 @@ export function BackupsPage() {
                   No runs yet. Trigger a plan to create the first one.
                 </EmptyState>
               ) : (
-                <div className="divide-y divide-line rounded-lg border border-line bg-surface">
-                  {runs.map((run) => (
-                    <div key={run.id} className="space-y-2 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-ink">{run.id.slice(0, 8)}</span>
-                            <StatusBadge state={mapRunState(run)} detail={run.state} />
-                            <span className="text-xs text-ink-muted">{run.trigger}</span>
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-900">Execution Timeline</h3>
+                    <span className="text-xs text-slate-400">{runs.length} runs recorded</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {runs.map((run) => {
+                      const dotColor =
+                        run.state === 'completed'
+                          ? 'bg-emerald-500'
+                          : run.state === 'running' || run.state === 'queued'
+                          ? 'bg-amber-400 animate-pulse'
+                          : 'bg-red-500';
+                      return (
+                        <div key={run.id} className="p-4 hover:bg-slate-50/50 transition-colors space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2.5">
+                                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
+                                <span className="font-mono text-xs font-semibold text-slate-900">{run.id.slice(0, 8)}</span>
+                                <StatusBadge state={mapRunState(run)} detail={run.state} />
+                                <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">{run.trigger}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 pl-5">
+                                {formatTs(run.created_at)} &bull; {formatBytes(run.archive_size)} &bull; verification: {run.verification || 'unverified'}
+                              </p>
+                              {run.failed_reason && (
+                                <p className="text-xs text-red-600 pl-5 font-medium">{run.failed_reason}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {run.state === 'completed' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleVerify(run)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
+                                  >
+                                    Verify
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRestore(run)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
+                                  >
+                                    Restore
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCreateLink(run)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
+                                  >
+                                    Link
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteRun(run)}
+                                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-ink-muted">
-                            {formatTs(run.created_at)} &bull; {formatBytes(run.archive_size)} &bull;
-                            verification: {run.verification || 'unverified'}
-                          </p>
-                          {run.failed_reason && (
-                            <p className="text-xs text-red-600">{run.failed_reason}</p>
+                          {run.sha256 && (
+                            <p className="truncate font-mono text-[11px] text-slate-400 pl-5" title={run.sha256}>
+                              sha256: {run.sha256}
+                            </p>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {run.state === 'completed' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => void handleVerify(run)}
-                                className={secondaryButtonClass}
-                              >
-                                Verify
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleRestore(run)}
-                                className={secondaryButtonClass}
-                              >
-                                Restore
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateLink(run)}
-                                className={secondaryButtonClass}
-                              >
-                                Link
-                              </button>
-                            </>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteRun(run)}
-                            className="rounded-md border border-line px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                      {run.sha256 && (
-                        <p className="truncate font-mono text-xs text-ink-muted" title={run.sha256}>
-                          sha256: {run.sha256}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

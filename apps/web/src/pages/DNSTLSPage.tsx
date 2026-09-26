@@ -228,32 +228,32 @@ export function DNSTLSPage() {
         confirmLabel="Yes, proceed"
         danger
       />
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-ink">DNS & TLS Management</h2>
-          <p className="text-sm text-ink-secondary">Manage DNS providers, zones, records and TLS certificate lifecycle.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">DNS &amp; TLS Management</h1>
+          <p className="text-sm text-slate-500">Manage DNS providers, zones, records and TLS certificate lifecycle.</p>
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-line">
+      <div className="flex overflow-x-auto border-b border-slate-200 gap-1 pb-px">
         <button
           type="button"
           onClick={() => setTab('dns')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+          className={`px-3.5 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
             tab === 'dns'
-              ? 'border-accent text-accent'
-              : 'border-transparent text-ink-secondary hover:text-ink'
+              ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-md'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
           }`}
         >
-          DNS Zones & Records
+          DNS Zones &amp; Records
         </button>
         <button
           type="button"
           onClick={() => setTab('certs')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+          className={`px-3.5 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
             tab === 'certs'
-              ? 'border-accent text-accent'
-              : 'border-transparent text-ink-secondary hover:text-ink'
+              ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-md'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
           }`}
         >
           TLS Certificates
@@ -267,11 +267,14 @@ export function DNSTLSPage() {
           {/* Providers Section */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-ink">DNS Providers</h3>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">DNS Providers</h3>
+                <p className="text-xs text-slate-500">Connected upstream authoritative DNS providers.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsProviderOpen(true)}
-                className={primaryButtonClass}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
               >
                 + Add Provider
               </button>
@@ -321,51 +324,57 @@ export function DNSTLSPage() {
             </Modal>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {providers.map((p) => (
-                <div key={p.id} className="p-4 bg-surface rounded-lg border border-line flex justify-between items-start">
-                  <div>
-                    <h4 className="font-semibold text-ink">{p.name}</h4>
-                    <p className="text-xs text-ink-muted">Type: {p.provider}</p>
-                    <div className="mt-2">
-                      <StatusBadge state={p.state === 'active' ? 'Healthy' : 'Degraded'} detail={p.state} />
+              {providers.map((p) => {
+                const providerEmoji = p.provider === 'cloudflare' ? '🟧' : '🌐';
+                return (
+                  <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex justify-between items-start space-y-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg" role="img" aria-label={p.provider}>{providerEmoji}</span>
+                        <h4 className="font-semibold text-slate-900 text-sm">{p.name}</h4>
+                      </div>
+                      <p className="text-xs text-slate-500 capitalize pl-6">{p.provider}</p>
+                      <div className="pt-2 pl-6">
+                        <StatusBadge state={p.state === 'active' ? 'Healthy' : 'Degraded'} detail={p.state} />
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmState({
+                          open: true,
+                          message: `Delete DNS provider "${p.name}"? Any zones attached will lose DNS management capability.`,
+                          onConfirm: async () => {
+                            try {
+                              await dnsTlsApi.deleteProvider(projectId!, p.id);
+                              goeyToast.success('DNS provider deleted');
+                              await loadData();
+                            } catch (err) {
+                              const e = err instanceof Error ? err : new Error(String(err));
+                              goeyToast.error(`Failed: ${e.message}`);
+                              setError(e);
+                            }
+                          },
+                        });
+                      }}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
+                    >
+                      Delete
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmState({
-                        open: true,
-                        message: `Delete DNS provider "${p.name}"? Any zones attached will lose DNS management capability.`,
-                        onConfirm: async () => {
-                          try {
-                            await dnsTlsApi.deleteProvider(projectId!, p.id);
-                            goeyToast.success('DNS provider deleted');
-                            await loadData();
-                          } catch (err) {
-                            const e = err instanceof Error ? err : new Error(String(err));
-                            goeyToast.error(`Failed: ${e.message}`);
-                            setError(e);
-                          }
-                        },
-                      });
-                    }}
-                    className="text-xs text-danger hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
           {/* Zones & Records Section */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-ink">DNS Zones</h3>
+              <h3 className="text-base font-semibold text-slate-900">DNS Zones</h3>
               <button
                 type="button"
                 onClick={() => setIsZoneOpen(true)}
-                className={primaryButtonClass}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
               >
                 + Create Zone
               </button>
@@ -413,16 +422,16 @@ export function DNSTLSPage() {
               </EmptyState>
             ) : (
               <div className="space-y-4">
-                <div className="flex gap-2 border-b border-line pb-2">
+                <div className="flex flex-wrap gap-2">
                   {zones.map((z) => (
                     <button
                       key={z.id}
                       type="button"
                       onClick={() => setSelectedZone(z.id)}
-                      className={`px-3 py-1.5 rounded text-sm ${
+                      className={`rounded-lg border px-3.5 py-1.5 text-sm font-medium transition-all ${
                         selectedZone === z.id
-                          ? 'bg-elevated font-medium text-ink'
-                          : 'text-ink-secondary hover:text-ink'
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-600'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
                       {z.name}
@@ -707,64 +716,78 @@ export function DNSTLSPage() {
 
           {/* Certificate Inventory */}
           <section className="space-y-4">
-            <h3 className="text-base font-semibold text-ink">Certificate Inventory</h3>
+            <h3 className="text-base font-semibold text-slate-900">Certificate Inventory</h3>
             {certificates.length === 0 ? (
               <EmptyState title="No Certificates">
                 No active certificates yet. Issue a free Let's Encrypt certificate or import a custom one above.
               </EmptyState>
             ) : (
-              <div className="overflow-x-auto border border-line rounded-lg">
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-surface text-ink-muted text-xs uppercase border-b border-line">
+                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-2">Domains</th>
-                      <th className="px-4 py-2">Issuer</th>
-                      <th className="px-4 py-2">Valid Until</th>
-                      <th className="px-4 py-2">Status</th>
-                      <th className="px-4 py-2">Action</th>
+                      <th className="px-4 py-3">Domains</th>
+                      <th className="px-4 py-3">Issuer</th>
+                      <th className="px-4 py-3">Valid Until</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-line">
-                    {certificates.map((c) => (
-                      <tr key={c.id}>
-                        <td className="px-4 py-2 font-mono text-xs">{c.identifiers ? c.identifiers.join(', ') : 'unknown'}</td>
-                        <td className="px-4 py-2">{c.issuer}</td>
-                        <td className="px-4 py-2 font-mono text-xs">{new Date(c.not_after).toLocaleDateString()}</td>
-                        <td className="px-4 py-2">
-                          <StatusBadge
-                            state={c.state === 'active' ? 'Healthy' : c.state === 'expiring' ? 'Degraded' : 'Failed'}
-                            detail={c.state}
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          {c.state !== 'revoked' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmState({
-                                  open: true,
-                                  message: `Revoke certificate for ${c.identifiers ? c.identifiers.join(', ') : 'this domain'}? This certificate will become invalid immediately.`,
-                                  onConfirm: async () => {
-                                    try {
-                                      await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
-                                      goeyToast.success('Certificate revoked');
-                                      await loadData();
-                                    } catch (err) {
-                                      const e = err instanceof Error ? err : new Error(String(err));
-                                      goeyToast.error(`Failed: ${e.message}`);
-                                      setError(e);
-                                    }
-                                  },
-                                });
-                              }}
-                              className="text-xs text-danger hover:underline"
-                            >
-                              Revoke
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-100">
+                    {certificates.map((c) => {
+                      const daysUntilExpiry = c.not_after
+                        ? Math.ceil((new Date(c.not_after).getTime() - Date.now()) / 86400000)
+                        : null;
+                      const expiryBadge =
+                        c.state === 'revoked'
+                          ? 'rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700'
+                          : c.state === 'expiring' || (daysUntilExpiry !== null && daysUntilExpiry <= 30)
+                          ? 'rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-medium text-amber-700'
+                          : 'rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700';
+                      const expiryLabel =
+                        c.state === 'revoked'
+                          ? 'Revoked'
+                          : c.state === 'expiring'
+                          ? `Expiring in ${daysUntilExpiry ?? '?'}d`
+                          : 'Valid';
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 font-mono text-xs text-slate-900">{c.identifiers ? c.identifiers.join(', ') : 'unknown'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-700">{c.issuer}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-700">{new Date(c.not_after).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            <span className={expiryBadge}>{expiryLabel}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {c.state !== 'revoked' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmState({
+                                    open: true,
+                                    message: `Revoke certificate for ${c.identifiers ? c.identifiers.join(', ') : 'this domain'}? This certificate will become invalid immediately.`,
+                                    onConfirm: async () => {
+                                      try {
+                                        await dnsTlsApi.revokeCertificate(projectId!, c.id, 'operator manual revocation');
+                                        goeyToast.success('Certificate revoked');
+                                        await loadData();
+                                      } catch (err) {
+                                        const e = err instanceof Error ? err : new Error(String(err));
+                                        goeyToast.error(`Failed: ${e.message}`);
+                                        setError(e);
+                                      }
+                                    },
+                                  });
+                                }}
+                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-all"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
