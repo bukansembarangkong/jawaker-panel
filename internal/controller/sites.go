@@ -601,6 +601,22 @@ func (h *SiteHandlers) handleGetNodeJSConfig(w http.ResponseWriter, r *http.Requ
 			}
 			cfg, err := h.sites.GetNodeJSConfig(r.Context(), id)
 			if err != nil {
+				if errors.Is(err, sites.ErrNotFound) {
+					// Config not yet saved: return sensible defaults rather than 404
+					writeJSONResponse(w, http.StatusOK, map[string]any{
+						"nodejs_config": map[string]any{
+							"site_id":      id,
+							"node_version": "22",
+							"app_root":     "",
+							"startup_file": "server.js",
+							"start_args":   []string{},
+							"env_vars":     map[string]string{},
+							"port":         3000,
+						},
+						"request_id": httpserver.RequestIDFromRequest(r),
+					})
+					return
+				}
 				httpserver.WriteError(w, r, siteErr(err))
 				return
 			}
@@ -781,17 +797,13 @@ func (h *SiteHandlers) handleNodeJSStatus(w http.ResponseWriter, r *http.Request
 				SiteSlug:    site.Slug,
 			})
 			if statErr != nil {
-				// Node unreachable → degraded response, not error (D-xxx).
-				if errors.Is(statErr, nodes.ErrNodeUnreachable) {
+					// Any error (unreachable, no node, internal) → degraded status, not 500.
 					writeJSONResponse(w, http.StatusOK, map[string]any{
-						"status":     map[string]any{"active": false, "state": "unknown"},
+						"status":     map[string]any{"active": false, "state": "unknown", "unit_name": ""},
 						"request_id": reqID,
 					})
 					return
 				}
-				httpserver.WriteError(w, r, apierr.Internal(statErr))
-				return
-			}
 			writeJSONResponse(w, http.StatusOK, map[string]any{
 				"status":     status,
 				"request_id": reqID,
