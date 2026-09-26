@@ -16,19 +16,10 @@ import {
   EmptyState,
   ErrorNote,
   Field,
-  StatusBadge,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
-  type OperationalState,
 } from '../components/ui';
-
-function mapContainerState(c: Container): OperationalState {
-  if (c.state === 'running') return c.health === 'healthy' || c.health === 'none' ? 'Healthy' : 'Warning';
-  if (c.state === 'paused') return 'Warning';
-  if (c.state === 'exited' || c.state === 'dead') return 'Disabled';
-  return 'Disabled';
-}
 
 function formatTs(value: string | null | undefined): string {
   if (!value) return '-';
@@ -308,19 +299,23 @@ export function ContainersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Containers</h1>
-        {loading && <span className="text-sm text-ink-secondary">Loading…</span>}
+    <div className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Containers</h1>
+          <p className="text-sm text-slate-500">Manage Docker containers, compose stacks, and images.</p>
+        </div>
+        {loading && <span className="text-sm text-slate-400">Loading…</span>}
       </div>
 
       {error && <ErrorNote error={error} />}
 
       {/* Project selector */}
       {projects.length > 1 && (
-        <Field label="Project">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
           <select
-            className={inputClass}
+            className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none max-w-xs"
             value={selectedProject?.id ?? ''}
             onChange={(e) => {
               const p = projects.find((x) => x.id === e.target.value) ?? null;
@@ -335,12 +330,12 @@ export function ContainersPage() {
               </option>
             ))}
           </select>
-        </Field>
+        </div>
       )}
 
       {/* Privileged container warning */}
       {privileged.length > 0 && (
-        <div className="rounded-md border border-warning bg-warning/10 px-4 py-3 text-sm text-warning-ink">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           <strong>Warning:</strong> {privileged.length} privileged container{privileged.length !== 1 ? 's' : ''} running in this project. Privileged containers have full host access.
           <ul className="mt-1 list-inside list-disc">
             {privileged.map((c) => (
@@ -351,11 +346,11 @@ export function ContainersPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-border">
+      <div className="flex gap-2 border-b border-slate-200">
         {(['containers', 'catalog', 'stacks', 'registries', 'volumes'] as const).map((t) => (
           <button
             key={t}
-            className={`px-4 py-2 text-sm font-medium capitalize ${tab === t ? 'border-b-2 border-accent text-accent' : 'text-ink-secondary hover:text-ink'}`}
+            className={`px-4 py-2 text-sm font-medium capitalize ${tab === t ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-900'}`}
             onClick={() => setTab(t)}
           >
             {t === 'catalog' ? '🛒 App Store' : t}
@@ -367,76 +362,88 @@ export function ContainersPage() {
       {tab === 'containers' && (
         <div className="space-y-4">
           {containers.length === 0 ? (
-            <EmptyState title="No containers">
-              <p className="text-sm text-ink-secondary">No containers are tracked in this project. Containers appear here when they are registered with the platform.</p>
-            </EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 shadow-sm flex flex-col items-center gap-3 text-center">
+              <span className="text-4xl">🐳</span>
+              <h3 className="text-sm font-semibold text-slate-900">No containers</h3>
+              <p className="text-sm text-slate-500">No containers are tracked in this project. Containers appear here when registered.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-elevated text-xs font-medium uppercase text-ink-secondary">
+                <thead>
                   <tr>
-                    <th className="px-4 py-3 text-left">Name</th>
-                    <th className="px-4 py-3 text-left">Image</th>
-                    <th className="px-4 py-3 text-left">State</th>
-                    <th className="px-4 py-3 text-left">Privileged</th>
-                    <th className="px-4 py-3 text-left">Started</th>
-                    <th className="px-4 py-3 text-left">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Image</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Privileged</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Started</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
-                  {containers.map((c) => (
-                    <tr key={c.id} className="hover:bg-elevated/50">
-                      <td className="px-4 py-3 font-mono text-xs">{c.name}</td>
-                      <td className="px-4 py-3 text-ink-secondary">{c.image_ref}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge state={mapContainerState(c)} detail={c.state} />
-                      </td>
-                      <td className="px-4 py-3">
-                        {c.privileged ? (
-                          <span className="rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning-ink">⚠ privileged</span>
-                        ) : (
-                          <span className="text-ink-muted">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-ink-secondary">{formatTs(c.started_at)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            className={secondaryButtonClass}
-                            onClick={() => openLogs(c)}
-                          >
-                            Logs
-                          </button>
-                          {c.state === 'running' ? (
-                            <>
-                              <button
-                                className={secondaryButtonClass}
-                                disabled={lifecycleLoading[c.id]}
-                                onClick={() => handleLifecycle(c, 'restart')}
-                              >
-                                {lifecycleLoading[c.id] ? '…' : 'Restart'}
-                              </button>
-                              <button
-                                className={secondaryButtonClass}
-                                disabled={lifecycleLoading[c.id]}
-                                onClick={() => handleLifecycle(c, 'stop')}
-                              >
-                                {lifecycleLoading[c.id] ? '…' : 'Stop'}
-                              </button>
-                            </>
+                <tbody className="divide-y divide-slate-100">
+                  {containers.map((c) => {
+                    const pillColor =
+                      c.state === 'running'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : c.state === 'exited' || c.state === 'dead'
+                        ? 'bg-slate-100 text-slate-600'
+                        : 'bg-amber-50 text-amber-700';
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-mono text-xs text-slate-900 font-medium">{c.name}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{c.image_ref}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${pillColor}`}>
+                            {c.state}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.privileged ? (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">⚠ privileged</span>
                           ) : (
-                            <button
-                              className={secondaryButtonClass}
-                              disabled={lifecycleLoading[c.id]}
-                              onClick={() => handleLifecycle(c, 'start')}
-                            >
-                              {lifecycleLoading[c.id] ? '…' : 'Start'}
-                            </button>
+                            <span className="text-slate-400">-</span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{formatTs(c.started_at)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                              onClick={() => openLogs(c)}
+                            >
+                              Logs
+                            </button>
+                            {c.state === 'running' ? (
+                              <>
+                                <button
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                                  disabled={lifecycleLoading[c.id]}
+                                  onClick={() => handleLifecycle(c, 'restart')}
+                                >
+                                  {lifecycleLoading[c.id] ? '…' : 'Restart'}
+                                </button>
+                                <button
+                                  className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 transition-all"
+                                  disabled={lifecycleLoading[c.id]}
+                                  onClick={() => handleLifecycle(c, 'stop')}
+                                >
+                                  {lifecycleLoading[c.id] ? '…' : 'Stop'}
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 transition-all"
+                                disabled={lifecycleLoading[c.id]}
+                                onClick={() => handleLifecycle(c, 'start')}
+                              >
+                                {lifecycleLoading[c.id] ? '…' : 'Start'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -444,25 +451,25 @@ export function ContainersPage() {
 
           {/* Log viewer */}
           {selectedContainer && (
-            <div className="rounded-lg border border-border bg-elevated">
-              <div className="flex items-center justify-between border-b border-border px-4 py-2">
-                <span className="text-sm font-medium text-ink">Logs: {selectedContainer.name}</span>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-900">Logs: {selectedContainer.name}</span>
                 <button
-                  className="text-xs text-ink-secondary hover:text-ink"
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
                   onClick={() => { setSelectedContainer(null); setLogs(null); }}
                 >
                   Close
                 </button>
               </div>
-              <div className="max-h-64 overflow-y-auto p-4 font-mono text-xs text-ink">
+              <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-900 p-4 font-mono text-xs text-slate-100 whitespace-pre-wrap">
                 {logsLoading ? (
-                  <span className="text-ink-secondary">Loading logs…</span>
+                  <span className="text-slate-400">Loading logs…</span>
                 ) : logs && logs.length > 0 ? (
                   logs.map((line, i) => <div key={i}>{line}</div>)
                 ) : (
-                  <span className="text-ink-secondary">No log output.</span>
+                  <span className="text-slate-400">No log output.</span>
                 )}
-              </div>
+              </pre>
             </div>
           )}
         </div>
@@ -655,29 +662,39 @@ export function ContainersPage() {
 
       {/* Stacks tab */}
       {tab === 'stacks' && (
-        <div>
+        <div className="space-y-4">
           {stacks.length === 0 ? (
-            <EmptyState title="No compose stacks">
-              <p className="text-sm text-ink-secondary">No compose stacks registered for this project.</p>
-            </EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 shadow-sm flex flex-col items-center gap-3 text-center">
+              <span className="text-4xl">📦</span>
+              <h3 className="text-sm font-semibold text-slate-900">No compose stacks</h3>
+              <p className="text-sm text-slate-500">No compose stacks registered for this project.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-elevated text-xs font-medium uppercase text-ink-secondary">
+                <thead>
                   <tr>
-                    <th className="px-4 py-3 text-left">Name</th>
-                    <th className="px-4 py-3 text-left">State</th>
-                    <th className="px-4 py-3 text-left">Created</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">State</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Created</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
-                  {stacks.map((s) => (
-                    <tr key={s.id} className="hover:bg-elevated/50">
-                      <td className="px-4 py-3 font-medium text-ink">{s.name}</td>
-                      <td className="px-4 py-3 text-ink-secondary">{s.state}</td>
-                      <td className="px-4 py-3 text-ink-secondary">{formatTs(s.created_at)}</td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-100">
+                  {stacks.map((s) => {
+                    const stackPill =
+                      s.state === 'running' ? 'bg-emerald-50 text-emerald-700' :
+                      s.state === 'stopped' ? 'bg-slate-100 text-slate-600' :
+                      'bg-amber-50 text-amber-700';
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${stackPill}`}>{s.state}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{formatTs(s.created_at)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

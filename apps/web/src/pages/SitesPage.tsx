@@ -16,7 +16,6 @@ import {
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
 import {
-  EmptyState,
   ErrorNote,
   Field,
   Modal,
@@ -295,15 +294,15 @@ export function SitesPage() {
           onCancel={() => setPendingElevation(null)}
         />
       </Modal>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-ink">Websites</h2>
-          <p className="text-xs text-ink-muted mt-0.5">Manage domains, Nginx configuration, and web hosting</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Websites</h1>
+          <p className="text-sm text-slate-500">Manage domains, Nginx configuration, and web hosting.</p>
         </div>
         {!showCreateSite && (
           <button
             type="button"
-            className={primaryButtonClass}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
             onClick={() => { void loadServers(); setShowCreateSite(true); }}
             disabled={!selectedProject}
           >
@@ -334,44 +333,64 @@ export function SitesPage() {
       </Modal>
 
       {sites === null ? (
-        <p role="status" className="text-sm text-ink-secondary">Loading sites...</p>
+        <p role="status" className="text-sm text-slate-500">Loading sites...</p>
       ) : sites.length === 0 ? (
-        <EmptyState title="No sites yet">
-          <p className="text-sm text-ink-secondary mb-3">You do not have any websites hosted yet.</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-12 shadow-sm flex flex-col items-center gap-3 text-center">
+          <span className="text-4xl">🌐</span>
+          <h3 className="text-sm font-semibold text-slate-900">No sites yet</h3>
+          <p className="text-sm text-slate-500">You do not have any websites hosted yet.</p>
           {!showCreateSite && (
             <button
               type="button"
-              className={primaryButtonClass}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
               onClick={() => { void loadServers(); setShowCreateSite(true); }}
             >
               Add your first site
             </button>
           )}
-        </EmptyState>
+        </div>
       ) : (
-        <ul className="divide-y divide-line rounded-md border border-line bg-surface">
-          {sites.map((site) => (
-            <li key={site.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <StatusBadge state={mapSiteState(site)} />
-                  <span className="truncate font-medium text-ink text-sm">{site.slug}</span>
-                  <span className="text-xs text-ink-muted uppercase">{site.mode}</span>
-                </div>
-                {site.name !== site.slug && (
-                  <p className="mt-0.5 text-xs text-ink-secondary">{site.name}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                className={secondaryButtonClass}
-                onClick={() => selectSite(site)}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sites.map((site) => {
+            const state = mapSiteState(site);
+            const pillColor =
+              state === 'Healthy' ? 'bg-emerald-50 text-emerald-700' :
+              state === 'Pending' ? 'bg-amber-50 text-amber-700' :
+              state === 'Warning' ? 'bg-amber-50 text-amber-700' :
+              'bg-slate-100 text-slate-600';
+            return (
+              <div
+                key={site.id}
+                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col gap-3 hover:shadow-md transition-shadow"
               >
-                Manage
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900 text-sm">{site.name || site.slug}</p>
+                    {site.name !== site.slug && (
+                      <p className="text-xs text-slate-500 truncate">{site.slug}</p>
+                    )}
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${pillColor}`}>
+                    {state}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="rounded bg-slate-100 px-2 py-0.5 font-medium uppercase text-slate-600">{site.mode}</span>
+                  {site.applied_revision_id && (
+                    <span className="font-mono">{site.applied_revision_id.slice(0, 8)}…</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="mt-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all w-full"
+                  onClick={() => selectSite(site)}
+                >
+                  Manage →
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

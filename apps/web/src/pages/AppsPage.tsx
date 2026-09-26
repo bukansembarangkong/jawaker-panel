@@ -168,18 +168,29 @@ export function AppsPage() {
   }
 
   return (
-    <section className="px-6 py-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-ink">Apps</h1>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Apps</h1>
+          <p className="text-sm text-slate-500">Deploy and manage application builds across projects.</p>
+        </div>
+        {selectedProject && (
+          <button
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+            onClick={() => setShowCreateForm(true)}
+          >
+            + New App
+          </button>
+        )}
       </div>
 
-      {error && <div className="mt-4"><ErrorNote error={error} /></div>}
+      {error && <ErrorNote error={error} />}
 
       {/* Project picker */}
-      <div className="mt-4">
-        <label className="block text-sm font-medium text-ink-secondary mb-1">Project</label>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
         <select
-          className={inputClass + ' max-w-xs'}
+          className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none max-w-xs"
           value={selectedProject?.id ?? ''}
           onChange={(e) => {
             const p = projects.find((x) => x.id === e.target.value) ?? null;
@@ -198,17 +209,7 @@ export function AppsPage() {
       </div>
 
       {selectedProject && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-medium text-ink">Applications</h2>
-            <button
-              className={secondaryButtonClass}
-              onClick={() => setShowCreateForm(true)}
-            >
-              + New App
-            </button>
-          </div>
-
+        <>
           <Modal
             isOpen={showCreateForm}
             onClose={() => setShowCreateForm(false)}
@@ -225,34 +226,73 @@ export function AppsPage() {
             />
           </Modal>
 
-          {loading && <p className="text-ink-secondary text-sm">Loading…</p>}
+          {loading && <p className="text-sm text-slate-500">Loading…</p>}
           {!loading && apps.length === 0 && (
-            <EmptyState title="No applications yet">
-              Create one to get started with deployments.
-            </EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 shadow-sm flex flex-col items-center gap-3 text-center">
+              <span className="text-4xl">📦</span>
+              <h3 className="text-sm font-semibold text-slate-900">No applications yet</h3>
+              <p className="text-sm text-slate-500">Create one to get started with deployments.</p>
+            </div>
           )}
           {!loading && apps.length > 0 && (
-            <ul className="mt-2 space-y-2">
-              {apps.map((app) => (
-                <li
-                  key={app.id}
-                  className="flex items-center justify-between rounded-lg border border-line bg-surface p-3 hover:bg-elevated cursor-pointer"
-                  onClick={() => selectApp(app)}
-                >
-                  <div>
-                    <span className="font-medium text-ink">{app.name}</span>
-                    <span className="ml-2 text-xs text-ink-muted">
-                      {app.runtime_type} · {app.slug}
-                    </span>
-                  </div>
-                  <StatusBadge state={mapAppState(app)} />
-                </li>
-              ))}
-            </ul>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">App</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Runtime</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {apps.map((app) => {
+                    const st = mapAppState(app);
+                    const pill =
+                      st === 'Healthy' ? 'bg-emerald-50 text-emerald-700' :
+                      st === 'Warning' ? 'bg-amber-50 text-amber-700' :
+                      st === 'Critical' ? 'bg-red-50 text-red-700' :
+                      'bg-slate-100 text-slate-600';
+                    const runtimeBadge =
+                      app.runtime_type === 'node' ? 'bg-green-50 text-green-700' :
+                      app.runtime_type === 'bun' ? 'bg-orange-50 text-orange-700' :
+                      app.runtime_type === 'python' ? 'bg-blue-50 text-blue-700' :
+                      app.runtime_type === 'php' ? 'bg-purple-50 text-purple-700' :
+                      'bg-slate-100 text-slate-600';
+                    return (
+                      <tr key={app.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => selectApp(app)}>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          <span className="font-medium text-slate-900">{app.name}</span>
+                          <span className="ml-2 text-xs text-slate-400">{app.slug}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${runtimeBadge}`}>
+                            {app.runtime_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${pill}`}>
+                            {st}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={(e) => { e.stopPropagation(); selectApp(app); }}
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </>
       )}
-    </section>
+    </div>
   );
 }
 
