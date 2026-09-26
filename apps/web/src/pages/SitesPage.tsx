@@ -633,16 +633,71 @@ function textKey(text: string, filename: string) {
   return `${filename}::${text.length}::${text.slice(0, 40)}`;
 }
 
-const STATIC_TEMPLATE = `server {
+/** Generate a correct default Nginx config from the site's actual mode and properties. */
+function generateDefaultNginxConfig(site: Site): string {
+  // Prefer site.name as the domain if it looks like a hostname, otherwise reconstruct from slug
+  const serverName = site.name && /[a-z0-9-]+\.[a-z]{2,}/.test(site.name)
+    ? site.name
+    : site.slug.replace(/-/g, '.').replace(/\.\./g, '-') || 'example.com';
+  const docRoot = site.doc_root || `/var/www/${serverName}`;
+  const upstream = site.upstream || 'http://127.0.0.1:3000';
+
+  if (site.mode === 'reverse_proxy') {
+    return `server {
     listen 80;
-    server_name example.com;
-    root /var/www/html;
-    index index.html;
+    server_name ${serverName};
+
+    location / {
+        proxy_pass ${upstream};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+`;
+  }
+
+  if (site.mode === 'php') {
+    const phpSock = site.php_unit
+      ? `/run/php/${site.php_unit}.sock`
+      : '/run/php/php8.2-fpm.sock';
+    return `server {
+    listen 80;
+    server_name ${serverName};
+    root ${docRoot};
+    index index.php index.html;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \\.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:${phpSock};
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+}
+`;
+  }
+
+  // Static fallback
+  return `server {
+    listen 80;
+    server_name ${serverName};
+    root ${docRoot};
+    index index.html index.htm;
+
     location / {
         try_files $uri $uri/ =404;
     }
 }
 `;
+}
 
 interface ConfigTabProps {
   site: Site;
@@ -651,7 +706,7 @@ interface ConfigTabProps {
 }
 
 function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
-  const [candidate, setCandidate] = useState(STATIC_TEMPLATE);
+  const [candidate, setCandidate] = useState(() => generateDefaultNginxConfig(site));
   const [filename, setFilename] = useState(`${project.slug}--${site.slug}.conf`);
 
   // Validation state: the verdict is keyed to the exact (candidate, filename)
@@ -760,16 +815,36 @@ function ConfigTab({ site, project, onElevationRequired }: ConfigTabProps) {
         </Field>
       </div>
 
-      <Field label="Candidate configuration">
-        <textarea
-          className={`${inputClass} font-mono text-xs`}
-          rows={16}
-          value={candidate}
-          onChange={(e) => setCandidate(e.target.value)}
-          spellCheck={false}
-          aria-label="Nginx configuration candidate"
-        />
-      </Field>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-ink-secondary">Candidate configuration</span>
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            site.mode === 'reverse_proxy' ? 'bg-blue-100 text-blue-700' :
+            site.mode === 'php' ? 'bg-purple-100 text-purple-700' :
+            'bg-slate-100 text-slate-700'
+          }`}>
+            {site.mode === 'reverse_proxy' ? 'Reverse Proxy' : site.mode === 'php' ? 'PHP-FPM' : 'Static'}
+          </span>
+          {site.mode === 'reverse_proxy' && site.upstream && (
+            <span className="text-xs text-ink-muted font-mono">{site.upstream}</span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setCandidate(generateDefaultNginxConfig(site))}
+          className="text-xs text-accent hover:underline"
+        >
+          Reset to default template
+        </button>
+      </div>
+      <textarea
+        className={`${inputClass} font-mono text-xs`}
+        rows={16}
+        value={candidate}
+        onChange={(e) => setCandidate(e.target.value)}
+        spellCheck={false}
+        aria-label="Nginx configuration candidate"
+      />
 
       {/* Diff view (available when applied_revision_id exists, showing candidate diff against empty baseline) */}
       {candidate.trim() && (
