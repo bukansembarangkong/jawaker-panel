@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ApiError, api, primeCsrf } from '../api/client';
 import { ErrorNote, Field, inputClass, primaryButtonClass, secondaryButtonClass } from './ui';
@@ -31,6 +31,11 @@ export function StepUpPrompt({
   const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [busy, setBusy] = useState(false);
+  const [totpEnrolled, setTotpEnrolled] = useState(false);
+
+  useEffect(() => {
+    api.mfaStatus().then((s) => setTotpEnrolled(s.totp_enrolled)).catch(() => {});
+  }, []);
 
   async function submit() {
     setBusy(true);
@@ -49,22 +54,16 @@ export function StepUpPrompt({
   }
 
   return (
-    <section
-      aria-labelledby="stepup-heading"
-      className="rounded-lg border border-warn/50 bg-surface p-5"
-    >
-      <h2 id="stepup-heading" className="text-base font-semibold text-ink">
-        Re-authentication required
-      </h2>
-      <p className="mt-1 text-sm text-ink-secondary">
+    <div className="space-y-4">
+      <p className="text-sm text-ink-secondary">
         This action is privileged. Confirm your password to continue; you will not be asked again
         for a short while.
       </p>
 
-      {error && <div className="mt-3"><ErrorNote error={error} title="Could not elevate" /></div>}
+      {error && <ErrorNote error={error} title="Could not elevate" />}
 
       <form
-        className="mt-4 space-y-4"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
@@ -78,18 +77,22 @@ export function StepUpPrompt({
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
             required
+            autoFocus
           />
         </Field>
-        <Field label="Two-factor code" hint="Only if you have an authenticator enrolled.">
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={totpCode}
-            onChange={(e) => setTotpCode(e.target.value)}
-            className={`${inputClass} font-mono`}
-          />
-        </Field>
+        {totpEnrolled && (
+          <Field label="Authenticator code">
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value)}
+              placeholder="6-digit code"
+              className={`${inputClass} font-mono`}
+            />
+          </Field>
+        )}
         <div className="flex flex-wrap gap-3">
           <button type="submit" disabled={busy || !password} className={primaryButtonClass}>
             {busy ? 'Confirming…' : 'Confirm and continue'}
@@ -99,6 +102,6 @@ export function StepUpPrompt({
           </button>
         </div>
       </form>
-    </section>
+    </div>
   );
 }
