@@ -350,16 +350,15 @@ function CreateSiteForm({
     <form onSubmit={onSubmit} className="rounded-md border border-line bg-surface p-4 space-y-3">
       <h3 className="text-sm font-medium text-ink">New site</h3>
       {siteCreateError && <ErrorNote error={siteCreateError} title="Create failed" />}
-      <Field label="Server">
-        {servers.length > 0 ? (
+      {/* Only show server picker if there are multiple servers */}
+      {servers.length > 1 && (
+        <Field label="Server">
           <select className={inputClass} value={siteServerId} onChange={(e) => setSiteServerId(e.target.value)} required>
-            <option value="">Select a server…</option>
+            <option value="">Select a server...</option>
             {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-        ) : (
-          <input className={inputClass} placeholder="Server ID" value={siteServerId} onChange={(e) => setSiteServerId(e.target.value)} required />
-        )}
-      </Field>
+        </Field>
+      )}
       <Field label="Name">
         <input
           className={inputClass}
