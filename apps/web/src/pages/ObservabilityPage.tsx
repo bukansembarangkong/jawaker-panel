@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { goeyToast } from 'goey-toast';
-
 import {
   observeApi,
   type AlertIncident,
@@ -10,26 +9,11 @@ import {
   type SLOSummary,
 } from '../api/client';
 import {
-  EmptyState,
+  ConfirmModal,
   ErrorNote,
   Field,
-  StatusBadge,
-  ConfirmModal,
-  inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
-  type OperationalState,
 } from '../components/ui';
 import { api } from '../api/client';
-
-function incidentState(i: AlertIncident): OperationalState {
-  return i.state === 'open' ? 'Disabled' : 'Healthy';
-}
-
-function ruleState(r: AlertRule): OperationalState {
-  if (!r.enabled || r.state === 'suspended') return 'Disabled';
-  return 'Healthy';
-}
 
 function formatTs(value: string | null | undefined): string {
   if (!value) return '-';
@@ -40,7 +24,16 @@ function toError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
-type Tab = 'rules' | 'incidents' | 'schedules';
+function getCadenceCron(cadence: string): string {
+  switch (cadence) {
+    case 'daily': return '0 0 * * *';
+    case 'weekly': return '0 0 * * 0';
+    case 'monthly': return '0 0 1 * *';
+    default: return '0 * * * *';
+  }
+}
+
+type Tab = 'incidents' | 'rules' | 'schedules';
 
 export function ObservabilityPage() {
   const [tab, setTab] = useState<Tab>('incidents');
@@ -52,7 +45,6 @@ export function ObservabilityPage() {
   const [error, setError] = useState<Error | null>(null);
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
-  // Create rule form
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [newRule, setNewRule] = useState({
     server_id: '',
@@ -64,13 +56,9 @@ export function ObservabilityPage() {
     severity: 'warning' as 'info' | 'warning' | 'critical',
   });
 
-  // Create schedule form
   const [showSchedForm, setShowSchedForm] = useState(false);
   const [newSched, setNewSched] = useState({ name: '', cadence: 'daily' as 'daily' | 'weekly' | 'monthly' });
-
-  // Incident filter
   const [incidentStateFilter, setIncidentStateFilter] = useState<'' | 'open' | 'resolved'>('open');
-
   const [slo, setSlo] = useState<SLOSummary | null>(null);
 
   const load = useCallback(async () => {
@@ -99,75 +87,51 @@ export function ObservabilityPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function handleCreateRule() {
-    try {
-      await observeApi.createRule(newRule);
-      setShowRuleForm(false);
-      goeyToast.success('Alert rule created.');
-      void load();
-    } catch (e) { setError(toError(e)); }
+    try { await observeApi.createRule(newRule); setShowRuleForm(false); goeyToast.success('Alert rule created.'); void load(); }
+    catch (e) { setError(toError(e)); }
   }
 
   async function handleToggleRule(rule: AlertRule) {
-    try {
-      await observeApi.updateRule(rule.id, { enabled: !rule.enabled });
-      void load();
-    } catch (e) { setError(toError(e)); }
+    try { await observeApi.updateRule(rule.id, { enabled: !rule.enabled }); goeyToast.success(`Rule ${rule.enabled ? 'disabled' : 'enabled'}.`); void load(); }
+    catch (e) { setError(toError(e)); }
   }
 
   async function handleDeleteRule(rule: AlertRule) {
     setConfirmState({
-      open: true,
-      message: `Delete rule "${rule.name}"?`,
+      open: true, message: `Delete rule "${rule.name}"?`,
       onConfirm: async () => {
-        try {
-          await observeApi.deleteRule(rule.id);
-          goeyToast.success('Rule deleted.');
-          void load();
-        } catch (e) { setError(toError(e)); }
+        try { await observeApi.deleteRule(rule.id); goeyToast.success('Rule deleted.'); void load(); }
+        catch (e) { setError(toError(e)); }
       },
     });
   }
 
   async function handleResolveIncident(inc: AlertIncident) {
-    try {
-      await observeApi.resolveIncident(inc.id);
-      goeyToast.success('Incident resolved.');
-      void load();
-    } catch (e) { setError(toError(e)); }
+    try { await observeApi.resolveIncident(inc.id); goeyToast.success('Incident resolved.'); void load(); }
+    catch (e) { setError(toError(e)); }
   }
 
   async function handleCreateSchedule() {
-    try {
-      await observeApi.createSchedule(newSched);
-      setShowSchedForm(false);
-      goeyToast.success('Schedule created.');
-      void load();
-    } catch (e) { setError(toError(e)); }
+    try { await observeApi.createSchedule(newSched); setShowSchedForm(false); goeyToast.success('Schedule created.'); void load(); }
+    catch (e) { setError(toError(e)); }
   }
 
   async function handleDeleteSchedule(s: ReportSchedule) {
     setConfirmState({
-      open: true,
-      message: `Delete schedule "${s.name}"?`,
+      open: true, message: `Delete schedule "${s.name}"?`,
       onConfirm: async () => {
-        try {
-          await observeApi.deleteSchedule(s.id);
-          goeyToast.success('Schedule deleted.');
-          void load();
-        } catch (e) { setError(toError(e)); }
+        try { await observeApi.deleteSchedule(s.id); goeyToast.success('Schedule deleted.'); void load(); }
+        catch (e) { setError(toError(e)); }
       },
     });
   }
 
-  const severityColor = (s: string) =>
-    s === 'critical' ? 'text-red-600' : s === 'warning' ? 'text-yellow-600' : 'text-blue-600';
-
-  const tabClass = (t: Tab) =>
-    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-      tab === t
-        ? 'border-indigo-500 text-indigo-600'
-        : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`;
+  const inputCls = 'block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none';
+  const btnPrimary = 'rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all';
+  const btnSecondary = 'rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all';
+  const btnSmDanger = 'rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-all';
+  const tabCls = (t: Tab) =>
+    `pb-2 text-sm font-medium border-b-2 transition-all ${tab === t ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`;
 
   return (
     <div className="space-y-6">
@@ -180,279 +144,291 @@ export function ObservabilityPage() {
         confirmLabel="Yes, proceed"
         danger
       />
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Observability</h1>
-        {loading && <span className="text-sm text-gray-500">Loading…</span>}
+
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Observability</h1>
+          <p className="text-sm text-slate-500">Service Level Objectives, active alerts, incident tracking, and report cadences.</p>
+        </div>
+        {loading && <span className="text-sm text-slate-500">Loading?</span>}
       </div>
 
       {error && <ErrorNote error={error} />}
 
-      {/* SLO Summary (PRD §40) */}
       {slo && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Service Level Objectives</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {([
-              { label: 'Controller availability', value: slo.controller_availability_pct, unit: '%', warn: 99 },
-              { label: 'Node connectivity', value: slo.node_connectivity_pct, unit: '%', warn: 90 },
-              { label: 'Backup success rate', value: slo.backup_success_rate_pct, unit: '%', warn: 95 },
-              { label: 'Deploy success rate', value: slo.deployment_success_rate_pct, unit: '%', warn: 90 },
-              { label: 'Job latency avg', value: slo.job_latency_avg_ms, unit: ' ms', warn: Infinity },
-              { label: 'Error budget remaining', value: slo.error_budget_remaining_pct, unit: '%', warn: 50 },
-              { label: 'Active incidents', value: slo.active_incidents, unit: '', warn: 0 },
-            ] as { label: string; value: number; unit: string; warn: number }[]).map(({ label, value, unit, warn }) => {
-              const bad = unit === '' ? value > warn : value < warn;
-              return (
-                <div key={label} className="flex flex-col">
-                  <span className="text-xs text-gray-500">{label}</span>
-                  <span className={`text-lg font-semibold ${bad ? 'text-red-600' : 'text-green-700'}`}>
-                    {typeof value === 'number' && unit !== ' ms' ? value.toFixed(1) : Math.round(value)}{unit}
-                  </span>
-                </div>
-              );
-            })}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Error Budget</span>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className={`text-2xl font-bold ${slo.error_budget_remaining_pct < 50 ? 'text-red-600' : 'text-emerald-600'}`}>
+                {slo.error_budget_remaining_pct.toFixed(1)}%
+              </span>
+              <span className="text-xs text-slate-400">remaining</span>
+            </div>
+            <div className="mt-3 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-1.5 rounded-full ${slo.error_budget_remaining_pct < 50 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                style={{ width: `${Math.min(100, Math.max(0, slo.error_budget_remaining_pct))}%` }}
+              />
+            </div>
           </div>
-          <p className="text-xs text-gray-400 mt-2">Evaluated: {formatTs(slo.evaluated_at)}</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Controller Availability</span>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className={`text-2xl font-bold ${slo.controller_availability_pct < 99 ? 'text-amber-600' : 'text-slate-900'}`}>
+                {slo.controller_availability_pct.toFixed(2)}%
+              </span>
+              <span className="text-xs text-slate-400">target 99.9%</span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Node connectivity: {slo.node_connectivity_pct.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Success Rates</span>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-bold text-slate-900">{slo.deployment_success_rate_pct.toFixed(1)}%</span>
+              <span className="text-xs text-slate-400">deploys</span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Backups: {slo.backup_success_rate_pct.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Incidents</span>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className={`text-2xl font-bold ${slo.active_incidents > 0 ? 'text-red-600' : 'text-slate-900'}`}>{slo.active_incidents}</span>
+              <span className="text-xs text-slate-400">avg {Math.round(slo.job_latency_avg_ms)}ms</span>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Evaluated: {formatTs(slo.evaluated_at)}</p>
+          </div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 flex gap-0">
-        <button className={tabClass('incidents')} onClick={() => setTab('incidents')}>Incidents</button>
-        <button className={tabClass('rules')} onClick={() => setTab('rules')}>Alert Rules</button>
-        <button className={tabClass('schedules')} onClick={() => setTab('schedules')}>Report Schedules</button>
+      <div className="flex border-b border-slate-200 gap-4">
+        <button className={tabCls('incidents')} onClick={() => setTab('incidents')}>Incidents</button>
+        <button className={tabCls('rules')} onClick={() => setTab('rules')}>Alert Rules</button>
+        <button className={tabCls('schedules')} onClick={() => setTab('schedules')}>Report Schedules</button>
       </div>
 
-      {/* ---- Incidents ---- */}
       {tab === 'incidents' && (
         <div className="space-y-4">
-          <div className="flex gap-2 items-center">
-            <label className="text-sm text-gray-600">State:</label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 uppercase">Filter:</span>
             {(['open', 'resolved', ''] as const).map((v) => (
               <button
                 key={v || 'all'}
-                className={`px-3 py-1 rounded-full text-xs font-medium border ${incidentStateFilter === v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${incidentStateFilter === v ? 'bg-indigo-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                 onClick={() => setIncidentStateFilter(v)}
               >
-                {v || 'all'}
+                {v ? v.charAt(0).toUpperCase() + v.slice(1) : 'All'}
               </button>
             ))}
           </div>
           {incidents.length === 0 ? (
-            <EmptyState title="No incidents">No incidents match the current filter.</EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+              <div className="text-4xl mb-3">???</div>
+              <h3 className="text-base font-semibold text-slate-900">No incidents</h3>
+              <p className="text-sm text-slate-500 mt-1">No incidents match the selected state filter.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">State</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Server</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Dedup key</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Opened</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Resolved</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {incidents.map((inc) => {
-                    const srv = servers.find((s) => s.id === inc.server_id);
-                    return (
-                      <tr key={inc.id}>
-                        <td className="px-4 py-3"><StatusBadge state={incidentState(inc)} detail={inc.state} /></td>
-                        <td className="px-4 py-3 text-gray-700">{srv?.name ?? inc.server_id.slice(0, 8)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{inc.dedup_key}</td>
-                        <td className="px-4 py-3 text-gray-500">{formatTs(inc.opened_at)}</td>
-                        <td className="px-4 py-3 text-gray-500">{formatTs(inc.resolved_at)}</td>
-                        <td className="px-4 py-3 text-right">
-                          {inc.state === 'open' && (
-                            <button
-                              className={secondaryButtonClass}
-                              onClick={() => void handleResolveIncident(inc)}
-                            >
-                              Resolve
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="relative pl-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 space-y-6">
+                {incidents.map((inc) => {
+                  const srv = servers.find((s) => s.id === inc.server_id);
+                  const isOpen = inc.state === 'open';
+                  return (
+                    <div key={inc.id} className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className={`absolute -left-6 top-1.5 h-3 w-3 rounded-full border-2 border-white ring-2 ${isOpen ? 'bg-red-500 ring-red-200' : 'bg-emerald-500 ring-emerald-200'}`} />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${isOpen ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                            {isOpen ? 'Open' : 'Resolved'}
+                          </span>
+                          <span className="font-semibold text-sm text-slate-900">{srv?.name ?? inc.server_id.slice(0, 8)}</span>
+                          <span className="font-mono text-xs text-slate-500">[{inc.dedup_key}]</span>
+                        </div>
+                        <div className="text-xs text-slate-500 flex items-center gap-4">
+                          <span>Opened: {formatTs(inc.opened_at)}</span>
+                          {inc.resolved_at && <span>Resolved: {formatTs(inc.resolved_at)}</span>}
+                        </div>
+                      </div>
+                      {isOpen && (
+                        <button className={btnSecondary} onClick={() => void handleResolveIncident(inc)}>Resolve</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ---- Alert Rules ---- */}
       {tab === 'rules' && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button className={primaryButtonClass} onClick={() => setShowRuleForm((v) => !v)}>
-              {showRuleForm ? 'Cancel' : '+ New rule'}
+            <button className={btnPrimary} onClick={() => setShowRuleForm((v) => !v)}>
+              {showRuleForm ? 'Cancel' : '+ New Rule'}
             </button>
           </div>
-
           {showRuleForm && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-              <h3 className="font-medium text-gray-900">Create alert rule</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="font-semibold text-slate-900">Create Alert Rule</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Server">
-                  <select
-                    className={inputClass}
-                    value={newRule.server_id}
-                    onChange={(e) => setNewRule({ ...newRule, server_id: e.target.value })}
-                  >
+                  <select className={inputCls} value={newRule.server_id} onChange={(e) => setNewRule({ ...newRule, server_id: e.target.value })}>
                     <option value="">- select server -</option>
                     {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </Field>
                 <Field label="Name">
-                  <input className={inputClass} value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} />
+                  <input className={inputCls} value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} />
                 </Field>
                 <Field label="Metric">
-                  <select className={inputClass} value={newRule.metric} onChange={(e) => setNewRule({ ...newRule, metric: e.target.value })}>
+                  <select className={inputCls} value={newRule.metric} onChange={(e) => setNewRule({ ...newRule, metric: e.target.value })}>
                     {['cpu_pct', 'mem_pct', 'disk_pct', 'load1'].map((m) => <option key={m}>{m}</option>)}
                   </select>
                 </Field>
                 <Field label="Comparator">
-                  <select className={inputClass} value={newRule.comparator} onChange={(e) => setNewRule({ ...newRule, comparator: e.target.value as 'gt' | 'lt' })}>
+                  <select className={inputCls} value={newRule.comparator} onChange={(e) => setNewRule({ ...newRule, comparator: e.target.value as 'gt' | 'lt' })}>
                     <option value="gt">{'>'} gt (above)</option>
                     <option value="lt">{'<'} lt (below)</option>
                   </select>
                 </Field>
                 <Field label="Threshold">
-                  <input type="number" className={inputClass} value={newRule.threshold} onChange={(e) => setNewRule({ ...newRule, threshold: Number(e.target.value) })} />
+                  <input type="number" className={inputCls} value={newRule.threshold} onChange={(e) => setNewRule({ ...newRule, threshold: Number(e.target.value) })} />
                 </Field>
                 <Field label="Duration (seconds)">
-                  <input type="number" className={inputClass} value={newRule.duration_seconds} onChange={(e) => setNewRule({ ...newRule, duration_seconds: Number(e.target.value) })} />
+                  <input type="number" className={inputCls} value={newRule.duration_seconds} onChange={(e) => setNewRule({ ...newRule, duration_seconds: Number(e.target.value) })} />
                 </Field>
                 <Field label="Severity">
-                  <select className={inputClass} value={newRule.severity} onChange={(e) => setNewRule({ ...newRule, severity: e.target.value as 'info' | 'warning' | 'critical' })}>
-                    <option value="info">info</option>
-                    <option value="warning">warning</option>
-                    <option value="critical">critical</option>
+                  <select className={inputCls} value={newRule.severity} onChange={(e) => setNewRule({ ...newRule, severity: e.target.value as 'info' | 'warning' | 'critical' })}>
+                    <option value="info">Info</option>
+                    <option value="warning">Warning</option>
+                    <option value="critical">Critical</option>
                   </select>
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button className={primaryButtonClass} onClick={() => void handleCreateRule()}>Create</button>
-                <button className={secondaryButtonClass} onClick={() => setShowRuleForm(false)}>Cancel</button>
+              <div className="flex gap-2 justify-end pt-2">
+                <button className={btnSecondary} onClick={() => setShowRuleForm(false)}>Cancel</button>
+                <button className={btnPrimary} onClick={() => void handleCreateRule()}>Create</button>
               </div>
             </div>
           )}
-
           {rules.length === 0 ? (
-            <EmptyState title="No alert rules">Create a rule to start monitoring metric thresholds.</EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+              <div className="text-4xl mb-3">??</div>
+              <h3 className="text-base font-semibold text-slate-900">No alert rules</h3>
+              <p className="text-sm text-slate-500 mt-1">Create a rule to start monitoring metric thresholds.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">State</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Server</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Condition</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Severity</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Duration</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {rules.map((rule) => {
-                    const srv = servers.find((s) => s.id === rule.server_id);
-                    return (
-                      <tr key={rule.id}>
-                        <td className="px-4 py-3"><StatusBadge state={ruleState(rule)} detail={rule.enabled ? 'enabled' : 'disabled'} /></td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{rule.name}</td>
-                        <td className="px-4 py-3 text-gray-700">{srv?.name ?? rule.server_id.slice(0, 8)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                          {rule.metric} {rule.comparator} {rule.threshold}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`font-medium ${severityColor(rule.severity)}`}>{rule.severity}</span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">{rule.duration_seconds}s</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2 justify-end">
-                            <button className={secondaryButtonClass} onClick={() => void handleToggleRule(rule)}>
-                              {rule.enabled ? 'Disable' : 'Enable'}
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Severity</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Server</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Condition</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Duration</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rules.map((rule) => {
+                      const srv = servers.find((s) => s.id === rule.server_id);
+                      return (
+                        <tr key={rule.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium uppercase ${
+                              rule.severity === 'critical' ? 'bg-red-50 text-red-700 border border-red-200' :
+                              rule.severity === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                              'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              {rule.severity}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{rule.name}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{srv?.name ?? rule.server_id.slice(0, 8)}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-slate-700">{rule.metric} {rule.comparator} {rule.threshold}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{rule.duration_seconds}s</td>
+                          <td className="px-4 py-3 text-sm">
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleRule(rule)}
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${rule.enabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'}`}
+                            >
+                              {rule.enabled ? 'Enabled' : 'Disabled'}
                             </button>
-                            <button className="text-sm text-red-600 hover:text-red-800" onClick={() => void handleDeleteRule(rule)}>
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <button className={btnSmDanger} onClick={() => void handleDeleteRule(rule)}>Delete</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ---- Report Schedules ---- */}
       {tab === 'schedules' && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button className={primaryButtonClass} onClick={() => setShowSchedForm((v) => !v)}>
-              {showSchedForm ? 'Cancel' : '+ New schedule'}
+            <button className={btnPrimary} onClick={() => setShowSchedForm((v) => !v)}>
+              {showSchedForm ? 'Cancel' : '+ New Schedule'}
             </button>
           </div>
-
           {showSchedForm && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-              <h3 className="font-medium text-gray-900">Create report schedule</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="font-semibold text-slate-900">Create Report Schedule</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Name">
-                  <input className={inputClass} value={newSched.name} onChange={(e) => setNewSched({ ...newSched, name: e.target.value })} />
+                  <input className={inputCls} value={newSched.name} onChange={(e) => setNewSched({ ...newSched, name: e.target.value })} />
                 </Field>
                 <Field label="Cadence">
-                  <select className={inputClass} value={newSched.cadence} onChange={(e) => setNewSched({ ...newSched, cadence: e.target.value as 'daily' | 'weekly' | 'monthly' })}>
+                  <select className={inputCls} value={newSched.cadence} onChange={(e) => setNewSched({ ...newSched, cadence: e.target.value as 'daily' | 'weekly' | 'monthly' })}>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                   </select>
                 </Field>
               </div>
-              <div className="flex gap-2">
-                <button className={primaryButtonClass} onClick={() => void handleCreateSchedule()}>Create</button>
-                <button className={secondaryButtonClass} onClick={() => setShowSchedForm(false)}>Cancel</button>
+              <div className="flex gap-2 justify-end pt-2">
+                <button className={btnSecondary} onClick={() => setShowSchedForm(false)}>Cancel</button>
+                <button className={btnPrimary} onClick={() => void handleCreateSchedule()}>Create</button>
               </div>
             </div>
           )}
-
           {schedules.length === 0 ? (
-            <EmptyState title="No report schedules">Create a schedule to receive periodic summary reports.</EmptyState>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+              <div className="text-4xl mb-3">??</div>
+              <h3 className="text-base font-semibold text-slate-900">No report schedules</h3>
+              <p className="text-sm text-slate-500 mt-1">Create a schedule to receive periodic summary reports.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Cadence</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Next run</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">Last run</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {schedules.map((s) => (
-                    <tr key={s.id}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
-                      <td className="px-4 py-3 text-gray-700">{s.cadence}</td>
-                      <td className="px-4 py-3 text-gray-500">{formatTs(s.next_run_at)}</td>
-                      <td className="px-4 py-3 text-gray-500">{formatTs(s.last_run_at)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button className="text-sm text-red-600 hover:text-red-800" onClick={() => void handleDeleteSchedule(s)}>
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {schedules.map((s) => (
+                <div key={s.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-base font-semibold text-slate-900">{s.name}</h4>
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-mono font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {getCadenceCron(s.cadence)} ({s.cadence})
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-slate-500">
+                      <p>Next run: <span className="text-slate-700 font-medium">{formatTs(s.next_run_at)}</span></p>
+                      <p>Last run: <span className="text-slate-700 font-medium">{formatTs(s.last_run_at)}</span></p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end pt-2 border-t border-slate-100">
+                    <button className={btnSmDanger} onClick={() => void handleDeleteSchedule(s)}>Delete</button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

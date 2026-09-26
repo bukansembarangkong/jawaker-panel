@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { goeyToast } from 'goey-toast';
 import { automationApi, ApiError } from '../api/client';
 import type { AutomationRule, OutboundWebhook, WebhookDelivery } from '../api/client';
-import { ErrorNote, EmptyState, Modal, Field, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui';
+import { ErrorNote, Modal, Field } from '../components/ui';
 
 type Tab = 'rules' | 'webhooks';
 
@@ -177,23 +177,47 @@ export function AutomationPage() {
     }
   }
 
+  const inputCls = 'block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none';
+  const btnPrimary = 'rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all';
+  const btnSecondary = 'rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all';
+  const btnSmSecondary = 'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all';
+  const btnSmDanger = 'rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-all';
   const tabCls = (t: Tab) =>
-    `px-4 py-2 text-sm font-medium border-b-2 ${
+    `pb-2 text-sm font-medium border-b-2 transition-all ${
       tab === t
-        ? 'border-accent text-ink'
-        : 'border-transparent text-ink-secondary hover:text-ink'
+        ? 'border-indigo-600 text-indigo-600'
+        : 'border-transparent text-slate-500 hover:text-slate-800'
     }`;
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Automation & Webhooks</h1>
-        <p className="text-sm text-ink-secondary mt-1">
-          Automated event-condition-action policies and signed outbound webhook delivery.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Automation & Webhooks</h1>
+          <p className="text-sm text-slate-500">Automated event-condition-action policies and signed outbound webhook delivery.</p>
+        </div>
+        <div className="mt-2 sm:mt-0">
+          {tab === 'rules' ? (
+            <button
+              type="button"
+              onClick={() => setIsRuleOpen(true)}
+              className={btnPrimary}
+            >
+              + Create Rule
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsWebhookOpen(true)}
+              className={btnPrimary}
+            >
+              + Register Webhook
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-slate-200 gap-4">
         <button className={tabCls('rules')} onClick={() => setTab('rules')}>Automation Rules</button>
         <button className={tabCls('webhooks')} onClick={() => setTab('webhooks')}>Outbound Webhooks</button>
       </div>
@@ -202,17 +226,6 @@ export function AutomationPage() {
 
       {tab === 'rules' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-medium text-ink">Configured Rules</h2>
-            <button
-              type="button"
-              onClick={() => setIsRuleOpen(true)}
-              className={primaryButtonClass}
-            >
-              + Create Rule
-            </button>
-          </div>
-
           <Modal isOpen={isRuleOpen} onClose={() => setIsRuleOpen(false)} title="Create Automation Rule">
             <form onSubmit={(e) => void handleCreateRule(e)} className="space-y-4">
               <Field label="Rule Name">
@@ -222,14 +235,14 @@ export function AutomationPage() {
                   required
                   value={ruleName}
                   onChange={(e) => setRuleName(e.target.value)}
-                  className={inputClass}
+                  className={inputCls}
                 />
               </Field>
               <Field label="Trigger Event">
                 <select
                   value={triggerEvent}
                   onChange={(e) => setTriggerEvent(e.target.value)}
-                  className={inputClass}
+                  className={inputCls}
                 >
                   <option value="disk.pressure">WHEN disk.pressure (&gt;90%)</option>
                   <option value="backup.failed">WHEN backup.failed</option>
@@ -242,7 +255,7 @@ export function AutomationPage() {
                 <select
                   value={actionType}
                   onChange={(e) => setActionType(e.target.value)}
-                  className={inputClass}
+                  className={inputCls}
                 >
                   <option value="notify">THEN notify</option>
                   <option value="incident_open">THEN open incident</option>
@@ -251,58 +264,78 @@ export function AutomationPage() {
                 </select>
               </Field>
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setIsRuleOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                <button type="button" onClick={() => setIsRuleOpen(false)} className={btnSecondary}>Cancel</button>
                 <button
                   type="submit"
                   disabled={ruleSubmitting}
-                  className={primaryButtonClass}
+                  className={btnPrimary}
                 >
-                  {ruleSubmitting ? 'Creating…' : 'Create Rule'}
+                  {ruleSubmitting ? 'Creating?' : 'Create Rule'}
                 </button>
               </div>
             </form>
           </Modal>
+
           <section>
             {loading ? (
-              <p className="text-sm text-ink-secondary">Loading…</p>
+              <p className="text-sm text-slate-500">Loading?</p>
             ) : rules.length === 0 ? (
-              <EmptyState title="No automation rules">Create your first automated action policy above.</EmptyState>
+              <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+                <div className="text-4xl mb-3">?</div>
+                <h3 className="text-base font-semibold text-slate-900">No automation rules</h3>
+                <p className="text-sm text-slate-500 mt-1">Create your first automated action policy above.</p>
+              </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-elevated text-ink-secondary">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-medium">Name</th>
-                      <th className="px-4 py-2 text-left font-medium">Trigger</th>
-                      <th className="px-4 py-2 text-left font-medium">Action</th>
-                      <th className="px-4 py-2 text-left font-medium">State</th>
-                      <th className="px-4 py-2 text-left font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {rules.map((r) => (
-                      <tr key={r.id} className="bg-surface hover:bg-elevated/50">
-                        <td className="px-4 py-2 font-medium text-ink">{r.name}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{r.trigger_event}</td>
-                        <td className="px-4 py-2 text-xs text-ink-secondary">{r.action_type}</td>
-                        <td className="px-4 py-2">
-                          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                            r.enabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                          }`}>
-                            {r.enabled ? 'enabled' : 'disabled'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 flex items-center gap-2">
-                          <button onClick={() => void handleTestRule(r.id)} className={secondaryButtonClass}>Simulate</button>
-                          <button onClick={() => void handleToggleRule(r)} className={secondaryButtonClass}>
-                            {r.enabled ? 'Disable' : 'Enable'}
-                          </button>
-                          <button onClick={() => void handleDeleteRule(r.id)} className={secondaryButtonClass}>Delete</button>
-                        </td>
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Trigger</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Action</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">State</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rules.map((r) => (
+                        <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{r.name}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              {r.trigger_event}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-mono font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {r.action_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleRule(r)}
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+                                r.enabled
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              {r.enabled ? 'Enabled' : 'Disabled'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => void handleTestRule(r.id)} className={btnSmSecondary}>Simulate</button>
+                              <button onClick={() => void handleDeleteRule(r.id)} className={btnSmDanger}>Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </section>
@@ -311,17 +344,6 @@ export function AutomationPage() {
 
       {tab === 'webhooks' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-medium text-ink">Registered Endpoints</h2>
-            <button
-              type="button"
-              onClick={() => setIsWebhookOpen(true)}
-              className={primaryButtonClass}
-            >
-              + Register Webhook
-            </button>
-          </div>
-
           <Modal isOpen={isWebhookOpen} onClose={() => setIsWebhookOpen(false)} title="Register Outbound Webhook">
             <form onSubmit={(e) => void handleCreateWebhook(e)} className="space-y-4">
               <Field label="Webhook Name">
@@ -331,7 +353,7 @@ export function AutomationPage() {
                   required
                   value={webhookName}
                   onChange={(e) => setWebhookName(e.target.value)}
-                  className={inputClass}
+                  className={inputCls}
                 />
               </Field>
               <Field label="Target URL">
@@ -341,31 +363,31 @@ export function AutomationPage() {
                   required
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
-                  className={inputClass}
+                  className={inputCls}
                 />
               </Field>
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setIsWebhookOpen(false)} className={secondaryButtonClass}>Cancel</button>
+                <button type="button" onClick={() => setIsWebhookOpen(false)} className={btnSecondary}>Cancel</button>
                 <button
                   type="submit"
                   disabled={webhookSubmitting}
-                  className={primaryButtonClass}
+                  className={btnPrimary}
                 >
-                  {webhookSubmitting ? 'Registering…' : 'Register Webhook'}
+                  {webhookSubmitting ? 'Registering?' : 'Register Webhook'}
                 </button>
               </div>
             </form>
           </Modal>
 
           {createdSecret && (
-            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/50 dark:bg-yellow-950/20">
-              <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-400">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs font-semibold text-amber-800">
                 Save this HMAC-SHA256 Signing Secret (shown once):
               </p>
-              <p className="mt-1 font-mono text-xs text-yellow-900 dark:text-yellow-300 break-all select-all">
+              <p className="mt-1 font-mono text-xs text-amber-900 break-all select-all">
                 {createdSecret}
               </p>
-              <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-500">
+              <p className="mt-1 text-xs text-amber-700">
                 Payloads are signed via HMAC-SHA256 in the <code className="font-mono">X-Jawaker-Signature</code> HTTP header.
               </p>
             </div>
@@ -373,82 +395,102 @@ export function AutomationPage() {
 
           <section>
             {loading ? (
-              <p className="text-sm text-ink-secondary">Loading…</p>
+              <p className="text-sm text-slate-500">Loading?</p>
             ) : webhooks.length === 0 ? (
-              <EmptyState title="No webhooks registered">Outbound event webhooks allow remote systems to react to panel events.</EmptyState>
+              <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+                <div className="text-4xl mb-3">??</div>
+                <h3 className="text-base font-semibold text-slate-900">No webhooks registered</h3>
+                <p className="text-sm text-slate-500 mt-1">Outbound event webhooks allow remote systems to react to panel events.</p>
+              </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-elevated text-ink-secondary">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-medium">Name</th>
-                      <th className="px-4 py-2 text-left font-medium">Target URL</th>
-                      <th className="px-4 py-2 text-left font-medium">State</th>
-                      <th className="px-4 py-2 text-left font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {webhooks.map((w) => (
-                      <tr key={w.id} className="bg-surface hover:bg-elevated/50">
-                        <td className="px-4 py-2 font-medium text-ink">{w.name}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-ink-secondary truncate max-w-xs">{w.target_url}</td>
-                        <td className="px-4 py-2">
-                          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                            w.enabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                          }`}>
-                            {w.enabled ? 'active' : 'disabled'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 flex items-center gap-2">
-                          <button onClick={() => void handleTestWebhook(w.id)} className={secondaryButtonClass}>Test Ping</button>
-                          <button onClick={() => void loadDeliveries(w.id)} className={secondaryButtonClass}>History</button>
-                          <button onClick={() => void handleDeleteWebhook(w.id)} className={secondaryButtonClass}>Delete</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {webhooks.map((w) => (
+                  <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-slate-900">{w.name}</h3>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          w.enabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          {w.enabled ? 'Active' : 'Disabled'}
+                        </span>
+                      </div>
+                      <div className="font-mono text-xs text-slate-500 truncate" title={w.target_url}>
+                        {w.target_url}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          JSON payload
+                        </span>
+                        <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200">
+                          HMAC-SHA256
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button onClick={() => void handleTestWebhook(w.id)} className={btnSmSecondary}>Test Ping</button>
+                      <button
+                        onClick={() => void loadDeliveries(w.id)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                          selectedWebhook === w.id
+                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        History
+                      </button>
+                      <button onClick={() => void handleDeleteWebhook(w.id)} className={btnSmDanger}>Delete</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>
 
           {selectedWebhook && (
             <section className="space-y-3">
-              <h2 className="text-base font-medium text-ink">Delivery History & DLQ ({deliveries.length})</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-slate-900">Delivery History & DLQ ({deliveries.length})</h2>
+                <button type="button" onClick={() => setSelectedWebhook(null)} className="text-xs text-slate-500 hover:text-slate-700">Close history</button>
+              </div>
               {deliveries.length === 0 ? (
-                <p className="text-xs text-ink-secondary">No deliveries recorded for this endpoint yet.</p>
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+                  <p className="text-sm text-slate-500">No deliveries recorded for this endpoint yet.</p>
+                </div>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-xs">
-                    <thead className="bg-elevated text-ink-secondary">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Event</th>
-                        <th className="px-3 py-2 text-left">Status</th>
-                        <th className="px-3 py-2 text-left">HTTP Code</th>
-                        <th className="px-3 py-2 text-left">Attempts</th>
-                        <th className="px-3 py-2 text-left">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {deliveries.map((d) => (
-                        <tr key={d.id} className="bg-surface">
-                          <td className="px-3 py-2 font-mono text-ink">{d.event}</td>
-                          <td className="px-3 py-2">
-                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                              d.status === 'delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                              d.status === 'failed' || d.status === 'dead_letter' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                            }`}>
-                              {d.status}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-ink-secondary">{d.status_code ?? '-'}</td>
-                          <td className="px-3 py-2 text-ink-secondary">{d.attempt_count}/{d.max_attempts}</td>
-                          <td className="px-3 py-2 text-ink-secondary">{new Date(d.created_at).toLocaleString()}</td>
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Event</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">HTTP Code</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Attempts</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Created</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {deliveries.map((d) => (
+                          <tr key={d.id} className="hover:bg-slate-50/50">
+                            <td className="px-4 py-3 text-sm font-mono text-slate-800">{d.event}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                d.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                d.status === 'failed' || d.status === 'dead_letter' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}>
+                                {d.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm font-mono text-slate-600">{d.status_code ?? '-'}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{d.attempt_count}/{d.max_attempts}</td>
+                            <td className="px-4 py-3 text-sm text-slate-500">{new Date(d.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </section>

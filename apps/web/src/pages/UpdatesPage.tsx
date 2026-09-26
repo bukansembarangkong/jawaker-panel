@@ -1,26 +1,15 @@
 import { useEffect, useState } from 'react';
 import { goeyToast } from 'goey-toast';
-import { type OperationalState, EmptyState, ErrorNote, StatusBadge } from '../components/ui';
+import { type OperationalState, ErrorNote, StatusBadge } from '../components/ui';
 import { type CanaryEntry, type ModuleUpdate, type UpdateJob, type UpdateRelease, updatesApi } from '../api/client';
 
 type Tab = 'releases' | 'jobs' | 'modules';
 
 function stateToOperational(state: string): OperationalState {
   const map: Record<string, OperationalState> = {
-    done: 'Healthy',
-    ready: 'Healthy',
-    pass: 'Healthy',
-    pending: 'Pending',
-    idle: 'Disabled',
-    preflight: 'Running',
-    downloading: 'Running',
-    verifying: 'Running',
-    applying: 'Running',
-    updating: 'Updating',
-    running: 'Running',
-    failed: 'Failed',
-    rolled_back: 'Warning',
-    paused: 'Paused',
+    done: 'Healthy', ready: 'Healthy', pass: 'Healthy', pending: 'Pending', idle: 'Disabled',
+    preflight: 'Running', downloading: 'Running', verifying: 'Running', applying: 'Running',
+    updating: 'Updating', running: 'Running', failed: 'Failed', rolled_back: 'Warning', paused: 'Paused',
   };
   return map[state] ?? 'Unknown';
 }
@@ -34,7 +23,7 @@ function CompatBadge({ compatible }: { compatible: boolean | null }) {
   return compatible ? <StatusBadge state="Healthy" detail="compatible" /> : <StatusBadge state="Failed" detail="incompatible" />;
 }
 
-// ── Releases tab ───────────────────────────────────────────────────────────────
+// ?? Releases tab ???????????????????????????????????????????????????????????????
 
 function ReleasesTab() {
   const [releases, setReleases] = useState<UpdateRelease[]>([]);
@@ -46,8 +35,7 @@ function ReleasesTab() {
 
   const load = () => {
     setLoading(true);
-    updatesApi
-      .listReleases(channel || undefined)
+    updatesApi.listReleases(channel || undefined)
       .then((r) => setReleases(r.releases ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
@@ -56,40 +44,38 @@ function ReleasesTab() {
   useEffect(() => { load(); }, [channel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runPreflight = async (id: string) => {
-    try {
-      await updatesApi.runPreflight(id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    }
+    try { await updatesApi.runPreflight(id); load(); }
+    catch (e) { setError(e instanceof Error ? e : new Error(String(e))); }
   };
 
   const applyRelease = async (id: string) => {
     setApplying(id);
-    try {
-      await updatesApi.applyUpdate(id);
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setApplying(null);
-    }
+    try { await updatesApi.applyUpdate(id); load(); }
+    catch (e) { setError(e instanceof Error ? e : new Error(String(e))); }
+    finally { setApplying(null); }
   };
 
   const runFleetRollout = async (id: string) => {
     setFleetRolling(id);
     try {
       const res = await updatesApi.fleetRollout(id);
-      goeyToast.success(`Fleet rollout started: job ${res.job_id.slice(0, 8)}… across ${res.total_nodes} nodes (batch ${res.batch_size}).`);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setFleetRolling(null);
-    }
+      goeyToast.success(`Fleet rollout started: job ${res.job_id.slice(0, 8)}? across ${res.total_nodes} nodes (batch ${res.batch_size}).`);
+    } catch (e) { setError(e instanceof Error ? e : new Error(String(e))); }
+    finally { setFleetRolling(null); }
   };
 
-  if (loading) return <p className="text-ink-secondary text-sm">Loading releases…</p>;
+  if (loading) return <p className="text-slate-500 text-sm">Loading releases?</p>;
   if (error) return <ErrorNote error={error} title="Failed to load releases" onRetry={load} />;
+
+  if (releases.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+        <div className="text-4xl mb-3">?</div>
+        <h3 className="text-base font-semibold text-slate-900">Up to date</h3>
+        <p className="text-sm text-slate-500 mt-1">No releases discovered. Run release discovery to check for updates.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -97,7 +83,7 @@ function ReleasesTab() {
         <select
           value={channel}
           onChange={(e) => setChannel(e.target.value)}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink"
+          className="block rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
         >
           <option value="">All channels</option>
           <option value="stable">stable</option>
@@ -105,70 +91,49 @@ function ReleasesTab() {
           <option value="edge">edge</option>
         </select>
       </div>
-
-      {releases.length === 0 ? (
-        <EmptyState title="No releases discovered">
-          <span>Run release discovery to populate this list.</span>
-        </EmptyState>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-ink-muted">
-                <th className="pb-2 pr-4 font-medium">Version</th>
-                <th className="pb-2 pr-4 font-medium">Channel</th>
-                <th className="pb-2 pr-4 font-medium">Published</th>
-                <th className="pb-2 pr-4 font-medium">Compatible</th>
-                <th className="pb-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {releases.map((rel) => (
-                <tr key={rel.id}>
-                  <td className="py-2 pr-4 font-mono text-xs">{rel.version}</td>
-                  <td className="py-2 pr-4">{rel.channel}</td>
-                  <td className="py-2 pr-4 text-ink-secondary">{new Date(rel.published_at).toLocaleDateString()}</td>
-                  <td className="py-2 pr-4"><CompatBadge compatible={rel.compatible} /></td>
-                  <td className="py-2 flex gap-2">
-                    {rel.compatible === null && (
-                      <button
-                        onClick={() => void runPreflight(rel.id)}
-                        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-elevated"
-                      >
-                        Preflight
-                      </button>
-                    )}
-                    {rel.compatible === true && (
-                      <button
-                        onClick={() => void applyRelease(rel.id)}
-                        disabled={applying === rel.id}
-                        className="rounded-md bg-accent px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-50"
-                      >
-                        {applying === rel.id ? 'Applying…' : 'Apply'}
-                      </button>
-                    )}
-                    {rel.compatible === true && (
-                      <button
-                        onClick={() => void runFleetRollout(rel.id)}
-                        disabled={fleetRolling === rel.id}
-                        className="rounded-md border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
-                        title="Fleet Rollout: rolling update across all enrolled nodes"
-                      >
-                        {fleetRolling === rel.id ? 'Rolling…' : 'Fleet Rollout'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {releases.map((rel) => (
+          <div key={rel.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-mono font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  v{rel.version}
+                </span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  rel.channel === 'stable' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  rel.channel === 'beta' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-purple-50 text-purple-700 border border-purple-200'
+                }`}>{rel.channel}</span>
+              </div>
+              <p className="text-sm text-slate-500">Released: {new Date(rel.published_at).toLocaleDateString()}</p>
+              {rel.notes && <p className="mt-2 text-xs text-slate-600 line-clamp-3">{rel.notes}</p>}
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <CompatBadge compatible={rel.compatible} />
+              <div className="flex items-center gap-2">
+                {rel.compatible === null && (
+                  <button onClick={() => void runPreflight(rel.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all">Preflight</button>
+                )}
+                {rel.compatible === true && (
+                  <>
+                    <button onClick={() => void applyRelease(rel.id)} disabled={applying === rel.id} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50">
+                      {applying === rel.id ? 'Applying?' : 'Install'}
+                    </button>
+                    <button onClick={() => void runFleetRollout(rel.id)} disabled={fleetRolling === rel.id} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-all disabled:opacity-50" title="Fleet Rollout">
+                      {fleetRolling === rel.id ? 'Rolling?' : 'Fleet Rollout'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Jobs tab ───────────────────────────────────────────────────────────────────
+// ?? Jobs tab ???????????????????????????????????????????????????????????????????
 
 function JobsTab() {
   const [jobs, setJobs] = useState<UpdateJob[]>([]);
@@ -179,8 +144,7 @@ function JobsTab() {
 
   const load = () => {
     setLoading(true);
-    updatesApi
-      .listJobs()
+    updatesApi.listJobs()
       .then((r) => setJobs(r.jobs ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
@@ -193,65 +157,83 @@ function JobsTab() {
     updatesApi.listCanary(jobId).then((r) => setCanary(r.entries ?? [])).catch(() => setCanary([]));
   };
 
-  if (loading) return <p className="text-ink-secondary text-sm">Loading jobs…</p>;
+  if (loading) return <p className="text-slate-500 text-sm">Loading jobs?</p>;
   if (error) return <ErrorNote error={error} title="Failed to load jobs" onRetry={load} />;
 
   return (
     <div className="space-y-4">
       {jobs.length === 0 ? (
-        <EmptyState title="No update jobs">
-          <span>Apply a release to create an update job.</span>
-        </EmptyState>
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <div className="text-4xl mb-3">??</div>
+          <h3 className="text-base font-semibold text-slate-900">No update jobs</h3>
+          <p className="text-sm text-slate-500 mt-1">Apply a release to create an update job.</p>
+        </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-ink-muted">
-                  <th className="pb-2 pr-4 font-medium">Job ID</th>
-                  <th className="pb-2 pr-4 font-medium">State</th>
-                  <th className="pb-2 pr-4 font-medium">Created</th>
-                  <th className="pb-2 font-medium">Canary</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="py-2 pr-4 font-mono text-xs">{job.id.slice(0, 8)}…</td>
-                    <td className="py-2 pr-4"><StateBadge state={job.state} /></td>
-                    <td className="py-2 pr-4 text-ink-secondary">{new Date(job.created_at).toLocaleString()}</td>
-                    <td className="py-2">
-                      <button
-                        onClick={() => loadCanary(job.id)}
-                        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-elevated"
-                      >
-                        View canary
-                      </button>
-                    </td>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Job ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">State</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Progress</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Created</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Canary</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {jobs.map((job) => {
+                    const isRunning = ['preflight', 'downloading', 'verifying', 'applying', 'updating', 'running'].includes(job.state);
+                    return (
+                      <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 text-sm font-mono text-slate-800">{job.id.slice(0, 8)}?</td>
+                        <td className="px-4 py-3 text-sm"><StateBadge state={job.state} /></td>
+                        <td className="px-4 py-3 text-sm w-32">
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-1.5 rounded-full ${isRunning ? 'bg-indigo-500 animate-pulse' : job.state === 'done' ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                              style={{ width: isRunning ? '60%' : job.state === 'done' ? '100%' : '0%' }}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-500">{new Date(job.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          <button
+                            onClick={() => loadCanary(job.id)}
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${selectedJob === job.id ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                          >
+                            View canary
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-
           {selectedJob && (
-            <div className="mt-4 rounded-md border border-border p-4">
-              <h3 className="text-sm font-medium text-ink mb-2">Canary rollout - job {selectedJob.slice(0, 8)}…</h3>
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-slate-900">Canary rollout ? job {selectedJob.slice(0, 8)}?</h3>
+                <button type="button" onClick={() => setSelectedJob(null)} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
+              </div>
               {canary.length === 0 ? (
-                <p className="text-xs text-ink-secondary">No canary entries yet.</p>
+                <p className="text-sm text-slate-500">No canary entries yet.</p>
               ) : (
-                <table className="w-full text-xs">
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left text-ink-muted">
-                      <th className="pb-1 pr-3 font-medium">Server</th>
-                      <th className="pb-1 font-medium">State</th>
+                    <tr className="border-b border-slate-200">
+                      <th className="pb-2 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Server</th>
+                      <th className="pb-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">State</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody className="divide-y divide-slate-100">
                     {canary.map((e) => (
                       <tr key={e.id}>
-                        <td className="py-1 pr-3 font-mono">{e.server_id.slice(0, 8)}…</td>
-                        <td className="py-1"><StateBadge state={e.state} /></td>
+                        <td className="py-2 pr-4 font-mono text-xs text-slate-800">{e.server_id.slice(0, 8)}?</td>
+                        <td className="py-2"><StateBadge state={e.state} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -265,7 +247,7 @@ function JobsTab() {
   );
 }
 
-// ── Modules tab ────────────────────────────────────────────────────────────────
+// ?? Modules tab ????????????????????????????????????????????????????????????????
 
 function ModulesTab() {
   const [modules, setModules] = useState<ModuleUpdate[]>([]);
@@ -273,49 +255,54 @@ function ModulesTab() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    updatesApi
-      .listModules()
+    updatesApi.listModules()
       .then((r) => setModules(r.modules ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="text-ink-secondary text-sm">Loading modules…</p>;
+  if (loading) return <p className="text-slate-500 text-sm">Loading modules?</p>;
   if (error) return <ErrorNote error={error} title="Failed to load modules" />;
 
   return (
     <div>
       {modules.length === 0 ? (
-        <EmptyState title="No modules tracked">
-          <span>Modules will appear here once the controller registers them.</span>
-        </EmptyState>
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <div className="text-4xl mb-3">??</div>
+          <h3 className="text-base font-semibold text-slate-900">No modules tracked</h3>
+          <p className="text-sm text-slate-500 mt-1">Modules will appear here once the controller registers them.</p>
+        </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-ink-muted">
-              <th className="pb-2 pr-4 font-medium">Module</th>
-              <th className="pb-2 pr-4 font-medium">Current</th>
-              <th className="pb-2 pr-4 font-medium">Latest</th>
-              <th className="pb-2 font-medium">State</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {modules.map((m) => (
-              <tr key={m.id}>
-                <td className="py-2 pr-4 font-mono text-xs">{m.module_name}</td>
-                <td className="py-2 pr-4 text-ink-secondary">{m.current_ver}</td>
-                <td className="py-2 pr-4">{m.latest_ver ?? '-'}</td>
-                <td className="py-2"><StateBadge state={m.state} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Module</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Current</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Latest</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">State</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {modules.map((m) => (
+                  <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-mono text-slate-900">{m.module_name}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500">{m.current_ver}</td>
+                    <td className="px-4 py-3 text-sm text-slate-800">{m.latest_ver ?? '-'}</td>
+                    <td className="px-4 py-3 text-sm"><StateBadge state={m.state} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────────
+// ?? Main page ??????????????????????????????????????????????????????????????????
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'releases', label: 'Releases' },
@@ -327,30 +314,24 @@ export function UpdatesPage() {
   const [tab, setTab] = useState<Tab>('releases');
 
   return (
-    <div className="px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-ink">Update Platform</h1>
-        <p className="mt-1 text-sm text-ink-secondary">
-          Discover, verify and apply JAWAKER panel and node-agent updates.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Update Platform</h1>
+          <p className="text-sm text-slate-500">Discover, verify and apply JAWAKER panel and node-agent updates.</p>
+        </div>
       </div>
-
-      <div className="mb-6 flex gap-1 border-b border-border">
+      <div className="flex gap-4 border-b border-slate-200">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'border-b-2 border-accent text-accent'
-                : 'text-ink-secondary hover:text-ink'
-            }`}
+            className={`pb-2 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
           >
             {t.label}
           </button>
         ))}
       </div>
-
       {tab === 'releases' && <ReleasesTab />}
       {tab === 'jobs' && <JobsTab />}
       {tab === 'modules' && <ModulesTab />}

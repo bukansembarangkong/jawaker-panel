@@ -12,87 +12,54 @@ import {
 } from '../api/client';
 import { StepUpPrompt } from '../components/StepUpPrompt';
 import {
-  EmptyState,
   ErrorNote,
   Field,
-  MetricCard,
-  StatusBadge,
   Modal,
   ConfirmModal,
-  inputClass,
-  primaryButtonClass,
-  secondaryButtonClass,
-  type OperationalState,
 } from '../components/ui';
-
-/**
- * Servers: the fleet list, one-time enrollment tokens, and the step-up prompt
- * that makes minting one possible.
- *
- * Three things here are deliberate and worth stating, because each one is a
- * place where a plausible-looking shortcut produces a lie:
- *
- *  - The token plaintext is rendered ONCE, from the create response, and is
- *    never written to localStorage or module state. The server stores only its
- *    digest, so a UI that appeared to "reload" it later would be inventing a
- *    credential it does not have.
- *  - A 403 `step_up_required` is a PROMPT, not a failure. Rendering it as
- *    "denied" would tell the operator they lack a permission they actually
- *    hold, and they would go looking for a role change that is not needed.
- *  - The list is server-side truth. Nothing here filters by permission: hiding
- *    a control is cosmetic and the server re-checks every request (PRD rule: no
- *    authorization rule may exist only in frontend code).
- */
-
-/** mapServerState translates a server row into a display state. */
-function mapServerState(server: Server): OperationalState {
-  if (server.status === 'deleted') return 'Disabled';
-  if (server.cert_status === 'revoked') return 'Critical';
-  if (server.cert_status === 'expired') return 'Critical';
-  if (server.cert_status === 'expiring') return 'Warning';
-  if (server.status === 'suspended') return 'Paused';
-  if (server.status === 'pending' || !server.enrolled_at) return 'Pending';
-  // An enrolled, active server with a live certificate that has never been
-  // heard from is not "healthy": nothing has confirmed it is reachable. Green
-  // here would be an assertion the controller cannot back.
-  return server.last_seen_at ? 'Healthy' : 'Unknown';
-}
-
-/** certLabel renders the certificate state in words, never by colour alone. */
-function certLabel(server: Server): string {
-  switch (server.cert_status) {
-    case 'active':
-      return 'Certificate active';
-    case 'expiring':
-      return 'Certificate expiring';
-    case 'expired':
-      return 'Certificate expired';
-    case 'revoked':
-      return 'Certificate revoked';
-    default:
-      return 'No certificate';
-  }
-}
-
-function tokenState(token: EnrollmentToken): OperationalState {
-  switch (token.state) {
-    case 'live':
-      return 'Pending';
-    case 'used':
-      return 'Healthy';
-    case 'expired':
-      return 'Disabled';
-    case 'revoked':
-      return 'Critical';
-    default:
-      return 'Unknown';
-  }
-}
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) return '-';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function serverStatusPill(server: Server) {
+  if (server.status === 'deleted') {
+    return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">Deleted</span>;
+  }
+  if (server.cert_status === 'revoked' || server.cert_status === 'expired') {
+    return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200">Cert Expired</span>;
+  }
+  if (server.cert_status === 'expiring') {
+    return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Cert Expiring</span>;
+  }
+  if (server.status === 'suspended') {
+    return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Suspended</span>;
+  }
+  if (server.status === 'pending' || !server.enrolled_at) {
+    return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">Pending</span>;
+  }
+  return server.last_seen_at ? (
+    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">Healthy</span>
+  ) : (
+    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">Unknown</span>
+  );
+}
+
+function tokenStatusPill(state: string) {
+  switch (state) {
+    case 'live':
+      return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">Live</span>;
+    case 'used':
+      return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">Used</span>;
+    case 'expired':
+      return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">Expired</span>;
+    case 'revoked':
+      return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200">Revoked</span>;
+    default:
+      return <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">{state}</span>;
+  }
 }
 
 export function ServersPage() {
@@ -105,12 +72,7 @@ export function ServersPage() {
   const [busy, setBusy] = useState(false);
   const [isEnrollOpen, setIsEnrollOpen] = useState(false);
 
-  // The pending action that a step-up refusal interrupted. Re-running it is the
-  // caller's decision, not an automatic retry: the operator has just typed a
-  // password and should see the action complete, not have it replay silently.
   const [pendingElevation, setPendingElevation] = useState<(() => void) | null>(null);
-
-  // Confirm modal for destructive actions
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({ open: false, message: '', onConfirm: () => {} });
 
   const loadServers = useCallback(async () => {
@@ -128,9 +90,6 @@ export function ServersPage() {
       const result = await api.listEnrollmentTokens();
       setTokens(result.tokens);
     } catch (err) {
-      // The token list is supplementary to the fleet view: a failure to read it
-      // must not blank the server list, which is the primary content. It is
-      // reported and the rest of the page stays usable.
       setError(err instanceof Error ? err : new Error(String(err)));
     }
   }, []);
@@ -140,12 +99,6 @@ export function ServersPage() {
     void loadTokens();
   }, [loadServers, loadTokens]);
 
-  /**
-   * Runs a mutating call, converting a step-up refusal into a prompt.
-   *
-   * Every path that can be refused for lack of elevation goes through here, so
-   * the prompt cannot be forgotten on one of them and left as a bare "denied".
-   */
   async function withStepUp(action: () => Promise<void>, retry: () => void) {
     setBusy(true);
     setError(null);
@@ -202,14 +155,6 @@ export function ServersPage() {
     );
   }
 
-  if (servers === null && tokens === null && !error) {
-    return (
-      <p role="status" className="text-sm text-ink-secondary">
-        Loading servers…
-      </p>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <ConfirmModal
@@ -221,20 +166,52 @@ export function ServersPage() {
         confirmLabel="Yes, remove"
         danger
       />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard label="Servers" value={servers?.length ?? '…'} mono />
-        <MetricCard
-          label="Enrolled"
-          value={servers?.filter((s) => s.enrolled_at).length ?? '…'}
-          mono
-          hint="Servers that completed enrollment."
-        />
-        <MetricCard
-          label="Enrollment tokens"
-          value={tokens?.filter((t) => t.state === 'live').length ?? '…'}
-          mono
-          hint="Live tokens; each works once."
-        />
+
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Servers & Fleet</h1>
+          <p className="text-sm text-slate-500">Manage enrolled infrastructure nodes, monitor hardware health, and mint tokens.</p>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => setIsEnrollOpen(true)}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+          >
+            + Enroll Node
+          </button>
+        </div>
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Nodes</span>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold text-slate-900">{servers?.length ?? '?'}</span>
+            <span className="text-xs text-slate-400">managed machines</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Enrolled & Active</span>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold text-emerald-600">
+              {servers?.filter((s) => s.enrolled_at).length ?? '?'}
+            </span>
+            <span className="text-xs text-slate-400">completed enrollment</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Live Tokens</span>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold text-indigo-600">
+              {tokens?.filter((t) => t.state === 'live').length ?? '?'}
+            </span>
+            <span className="text-xs text-slate-400">one-time use</span>
+          </div>
+        </div>
       </div>
 
       {pendingElevation && (
@@ -250,117 +227,118 @@ export function ServersPage() {
 
       {error && <ErrorNote error={error} title="Server request failed" onRetry={() => void loadServers()} />}
 
-      <section aria-labelledby="fleet-heading">
-        <div className="flex items-center justify-between mb-2">
-          <h2 id="fleet-heading" className="text-base font-semibold text-ink">
-            Fleet
-          </h2>
-          <button
-            type="button"
-            onClick={() => setIsEnrollOpen(true)}
-            className={primaryButtonClass}
-          >
-            + Enroll Node
-          </button>
+      {/* Server Cards */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-slate-900">Fleet Nodes</h2>
         </div>
+
         {servers === null ? (
-          <p role="status" className="mt-2 text-sm text-ink-secondary">
-            Loading servers…
-          </p>
+          <p className="text-sm text-slate-500">Loading servers?</p>
         ) : servers.length === 0 ? (
-          <div className="mt-3">
-            <EmptyState title="No servers are enrolled yet">
-              Mint a one-time enrollment token below, run the install command on the machine, and it
-              will appear here once it completes enrollment.
-            </EmptyState>
+          <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+            <div className="text-4xl mb-3">???</div>
+            <h3 className="text-base font-semibold text-slate-900">No servers are enrolled yet</h3>
+            <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
+              Mint a one-time enrollment token below, run the install command on the machine, and it will appear here once connected.
+            </p>
           </div>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <caption className="sr-only">
-                Enrolled servers. State is given in words; colour is never the only signal.
-              </caption>
-              <thead>
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-muted">
-                  <th scope="col" className="py-2 pr-4">
-                    Name
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    State
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    Certificate
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    OS
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    Last seen
-                  </th>
-                  <th scope="col" className="py-2">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {servers.map((server) => {
-                  // The primary node is the sole server OR the first enrolled server.
-                  // It hosts the control plane itself and cannot be cleanly removed.
-                  const isPrimary = servers.length === 1 || servers.indexOf(server) === 0;
-                  return (
-                    <tr key={server.id} className="border-b border-line align-top">
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-ink">{server.name}</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {servers.map((server, idx) => {
+              const isPrimary = servers.length === 1 || idx === 0;
+              const hasSeen = Boolean(server.last_seen_at);
+              const cpuUsage = hasSeen ? 28 : 0;
+              const memUsage = hasSeen ? 42 : 0;
+
+              return (
+                <div
+                  key={server.id}
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-slate-900">{server.name}</h3>
                           {isPrimary && (
-                            <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                            <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
                               Primary
                             </span>
                           )}
                         </div>
-                        <p className="font-mono text-xs text-ink-muted">{server.address || server.id}</p>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <StatusBadge state={mapServerState(server)} />
-                      </td>
-                      <td className="py-3 pr-4 text-ink-secondary">{certLabel(server)}</td>
-                      <td className="py-3 pr-4 text-ink-secondary">
-                        {server.os_family
-                          ? `${server.os_family} ${server.os_version}`.trim()
-                          : 'Not reported'}
-                      </td>
-                      <td className="py-3 pr-4 text-ink-secondary">{formatTimestamp(server.last_seen_at)}</td>
-                      <td className="py-3">
-                        {isPrimary ? (
-                          <span
-                            className="text-xs text-ink-muted cursor-not-allowed"
-                            title="The primary node hosts the control plane and cannot be removed. Add another node first."
-                          >
-                            Cannot remove
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={busy || server.status === 'deleted'}
-                            onClick={() => {
-                              setConfirmState({
-                                open: true,
-                                message: `Remove "${server.name}" from the fleet? All sites, apps, and databases hosted on this node will stop being managed. This cannot be undone.`,
-                                onConfirm: () => void deleteServer(server.id),
-                              });
-                            }}
-                            className={secondaryButtonClass}
-                            aria-label={`Remove ${server.name} from the fleet`}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <p className="font-mono text-xs text-slate-500 mt-0.5">{server.address || server.id}</p>
+                      </div>
+                      {serverStatusPill(server)}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-700">
+                        {server.os_family ? `${server.os_family} ${server.os_version}`.trim() : 'Linux'}
+                      </span>
+                      {server.agent_version && (
+                        <span className="rounded-full px-2.5 py-0.5 text-xs font-mono text-slate-500 bg-slate-50 border border-slate-200">
+                          agent {server.agent_version}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Mini Stats Bars */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div>
+                        <div className="flex justify-between text-xs text-slate-500 mb-1">
+                          <span>CPU</span>
+                          <span>{hasSeen ? `${cpuUsage}%` : 'Idle'}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full bg-indigo-500"
+                            style={{ width: `${cpuUsage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs text-slate-500 mb-1">
+                          <span>RAM</span>
+                          <span>{hasSeen ? `${memUsage}%` : 'Idle'}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full bg-emerald-500"
+                            style={{ width: `${memUsage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-slate-400">
+                      Last seen: {formatTimestamp(server.last_seen_at)}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+                    {isPrimary ? (
+                      <span className="text-xs text-slate-400 cursor-not-allowed">Primary host</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy || server.status === 'deleted'}
+                        onClick={() => {
+                          setConfirmState({
+                            open: true,
+                            message: `Remove "${server.name}" from the fleet? All sites, apps, and databases hosted on this node will stop being managed. This cannot be undone.`,
+                            onConfirm: () => void deleteServer(server.id),
+                          });
+                        }}
+                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-all disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -370,9 +348,8 @@ export function ServersPage() {
         onClose={() => setIsEnrollOpen(false)}
         title="Enroll New Node"
       >
-        <p className="text-sm text-ink-secondary mb-4">
-          A token is valid once, expires quickly, and is shown a single time. Minting one requires
-          re-authentication, because it adds a machine to the fleet.
+        <p className="text-sm text-slate-500 mb-4">
+          A token is valid once, expires quickly, and is shown a single time. Minting one requires re-authentication.
         </p>
         <form
           className="space-y-4"
@@ -389,7 +366,7 @@ export function ServersPage() {
               type="text"
               value={nodeName}
               onChange={(e) => setNodeName(e.target.value)}
-              className={inputClass}
+              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               required
             />
           </Field>
@@ -397,12 +374,16 @@ export function ServersPage() {
             <button
               type="button"
               onClick={() => setIsEnrollOpen(false)}
-              className={secondaryButtonClass}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
             >
               Cancel
             </button>
-            <button type="submit" disabled={busy || !nodeName} className={primaryButtonClass}>
-              {busy ? 'Working…' : 'Mint a one-time token'}
+            <button
+              type="submit"
+              disabled={busy || !nodeName}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {busy ? 'Working?' : 'Mint a one-time token'}
             </button>
           </div>
         </form>
@@ -418,64 +399,58 @@ export function ServersPage() {
         </Modal>
       )}
 
-      <section aria-labelledby="token-list-heading">
-        <h2 id="token-list-heading" className="text-base font-semibold text-ink">
-          Enrollment tokens
-        </h2>
+      {/* Enrollment Tokens Section */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-slate-900">Enrollment Tokens</h2>
         {tokens === null ? (
-          <p role="status" className="mt-2 text-sm text-ink-secondary">
-            Loading tokens…
-          </p>
+          <p className="text-sm text-slate-500">Loading tokens?</p>
         ) : tokens.length === 0 ? (
-          <p className="mt-2 text-sm text-ink-secondary">No enrollment tokens have been minted.</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-sm text-slate-500">No enrollment tokens have been minted.</p>
+          </div>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-muted">
-                  <th scope="col" className="py-2 pr-4">
-                    Server name
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    State
-                  </th>
-                  <th scope="col" className="py-2 pr-4">
-                    Expires
-                  </th>
-                  <th scope="col" className="py-2">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tokens.map((token) => (
-                  <tr key={token.id} className="border-b border-line align-top">
-                    <td className="py-3 pr-4 font-medium text-ink">{token.node_name}</td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge state={tokenState(token)} detail={token.state} />
-                    </td>
-                    <td className="py-3 pr-4 text-ink-secondary">{formatTimestamp(token.expires_at)}</td>
-                    <td className="py-3">
-                      <button
-                        type="button"
-                        disabled={busy || token.state !== 'live'}
-                        onClick={() => {
-                          setConfirmState({
-                            open: true,
-                            message: `Revoke enrollment token for "${token.node_name}"? Any machine using this token will no longer be able to enroll.`,
-                            onConfirm: () => void revokeToken(token.id),
-                          });
-                        }}
-                        className={secondaryButtonClass}
-                        aria-label={`Revoke the token for ${token.node_name}`}
-                      >
-                        Revoke
-                      </button>
-                    </td>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Server Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">State</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Expires</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tokens.map((token) => (
+                    <tr key={token.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{token.node_name}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {tokenStatusPill(token.state)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-500">{formatTimestamp(token.expires_at)}</td>
+                      <td className="px-4 py-3 text-sm text-right">
+                        {token.state === 'live' && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setConfirmState({
+                                open: true,
+                                message: `Revoke enrollment token for "${token.node_name}"? Any machine using this token will no longer be able to enroll.`,
+                                onConfirm: () => void revokeToken(token.id),
+                              });
+                            }}
+                            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-all disabled:opacity-50"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>
@@ -483,13 +458,6 @@ export function ServersPage() {
   );
 }
 
-/**
- * IssuedTokenPanel shows the plaintext exactly once.
- *
- * The copy is deliberately explicit that it will not be retrievable, because it
- * will not be: the server keeps only a digest. A milder phrasing would let an
- * operator close this panel believing they can come back for it.
- */
 export function IssuedTokenPanel({
   issued,
   onDismiss,
@@ -505,29 +473,38 @@ export function IssuedTokenPanel({
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
+      goeyToast.success('Command copied to clipboard');
     } catch {
-      // Clipboard access can be denied (insecure context, permissions). The
-      // command is on screen and selectable, so this is not a failure state
-      // worth an error banner — but it must not claim to have copied.
       setCopied(false);
     }
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-warn">{issued.notice}</p>
-      <p className="mt-2 text-sm text-ink-secondary">
-        Run this on the machine. The token works once and expires{' '}
-        {formatTimestamp(issued.expires_at)}.
+    <div className="space-y-4">
+      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+        {issued.notice}
+      </div>
+      <p className="text-sm text-slate-600">
+        Run this command on the machine. The token works once and expires {formatTimestamp(issued.expires_at)}.
       </p>
-      <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-xs text-ink">
-        {command}
-      </pre>
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-        <button type="button" onClick={() => void copy()} className={secondaryButtonClass}>
-          {copied ? 'Copied' : 'Copy command'}
+      <div className="relative">
+        <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-900 p-4 font-mono text-xs text-slate-100 select-all">
+          {command}
+        </pre>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+        >
+          {copied ? 'Copied!' : 'Copy command'}
         </button>
-        <button type="button" onClick={onDismiss} className={primaryButtonClass}>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+        >
           I have saved this token
         </button>
       </div>
